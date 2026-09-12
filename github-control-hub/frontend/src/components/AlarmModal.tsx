@@ -11,11 +11,8 @@ import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
-const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
-  "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200";
-const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
+const inputClass = "field-line text-[0.8438rem]";
+const labelClass = "caps block mb-1.5";
 
 /**
  * Configure one alarm on one widget.
@@ -188,15 +185,15 @@ export default function AlarmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-slate-900 rounded-[12px] shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
+      <div className="absolute inset-0 bg-ink/40 -[3px] animate-fade-in" onClick={onClose}></div>
+      <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
 
-        <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex items-center justify-between shrink-0 rounded-t-[12px]">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+        <div className="px-6 py-4 border-b border-rule dark:border-rule flex items-center justify-between shrink-0 rounded-t-[12px]">
+          <h3 className="display text-[1.1875rem] text-ink">
             {existing ? "Edit alarm" : "New alarm"}
           </h3>
           <button onClick={onClose}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-ink hover:bg-black/5 dark:hover:bg-ink/5 transition-colors">
             <i className="ph ph-x text-lg"></i>
           </button>
         </div>
@@ -300,7 +297,7 @@ export default function AlarmModal({
                   onChange={e => setNotifyOnRecovery(e.target.checked)} />
                 <span>
                   Tell me when it returns to normal
-                  <span className="block text-[12px] text-gray-500 dark:text-slate-400 mt-0.5">
+                  <span className="block text-[0.75rem] text-gray-500 dark:text-slate-400 mt-0.5">
                     Sent to the same group, by email and Teams. It waits for two clean checks
                     in a row, so a value resting on its threshold does not send an all-clear
                     every time it wobbles. Going wrong waits for nothing.
@@ -310,7 +307,7 @@ export default function AlarmModal({
 
               <div>
                 <button type="button" onClick={() => setShowTemplates(v => !v)}
-                  className="text-sm font-semibold text-gh-blue hover:underline">
+                  className="textlink caps">
                   <i className={`ph ph-caret-${showTemplates ? "down" : "right"} mr-1`}></i>
                   Customise the message
                 </button>
@@ -350,13 +347,13 @@ export default function AlarmModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 flex justify-end gap-2 shrink-0">
+        <div className="px-6 py-4 border-t border-rule dark:border-rule flex justify-end gap-2 shrink-0">
           <button onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5">
+            className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-ink/5">
             Cancel
           </button>
           <button onClick={save} disabled={saving || !spec?.conditions.length}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-50">
+            className="px-4 py-2 text-sm font-semibold rounded-md bg-ink text-reverse hover:opacity-90 disabled:opacity-50">
             {saving ? "Saving…" : existing ? "Save changes" : "Create alarm"}
           </button>
         </div>
@@ -397,18 +394,18 @@ function PersonalDestinationSummary({ destination }: {
     <div className="text-sm text-slate-600 dark:text-slate-300">
       {confirmed.map(e => (
         <div key={e.endpoint} className="flex items-center gap-1.5">
-          <i className="ph-bold ph-envelope-simple text-[12px] text-slate-400" aria-hidden="true" />
-          <span className="font-mono text-[12.5px]">{e.endpoint}</span>
+          <i className="ph-bold ph-envelope-simple text-[0.75rem] text-slate-400" aria-hidden="true" />
+          <span className="font-mono text-[0.7812rem]">{e.endpoint}</span>
         </div>
       ))}
       {teams.map(a => (
         <div key={a} className="flex items-center gap-1.5">
-          <i className="ph-bold ph-chat-teardrop-text text-[12px] text-violet-500" aria-hidden="true" />
-          <span className="font-mono text-[12.5px]">{a}</span>
+          <i className="ph-bold ph-chat-teardrop-text text-[0.75rem] text-violet-500" aria-hidden="true" />
+          <span className="font-mono text-[0.7812rem]">{a}</span>
         </div>
       ))}
       {pending.length > 0 && (
-        <p className="text-[12px] text-amber-700 dark:text-amber-400 mt-1">
+        <p className="text-[0.75rem] text-amber-700 dark:text-amber-400 mt-1">
           {pending.length} more waiting to confirm.
         </p>
       )}

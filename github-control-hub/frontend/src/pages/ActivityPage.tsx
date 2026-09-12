@@ -5,7 +5,7 @@ import {
   categoryOf, CATEGORY_LABELS, VIEW_ORDER,
   type ActivityView,
 } from "../lib/activityCategories";
-import { Page, INTENT, TYPE, SURFACE } from "../design";
+import { Page, INTENT, TYPE, SURFACE, Spinner } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
 import ImportantEvents from "../components/ImportantEvents";
@@ -149,9 +149,9 @@ function allChildrenUndone(entry: Activity): boolean {
  * recognisably the same thing. It replaces a 116px column that held one icon.
  */
 const STREAM_RAIL: Record<string, string> = {
-  github: "bg-indigo-400 dark:bg-indigo-500",
-  aws: "bg-amber-400 dark:bg-amber-500",
-  app: "bg-emerald-400 dark:bg-emerald-500",
+  github: "bg-indigo",
+  aws: "bg-ochre",
+  app: "bg-forest",
 };
 
 function WebhookPulse() {
@@ -169,13 +169,10 @@ function WebhookPulse() {
     : null;
 
   return (
-    <div className={`shrink-0 inline-flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border ${INTENT[tone].soft} ${INTENT[tone].border}`}>
-      <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${INTENT[tone].mark} ${data.status === "healthy" ? "animate-pulse" : ""}`} />
-      <span className="min-w-0">
-        <span className={`block text-[12.5px] font-bold ${INTENT[tone].text}`}>{label}</span>
-        <span className="block text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-          {when ? <>last: {when}</> : "check the org webhook is configured"}
-        </span>
+    <div className={`shrink-0 pl-4 border-l-2 ${INTENT[tone].border}`}>
+      <span className={`caps ${INTENT[tone].text}`}>{label}</span>
+      <span className="standfirst block text-[0.75rem] mt-1">
+        {when ? <>last: {when}</> : "check the org webhook is configured"}
       </span>
     </div>
   );
@@ -642,7 +639,7 @@ export default function ActivityPage() {
   }, [filtered, data, perPage]);
 
   const renderRow = (entry: Activity, depth: number) => {
-    const cfg = ACTION_CONFIG[entry.action as ActivityAction] || { label: entry.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" };
+    const cfg = ACTION_CONFIG[entry.action as ActivityAction] || { label: entry.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" };
     const hasChildren = entry.children && entry.children.length > 0;
     const isExpanded = expandedIds.has(entry.id);
     const isUndoneEntry = entry.undone === true;
@@ -672,7 +669,7 @@ export default function ActivityPage() {
         // rail and won, so a held row lost the one mark saying where it came
         // from.
         className={`group cursor-pointer transition-colors duration-150
-          hover:bg-slate-50 dark:hover:bg-white/[0.04]
+          hover:bg-slate-50 dark:hover:bg-ink/[0.04]
           ${dimmed ? "opacity-50" : ""}
           ${isFailedEntry ? "bg-red-50/40 dark:bg-red-950/40" : ""}
           ${isHighlighted ? "ring-2 ring-inset ring-gh-blue bg-blue-50/60 dark:bg-blue-950/60 animate-pulse-once" : ""}
@@ -689,12 +686,12 @@ export default function ActivityPage() {
               three colours the chart above uses, so a row and a band in the
               graph are recognisably the same thing. */}
           <span aria-hidden="true"
-            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-slate-300 dark:bg-slate-600"}`} />
+            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-rule-strong"}`} />
 
           <div className="flex items-start gap-2 min-w-0">
             <div className="flex items-center gap-1 shrink-0 pt-0.5">
               {depth > 0 && (
-                <span className="text-slate-300 dark:text-slate-600 text-[10px] select-none" aria-hidden="true">
+                <span className="text-slate-300 dark:text-slate-600 text-[0.625rem] select-none" aria-hidden="true">
                   <i className="fa-solid fa-turn-up fa-rotate-90"></i>
                 </span>
               )}
@@ -703,8 +700,8 @@ export default function ActivityPage() {
                   aria-expanded={isExpanded}
                   aria-label={isExpanded ? "Collapse" : `Expand ${countAllChildren(entry)} related`}
                   className="w-5 h-5 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500
-                             hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                  <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[9px]`}></i>
+                             hover:bg-slate-200 dark:hover:bg-paper-3 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                  <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[0.5625rem]`}></i>
                 </button>
               ) : <span className="w-5 inline-block" />}
 
@@ -713,15 +710,15 @@ export default function ActivityPage() {
                   are certainly not: they come from GitHub's enterprise stream
                   and this app never wrote them. */}
               {isFailedEntry
-                ? <i className="fa-solid fa-circle-exclamation text-[13px] text-red-500" title="Failed"></i>
+                ? <i className="fa-solid fa-circle-exclamation text-[0.8125rem] text-red-500" title="Failed"></i>
                 : entry.source === "github"
-                  ? <i className="fa-brands fa-github text-[13px] text-slate-500 dark:text-slate-400" title="Reported by GitHub webhook"></i>
-                  : <i className="fa-solid fa-shield-halved text-[12px] text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
+                  ? <i className="fa-brands fa-github text-[0.8125rem] text-slate-500 dark:text-slate-400" title="Reported by GitHub webhook"></i>
+                  : <i className="fa-solid fa-shield-halved text-[0.75rem] text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
             </div>
 
             <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shrink-0 ${isFailedEntry ? "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
-                <i className={isFailedEntry ? "fa-solid fa-xmark text-[10px]" : cfg.iconClass}></i>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-1 caps border shrink-0 ${isFailedEntry ? "bg-crimson-wash text-crimson border-crimson-edge" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
+                <i className={isFailedEntry ? "fa-solid fa-xmark text-[0.625rem]" : cfg.iconClass}></i>
                 {/* The event itself, not the category it belongs to. Every one
                     of these rows said "Security Alert", which is the name of
                     the drawer rather than the name of the thing in it. */}
@@ -733,26 +730,24 @@ export default function ActivityPage() {
               </span>
 
               {entry.action === "security.alert" && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-medium shrink-0"
+                <span className="caps caps-tight px-1.5 py-0.5 bg-crimson-wash text-crimson border border-crimson-edge shrink-0"
                   title="An important event: it also raised an alert and may have been emailed">
                   important
                 </span>
               )}
               {entry.personal && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-500/10
-                                 text-violet-700 dark:text-violet-300 border border-violet-200
-                                 dark:border-violet-500/30 font-medium shrink-0"
+                <span className="caps caps-tight px-1.5 py-0.5 bg-indigo-wash text-indigo border border-indigo-edge shrink-0"
                   title="Somebody arranging their own board, not an organization setting">
                   personal
                 </span>
               )}
               {entry.detailed && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium shrink-0" title="Recorded by detailed GitHub logging">
+                <span className="caps caps-tight px-1.5 py-0.5 bg-paper-2 text-ink-2 border border-rule shrink-0" title="Recorded by detailed GitHub logging">
                   detailed
                 </span>
               )}
               {hasChildren && !isExpanded && (
-                <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-500 shrink-0">
+                <span className="figure text-[0.8125rem] text-ink-3 shrink-0">
                   +{countAllChildren(entry)}
                 </span>
               )}
@@ -765,8 +760,7 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2 min-w-0">
             <UserAvatar login={entry.triggeredBy || entry.actor} size={22} />
             <div className="min-w-0">
-              <span className="block text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate"
-                title={entry.actor}>
+              <span className="block text-[0.8125rem] text-ink truncate" title={entry.actor}>
                 {actorLabel(entry.actor)}
               </span>
               {/* The person behind a row the system wrote. It used to live on a
@@ -775,8 +769,7 @@ export default function ActivityPage() {
                   that says what changed, which is where somebody looking for it
                   would think to look anyway. */}
               {entry.triggeredBy && (
-                <span className="block text-[11px] text-gh-muted dark:text-slate-500 truncate"
-                  title={`Asked for by ${entry.triggeredBy}`}>
+                <span className="block caps truncate" title={`Asked for by ${entry.triggeredBy}`}>
                   asked for by {entry.triggeredBy}
                 </span>
               )}
@@ -793,15 +786,15 @@ export default function ActivityPage() {
               carried the same mark and it became a texture rather than a fact.
               An empty cell under a column headed Scope already says it. */}
           {entry.repo && (
-            <span className="block text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.repo}>
+            <span className="display block text-[0.9375rem] text-ink truncate" title={entry.repo}>
               {entry.repo === "*" ? "Everywhere" : entry.repo}
             </span>
           )}
           {entry.target && (
-            <span className="mt-0.5 flex items-center gap-1 font-mono text-[11.5px] text-slate-500 dark:text-slate-400 min-w-0"
+            <span className="mt-1 flex items-center gap-1 font-mono text-[0.7188rem] text-ink-2 min-w-0"
               title={entry.target}>
               {entry.action.includes("branch") && (
-                <i className="fa-solid fa-code-branch text-[9px] shrink-0" aria-hidden="true"></i>
+                <i className="fa-solid fa-code-branch text-[0.5625rem] shrink-0" aria-hidden="true"></i>
               )}
               <span className="truncate">{entry.target}</span>
             </span>
@@ -810,7 +803,7 @@ export default function ActivityPage() {
 
         {/* ── 4. the detail line ────────────────────────────────────────── */}
         <td className="px-4 py-3 overflow-hidden hidden lg:table-cell">
-          <span className={`text-[13px] truncate block ${isFailedEntry ? "text-red-600 dark:text-red-400" : "text-gh-muted dark:text-slate-400"}`}
+          <span className={`text-[0.8125rem] truncate block ${isFailedEntry ? "text-crimson" : "text-ink-2"}`}
             title={entry.details}>
             {entry.details || "\u2014"}
           </span>
@@ -819,16 +812,16 @@ export default function ActivityPage() {
         {/* ── 5. when, and whether it wants anything ────────────────────── */}
         <td className="px-4 py-3 overflow-hidden text-right">
           <div className="flex items-center justify-end gap-2">
-            <span className="text-[12.5px] tabular-nums text-gh-muted dark:text-slate-400" title={entry.timestamp}>
+            <span className="figure text-[0.8125rem] text-ink-2" title={entry.timestamp}>
               {formatTimestamp(entry.timestamp)}
             </span>
-            {isFailedEntry && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Failed - click to manage"></span>}
+            {isFailedEntry && <span className="w-1.5 h-1.5 bg-crimson shrink-0" title="Failed — click to manage"></span>}
             {!isFailedEntry && (canUndo(entry) || canRedo(entry)) && (
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isUndoneEntry || allDone ? "bg-orange-400" : "bg-green-400"}`} title="Click to manage"></span>
+              <span className={`w-1.5 h-1.5 shrink-0 ${isUndoneEntry || allDone ? "bg-ochre" : "bg-forest"}`} title="Click to manage"></span>
             )}
             {/* Appears on hover: every row opens, and nothing said so. */}
-            <i className="fa-solid fa-chevron-right text-[10px] text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-               aria-hidden="true"></i>
+            <span className="caps opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              aria-hidden="true">Open</span>
           </div>
         </td>
       </tr>
@@ -842,14 +835,14 @@ export default function ActivityPage() {
   };
 
   const popupEntry = selectedEvent;
-  const popupCfg = popupEntry ? (ACTION_CONFIG[popupEntry.action as ActivityAction] || { label: popupEntry.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" }) : null;
+  const popupCfg = popupEntry ? (ACTION_CONFIG[popupEntry.action as ActivityAction] || { label: popupEntry.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" }) : null;
   const popupChildCount = popupEntry ? countAllChildren(popupEntry) : 0;
   const popupFailedCount = popupEntry ? countFailed(popupEntry) : 0;
   const popupIsTracker = popupEntry ? isUndoRedoTracker(popupEntry) : false;
   const popupOriginal = popupIsTracker && popupEntry?.linkedActivityId
     ? findActivityById(data?.entries || [], popupEntry.linkedActivityId)
     : undefined;
-  const popupOriginalCfg = popupOriginal ? (ACTION_CONFIG[popupOriginal.action as ActivityAction] || { label: popupOriginal.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" }) : null;
+  const popupOriginalCfg = popupOriginal ? (ACTION_CONFIG[popupOriginal.action as ActivityAction] || { label: popupOriginal.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" }) : null;
   const popupIsOverriddenConflict = popupEntry?.action === "conflict.pending" && popupEntry.conflictResolution === "override" && !popupEntry.undone;
   const popupIsSkippedConflict = popupEntry?.action === "conflict.pending" && popupEntry.conflictResolution === "skip" && !popupEntry.undone;
   const popupCanUndo = popupEntry ? (!popupIsOverriddenConflict && canUndo(popupEntry)) : false;
@@ -858,14 +851,14 @@ export default function ActivityPage() {
 
   return (
     <Page user={user}>
-        <header className="flex flex-col mb-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <header className="flex flex-col mb-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-5 pb-4 border-b-2 border-ink">
             <div className="min-w-0">
-              <h1 className={TYPE.title + " text-slate-900 dark:text-white"}>Activity</h1>
+              <h1 className={TYPE.title + " text-ink"}>Activity</h1>
               {/* One line, and only where it is not already obvious. The stream
                   descriptions moved to the tabs themselves, where the thing
                   they describe is the thing being pointed at. */}
-              <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-[70ch]">
+              <p className="standfirst text-[0.875rem] mt-2 max-w-[70ch]">
                 {lens === "stats"
                   ? "The shape of everything, across the whole organization."
                   : lens === "important"
@@ -894,16 +887,13 @@ export default function ActivityPage() {
               footing as the stream tabs below, which really are slices.
               Wrapping, because the labels are words rather than icons and five
               of them do not fit a narrow window on one line. */}
-          <div className="flex items-center flex-wrap gap-1 p-1 rounded-xl
-                          bg-slate-100 dark:bg-white/[0.06] w-fit max-w-full">
-            {lenses.map(([v, icon, label]) => (
+          <div className="flex items-stretch flex-wrap border-b border-rule-strong w-fit max-w-full">
+            {lenses.map(([v, icon, label], i) => (
               <button key={v} onClick={() => setLensPersistent(v)} aria-pressed={lens === v}
-                className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap
-                            flex items-center gap-2 transition-all
-                  ${lens === v
-                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
-                <i className={`ph-bold ${icon} text-[14px]`} aria-hidden="true" />
+                className={`caps px-4 py-2 -mb-px whitespace-nowrap flex items-center gap-2 border-b-2 transition-colors
+                  ${i > 0 ? "border-l border-l-rule" : ""}
+                  ${lens === v ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+                <i className={`ph-bold ${icon} text-[0.8125rem]`} aria-hidden="true" />
                 {label}
               </button>
             ))}
@@ -916,7 +906,7 @@ export default function ActivityPage() {
               overflows by exactly enough to raise a vertical scrollbar on a row
               of buttons. */}
           {lens === "feed" && (
-          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
+          <nav className="flex items-center border-b border-rule -mb-px overflow-x-auto overflow-y-hidden">
             {views.map(c => {
               const active = category === c;
               return (
@@ -924,10 +914,8 @@ export default function ActivityPage() {
                   key={c}
                   onClick={() => setCategory(c)}
                   aria-current={active ? "page" : undefined}
-                  className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors
-                    ${active
-                      ? "border-blue-600 dark:border-blue-400 text-slate-900 dark:text-white"
-                      : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+                  className={`caps px-4 py-2.5 whitespace-nowrap border-b-2 -mb-px transition-colors
+                    ${active ? "border-ink text-ink" : "border-transparent hover:text-ink"}`}
                 >
                   {CATEGORY_LABELS[c]}
                   {/* What is in each stream over the charted window, so the
@@ -935,10 +923,7 @@ export default function ActivityPage() {
                       after. From the pulse, which is unfiltered, so these are
                       stream totals and not a preview of the current filter. */}
                   {pulse && (
-                    <span className={`ml-2 text-[11px] tabular-nums px-1.5 py-0.5 rounded-md
-                      ${active
-                        ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                        : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                    <span className={`figure ml-2 text-[0.8125rem] ${active ? "text-ink" : "text-ink-3"}`}>
                       {/* A "+" when the walk stopped before the window did.
                           The count is then a floor, not a total, and a precise
                           looking number that has quietly stopped rising is
@@ -959,7 +944,7 @@ export default function ActivityPage() {
               tabs it is read when the tab is chosen; in the page header it was
               read once and never again. */}
           {lens === "feed" && (
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[86ch]">
+            <p className="standfirst text-[0.8125rem] max-w-[86ch]">
               {CATEGORY_DESCRIPTIONS[category]}
             </p>
           )}
@@ -969,32 +954,27 @@ export default function ActivityPage() {
               leaving these on screen would offer two filter sets where only
               one of them did anything. */}
           {lens === "feed" && (
-          <div className={`${SURFACE.card} p-4`}>
-            <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-filter text-slate-400 dark:text-slate-500 text-[11px]"></i>
-              <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Narrow the feed</span>
+          <div className="border-t-2 border-ink pt-4">
+            <div className="flex items-baseline gap-3 mb-4">
+              <span className="caps text-ink">Narrow the feed</span>
 
               {/* What the filters are doing, in a number, beside the controls
                   doing it. A filtered feed and an empty one look identical
                   until something says which it is. */}
               {activeFilterCount > 0 && (
-                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300">
-                  {activeFilterCount} on
-                </span>
+                <span className="caps text-indigo">{activeFilterCount} on</span>
               )}
 
               {/* The arrangement, beside the filters that feed it. Both views
                   read the same rows, so this is presentation and belongs with
                   the other view controls rather than in the toolbar. */}
-              <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-white/[0.07]">
+              <div className="ml-auto flex items-baseline gap-4">
+                <span className="caps">Set as</span>
                 {([["table", "ph-table", "Table"], ["timeline", "ph-list-dashes", "Timeline"]] as const).map(
-                  ([v, icon, label]) => (
+                  ([v, , label]) => (
                     <button key={v} onClick={() => setShapePersistent(v)} aria-pressed={shape === v} title={label}
-                      className={`px-2.5 py-1 rounded-md text-[12px] font-semibold flex items-center gap-1.5 transition-colors
-                        ${shape === v
-                          ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-                          : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
-                      <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />
+                      className={`caps transition-colors ${
+                        shape === v ? "text-ink underline underline-offset-4 decoration-ink" : "hover:text-ink"}`}>
                       {label}
                     </button>
                   ))}
@@ -1006,10 +986,10 @@ export default function ActivityPage() {
                   anything on screen. */}
               {(category === "github" || category === "all") && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Important events</label>
+                  <label className="caps block mb-1">Important events</label>
                   <select value={showImportant ? "show" : "hide"}
                     onChange={(e) => setShowImportantPersistent(e.target.value === "show")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1021,10 +1001,10 @@ export default function ActivityPage() {
                   anything on screen. */}
               {(category === "github" || category === "all") && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Detailed rows</label>
+                  <label className="caps block mb-1">Detailed rows</label>
                   <select value={showDetailed ? "show" : "hide"}
                     onChange={(e) => setShowDetailedPersistent(e.target.value === "show")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1035,10 +1015,10 @@ export default function ActivityPage() {
                   could not alter anything on screen. */}
               {(category === "app" || category === "all") && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Personal rows</label>
+                  <label className="caps block mb-1">Personal rows</label>
                   <select value={personalMode}
                     onChange={(e) => setPersonalPersistent(e.target.value as "all" | "only" | "hide")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="all">Shown</option>
                     <option value="only">Only personal</option>
                     <option value="hide">Hidden</option>
@@ -1047,18 +1027,18 @@ export default function ActivityPage() {
               )}
 
               <div>
-                <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Repository</label>
-                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
+                <label className="caps block mb-1">Repository</label>
+                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="field-line text-[0.8438rem] w-full" />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Target (Branch/PR)</label>
-                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
+                <label className="caps block mb-1">Target (Branch/PR)</label>
+                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="field-line text-[0.8438rem] w-full" />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Search Details</label>
+                <label className="caps block mb-1">Search Details</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400 dark:text-slate-500"><i className="fa-solid fa-magnifying-glass text-[11px]"></i></div>
-                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue outline-none dark:text-slate-200" />
+                  <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400 dark:text-slate-500"><i className="fa-solid fa-magnifying-glass text-[0.6875rem]"></i></div>
+                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="field-line text-[0.8438rem] w-full pl-7 pr-3" />
                 </div>
               </div>
             </div>
@@ -1068,18 +1048,18 @@ export default function ActivityPage() {
                 None selected means all: a narrowing, never a whitelist that
                 would show an empty table until somebody ticked something. */}
             {showImportant && (category === "github" || category === "all") && (
-              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule">
                 <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
+                  <span className="caps">
                     Which important events
                   </span>
-                  <span className="text-[11px] text-gh-muted dark:text-slate-500">
+                  <span className="text-[0.6875rem] text-gh-muted dark:text-slate-500">
                     {importantKinds.length === 0
                       ? "all of them"
                       : `${importantKinds.length} selected`}
                     {importantKinds.length > 0 && (
                       <button onClick={() => { setImportantKinds([]); try { localStorage.setItem("activity:important-kinds", "[]"); } catch { /* view still changes */ } }}
-                        className="ml-2 font-semibold text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">
+                        className="textlink caps ml-2">
                         show all
                       </button>
                     )}
@@ -1090,10 +1070,10 @@ export default function ActivityPage() {
                     const on = importantKinds.includes(k.id);
                     return (
                       <button key={k.id} onClick={() => toggleKind(k.id)} aria-pressed={on}
-                        className={`px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-colors
+                        className={`caps px-2 py-1 border transition-colors
                           ${on
-                            ? "bg-rose-600 border-rose-600 text-white"
-                            : "bg-gray-50 dark:bg-slate-800 border-gh-border dark:border-slate-600 text-gh-textBase dark:text-slate-300 hover:border-rose-400 dark:hover:border-rose-500"}`}>
+                            ? "bg-crimson border-crimson text-reverse"
+                            : "bg-paper-2 border-rule hover:border-crimson hover:text-crimson"}`}>
                         {k.label}
                       </button>
                     );
@@ -1104,7 +1084,7 @@ export default function ActivityPage() {
 
             {(repoFilter || targetFilter || search) && (
               <div className="mt-3 flex justify-end">
-                <button onClick={() => { setRepoFilter(''); setTargetFilter(''); setSearch(''); }} className="text-[11px] font-medium text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">Clear Filters</button>
+                <button onClick={() => { setRepoFilter(''); setTargetFilter(''); setSearch(''); }} className="textlink caps">Clear filters</button>
               </div>
             )}
           </div>
@@ -1127,8 +1107,12 @@ export default function ActivityPage() {
         ) : lens === "important" ? <ImportantEvents /> : (
         <>
 
-        {isLoading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div></div>}
-        {error && <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-4 rounded-md mb-6"><p className="text-red-700 dark:text-red-400">Failed to load activity: {(error as Error).message}</p></div>}
+        {isLoading && <Spinner label="Reading the record" />}
+        {error && (
+          <div className="bg-crimson-wash border-l-2 border-crimson pl-4 pr-4 py-3 mb-6">
+            <p className="text-crimson text-[0.8438rem]">Failed to load activity: {(error as Error).message}</p>
+          </div>
+        )}
 
         {/* Streaming status and its controls, above the table rather than in
             the empty state. Putting them in the empty state meant they were
@@ -1138,7 +1122,7 @@ export default function ActivityPage() {
         {!isLoading && !error && category === "github" && <DetailedLoggingPanel />}
 
         {!isLoading && !error && (
-          <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
+          <div className="bg-paper border-t-2 border-ink relative">
             {shape === "timeline" ? (
               <div className="px-5 py-3">
                 {/* Read-only by design. Undo, redo and diffs live in the table,
@@ -1156,7 +1140,7 @@ export default function ActivityPage() {
                   onOpen={setSelectedEvent}
                 />
                 {filtered.length === 0 && (
-                  <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                  <p className="standfirst py-12 text-center text-[0.875rem]">
                     Nothing to show for this filter.
                   </p>
                 )}
@@ -1186,13 +1170,12 @@ export default function ActivityPage() {
                 </colgroup>
                 {/* Sticky, because the feed is long and a column you cannot
                     name is a column you have to scroll back up to read. */}
-                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm
-                                  border-b border-gh-border dark:border-slate-700">
+                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-paper-2/95 
+                                  border-b border-rule dark:border-rule">
                   <tr>
                     {columns.map((c, i) => (
                       <th key={c.id}
-                        className={`relative px-4 py-2.5 text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.13em] ${
-                          c.align === "right" ? "text-right" : ""}`}>
+                        className={`relative px-4 py-2.5 caps ${c.align === "right" ? "text-right" : ""}`}>
                         <span className="block truncate">{c.label}</span>
                         {/* Not on the last column: it has no width of its own
                             to drag, and everything to its left does. */}
@@ -1210,26 +1193,26 @@ export default function ActivityPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gh-border dark:divide-slate-700">
+                <tbody className="divide-y divide-rule">
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
                   {paginatedEntries.length === 0 && (
-                    <tr><td colSpan={columns.length} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
+                    <tr><td colSpan={columns.length} className="px-6 py-12 text-center">
                       {stoppedEarly ? (
                         /* The server read its budget without reaching the end,
                            which is not the same answer as "there are none". */
                         <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing matched in the most recent {data?.examined?.toLocaleString() ?? "few thousand"} events</p>
-                          <p className="text-sm mt-1">There may be older matches. Press <strong>Older</strong> to keep looking.</p>
+                          <p className="display text-[1.25rem] text-ink">Nothing matched in the most recent {data?.examined?.toLocaleString() ?? "few thousand"} events</p>
+                          <p className="standfirst text-[0.8438rem] mt-2">There may be older matches. Press <strong>Older</strong> to keep looking.</p>
                         </>
                       ) : hasFilters ? (
                         <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">No matching activity</p>
-                          <p className="text-sm mt-1">Nothing in the whole feed matches these filters.</p>
+                          <p className="display text-[1.25rem] text-ink">No matching activity</p>
+                          <p className="standfirst text-[0.8438rem] mt-2">Nothing in the whole feed matches these filters.</p>
                         </>
                       ) : (
                         <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
-                          <p className="text-sm mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
+                          <p className="display text-[1.25rem] text-ink">Nothing recorded here yet</p>
+                          <p className="standfirst text-[0.8438rem] mt-2 max-w-[62ch] mx-auto">{CATEGORY_DESCRIPTIONS[category]}</p>
                         </>
                       )}
                     </td></tr>
@@ -1242,20 +1225,20 @@ export default function ActivityPage() {
                 pages forward with an opaque cursor and cannot jump to page N,
                 so offering "page 7" would mean walking to it invisibly. What is
                 offered instead is exactly what the store can do. */}
-            <div className="px-6 py-3 border-t border-gh-border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gh-muted dark:text-slate-400">
+            <div className="px-4 py-3 border-t-2 border-ink flex items-baseline justify-between gap-5 flex-wrap">
+              <div className="flex items-baseline gap-5">
+                <span className="caps">
                   {paginatedEntries.length === 0
                     ? "No events"
                     : <>Page <strong>{pageIndex + 1}</strong> &middot; <strong>{paginatedEntries.length}</strong> event{paginatedEntries.length === 1 ? "" : "s"}</>}
                   {isFetching && <span className="ml-2 opacity-60">loading…</span>}
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-gh-muted dark:text-slate-400">Per page:</span>
+                  <span className="caps">Per page</span>
                   <select
                     value={perPage}
                     onChange={(e) => setPerPage(Number(e.target.value))}
-                    className="text-xs bg-white dark:bg-slate-900 border border-gh-border dark:border-slate-700 rounded px-1.5 py-0.5 outline-none focus:border-gh-blue dark:text-slate-200"
+                    className="field-line text-[0.8438rem]"
                   >
                     {[25, 50, 100, 200].map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -1263,13 +1246,13 @@ export default function ActivityPage() {
                   </select>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-baseline gap-5">
                 <button
                   onClick={() => { setCursors([undefined]); setPageIndex(0); }}
                   disabled={pageIndex === 0}
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                  className="textlink caps"
                   title="Newest"
-                ><i className="fa-solid fa-angles-left text-[10px]"></i></button>
+                >&#8676; Newest</button>
                 {/* Icons, matching the jump-to-newest button beside them. The
                     direction is the whole meaning, and two words of different
                     lengths made a row of controls that never lined up. Both
@@ -1280,15 +1263,15 @@ export default function ActivityPage() {
                   disabled={pageIndex === 0}
                   title="Newer"
                   aria-label="Newer events"
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                ><i className="fa-solid fa-angle-left text-[10px]"></i></button>
+                  className="textlink caps"
+                >&larr; Newer</button>
                 <button
                   onClick={goNext}
                   disabled={!hasMore || isFetching}
                   title="Older"
                   aria-label="Older events"
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                ><i className="fa-solid fa-angle-right text-[10px]"></i></button>
+                  className="textlink caps"
+                >Older &rarr;</button>
               </div>
             </div>
           </div>
@@ -1297,22 +1280,24 @@ export default function ActivityPage() {
       {/* EVENT DETAIL / UNDO-REDO-RETRY POPUP */}
       {popupEntry && popupCfg && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedEvent(null)}></div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-lg relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+          <div className="absolute inset-0 bg-ink/45 animate-fade-in" onClick={() => setSelectedEvent(null)}></div>
+          <div className="bg-paper border border-ink w-full max-w-lg relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+            <span className={`block h-[3px] w-full ${popupEntry.failed ? "bg-crimson" : "bg-ink"}`} aria-hidden="true" />
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex justify-between items-start rounded-t-xl">
-              <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${popupEntry.failed ? 'bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' : popupCfg.colorClass}`}>
-                  <i className={popupEntry.failed ? 'fa-solid fa-circle-exclamation text-sm' : popupCfg.iconClass.replace('text-[10px]', 'text-sm')}></i>
+            <div className="px-6 py-5 border-b border-rule flex justify-between items-start gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className={`w-10 h-10 flex items-center justify-center border ${popupEntry.failed ? 'bg-crimson-wash text-crimson border-crimson-edge' : popupCfg.colorClass}`}>
+                  <i className={popupEntry.failed ? 'fa-solid fa-circle-exclamation text-sm' : popupCfg.iconClass.replace('text-[0.625rem]', 'text-sm')}></i>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gh-textBase dark:text-slate-200">{popupEntry.failed ? `${popupCfg.label} (Failed)` : popupCfg.label}</h3>
-                  <p className="text-xs text-gh-muted dark:text-slate-400 mt-0.5">{formatTimestamp(popupEntry.timestamp)} &middot; {new Date(popupEntry.timestamp).toLocaleString()}</p>
+                  <h3 className="display text-[1.25rem] text-ink leading-snug">{popupEntry.failed ? `${popupCfg.label} (Failed)` : popupCfg.label}</h3>
+                  <div className="dateline mt-1.5 text-[0.75rem]">
+                    <span>{formatTimestamp(popupEntry.timestamp)}</span>
+                    <span>{new Date(popupEntry.timestamp).toLocaleString()}</span>
+                  </div>
                 </div>
               </div>
-              <button onClick={() => setSelectedEvent(null)} className="text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors mt-1">
-                <i className="fa-solid fa-xmark text-lg"></i>
-              </button>
+              <button onClick={() => setSelectedEvent(null)} className="textlink caps shrink-0">Close</button>
             </div>
 
             {/* Body */}
@@ -1351,19 +1336,19 @@ export default function ActivityPage() {
 
               {/* Original action card for undo/redo tracker entries */}
               {popupIsTracker && popupOriginal && popupOriginalCfg && (
-                <div className="border border-gh-border dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-slate-800 px-3 py-2 border-b border-gh-border dark:border-slate-700 flex items-center gap-2">
-                    <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[10px]"></i>
-                    <span className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Original Action</span>
+                <div className="border border-rule dark:border-rule rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-rule dark:border-rule flex items-center gap-2">
+                    <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[0.625rem]"></i>
+                    <span className="caps">Original Action</span>
                   </div>
                   <div className="px-4 py-3 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${popupOriginal.undone ? 'line-through opacity-60' : ''} ${popupOriginalCfg.colorClass}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1  text-xs font-medium border ${popupOriginal.undone ? 'line-through opacity-60' : ''} ${popupOriginalCfg.colorClass}`}>
                         <i className={popupOriginalCfg.iconClass}></i>
                         {popupOriginalCfg.label}
                       </span>
-                      {popupOriginal.undone && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 font-medium">Undone</span>}
-                      {!popupOriginal.undone && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 font-medium">Active</span>}
+                      {popupOriginal.undone && <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 font-medium">Undone</span>}
+                      {!popupOriginal.undone && <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 font-medium">Active</span>}
                     </div>
                     <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
                       <span className="text-gh-muted dark:text-slate-400 text-xs">Repo</span>
@@ -1377,21 +1362,21 @@ export default function ActivityPage() {
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 pt-1 border-t border-gh-border/50 dark:border-slate-700">
+                    <div className="flex items-center gap-2 pt-1 border-t border-rule/50 dark:border-rule">
                       <button
                         onClick={() => navigateToActivity(popupOriginal.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border dark:border-slate-700 text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+                        className="stamp stamp-hollow"
                       >
-                        <i className="fa-solid fa-location-arrow text-[10px] text-gray-400 dark:text-slate-500"></i>
+                        <i className="fa-solid fa-location-arrow text-[0.625rem] text-gray-400 dark:text-slate-500"></i>
                         Go to Original Event
                       </button>
                       {popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution === "skip" && !popupOriginal.undone && (
                         <button
                           onClick={() => handleUndoResolution(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="stamp stamp-ochre"
                         >
-                          <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                           Undo Skip
                         </button>
                       )}
@@ -1400,17 +1385,17 @@ export default function ActivityPage() {
                           <button
                             onClick={() => handleUndoResolution(popupOriginal)}
                             disabled={isBusy}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                            className="stamp stamp-ochre"
                           >
-                            <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                            <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                             Undo Override
                           </button>
                           <button
                             onClick={() => handleUndoFromPopup(popupOriginal)}
                             disabled={isBusy}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                            className="stamp stamp-crimson"
                           >
-                            <i className="fa-solid fa-trash text-[10px]"></i>
+                            <i className="fa-solid fa-trash text-[0.625rem]"></i>
                             Undo Event
                           </button>
                         </>
@@ -1419,9 +1404,9 @@ export default function ActivityPage() {
                         <button
                           onClick={() => handleRedoFromPopup(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="stamp stamp-forest"
                         >
-                          <i className="fa-solid fa-rotate-right text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-right text-[0.625rem]"></i>
                           Redo
                         </button>
                       )}
@@ -1429,9 +1414,9 @@ export default function ActivityPage() {
                         <button
                           onClick={() => handleUndoFromPopup(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="stamp stamp-ochre"
                         >
-                          <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                           Undo
                         </button>
                       )}
@@ -1440,7 +1425,7 @@ export default function ActivityPage() {
                 </div>
               )}
               {popupIsTracker && !popupOriginal && popupEntry.linkedActivityId && (
-                <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gh-border dark:border-slate-700 flex items-center gap-2">
+                <div className="px-3 py-2.5 bg-gray-50 dark:bg-paper-2 rounded-lg border border-rule dark:border-rule flex items-center gap-2">
                   <i className="fa-solid fa-link-slash text-gray-400 dark:text-slate-500 text-sm"></i>
                   <span className="text-sm text-gh-muted dark:text-slate-400">Original event is not in the current view. It may be on another page or nested in a template run.</span>
                 </div>
@@ -1454,9 +1439,9 @@ export default function ActivityPage() {
                   <span className="font-medium text-gh-textBase dark:text-slate-200">{actorLabel(popupEntry.actor)}</span>
                 </div>
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Repository</span>
-                <span className="font-mono text-xs bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 w-fit">{popupEntry.repo === '*' ? '* (Global)' : popupEntry.repo}</span>
+                <span className="font-mono text-xs bg-gray-50 dark:bg-paper-2 px-1.5 py-0.5 rounded border border-gray-200 dark:border-rule w-fit">{popupEntry.repo === '*' ? '* (Global)' : popupEntry.repo}</span>
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Target</span>
-                <span className="font-mono text-xs bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 w-fit">{popupEntry.target}</span>
+                <span className="font-mono text-xs bg-gray-50 dark:bg-paper-2 px-1.5 py-0.5 rounded border border-gray-200 dark:border-rule w-fit">{popupEntry.target}</span>
                 {popupEntry.details && (
                   <>
                     <span className="text-gh-muted dark:text-slate-400 font-medium">Details</span>
@@ -1469,53 +1454,53 @@ export default function ActivityPage() {
 
               {/* Children summary */}
               {popupEntry.children && popupEntry.children.length > 0 && (
-                <div className="border border-gh-border dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-slate-800 px-3 py-2 border-b border-gh-border dark:border-slate-700 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
+                <div className="border border-rule dark:border-rule rounded-lg overflow-hidden">
+                  <div className="caps bg-gray-50 px-3 py-2 border-b border-rule">
                     Sub-actions ({popupChildCount})
                     {popupFailedCount > 0 && <span className="ml-2 text-red-500 normal-case">&middot; {popupFailedCount} failed</span>}
                   </div>
-                  <div className="divide-y divide-gh-border dark:divide-slate-700 max-h-48 overflow-y-auto">
+                  <div className="divide-y divide-gh-border dark:divide-rule max-h-48 overflow-y-auto">
                     {popupEntry.children.map(child => {
-                      const childCfg = ACTION_CONFIG[child.action as ActivityAction] || { label: child.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" };
+                      const childCfg = ACTION_CONFIG[child.action as ActivityAction] || { label: child.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" };
                       const childFailed = child.failed;
                       const childFailedCount = countFailed(child);
                       return (
                         <div
                           key={child.id}
-                          className={`px-3 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors ${child.undone ? 'opacity-50' : ''} ${childFailed ? 'bg-red-50/30 dark:bg-red-950/30' : ''}`}
+                          className={`px-3 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-paper-2 transition-colors ${child.undone ? 'opacity-50' : ''} ${childFailed ? 'bg-red-50/30 dark:bg-red-950/30' : ''}`}
                           onClick={(e) => { e.stopPropagation(); setSelectedEvent(child); }}
                         >
                           {childFailed
-                            ? <i className="fa-solid fa-circle-exclamation text-red-500 text-[11px]"></i>
+                            ? <i className="fa-solid fa-circle-exclamation text-red-500 text-[0.6875rem]"></i>
                             : child.undone
-                              ? <i className="fa-solid fa-rotate-left text-orange-400 text-[11px]"></i>
+                              ? <i className="fa-solid fa-rotate-left text-orange-400 text-[0.6875rem]"></i>
                               : child.action === "conflict.pending" && !child.conflictResolution
-                                ? <i className="fa-solid fa-pause text-amber-500 text-[11px]"></i>
-                                : <i className="fa-solid fa-check-circle text-green-500 text-[11px]"></i>}
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
-                            <i className={childFailed ? 'fa-solid fa-xmark text-[9px]' : childCfg.iconClass}></i>
+                                ? <i className="fa-solid fa-pause text-amber-500 text-[0.6875rem]"></i>
+                                : <i className="fa-solid fa-check-circle text-green-500 text-[0.6875rem]"></i>}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5  text-[0.6875rem] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
+                            <i className={childFailed ? 'fa-solid fa-xmark text-[0.5625rem]' : childCfg.iconClass}></i>
                             {childCfg.label}
                           </span>
                           <span className="font-mono text-xs text-gray-500 dark:text-slate-400">{child.repo !== '*' && child.repo !== popupEntry.repo ? child.repo : ''}</span>
                           <span className="font-mono text-xs text-gh-textBase dark:text-slate-200">{child.target}</span>
                           {childFailed && child.errorMessage && (
-                            <span className="text-[10px] text-red-500 ml-auto truncate max-w-[120px]" title={child.errorMessage}>{child.errorMessage}</span>
+                            <span className="text-[0.625rem] text-red-500 ml-auto truncate max-w-[120px]" title={child.errorMessage}>{child.errorMessage}</span>
                           )}
                           {!childFailed && childFailedCount > 0 && (
-                            <span className="text-[10px] text-red-500 ml-auto">{childFailedCount} failed</span>
+                            <span className="text-[0.625rem] text-red-500 ml-auto">{childFailedCount} failed</span>
                           )}
-                          {child.undone && !childFailed && <span className="text-[10px] text-orange-500 ml-auto">undone</span>}
+                          {child.undone && !childFailed && <span className="text-[0.625rem] text-orange-500 ml-auto">undone</span>}
                           {child.action === "conflict.pending" && !child.conflictResolution && !childFailed && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold ml-auto">On Hold</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold ml-auto">On Hold</span>
                           )}
                           {child.conflictResolution === "override" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
                           )}
                           {child.conflictResolution === "skip" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium ml-auto">Skipped</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-paper-3 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-rule font-medium ml-auto">Skipped</span>
                           )}
                           {child.children && child.children.length > 0 && !childFailed && childFailedCount === 0 && (
-                            <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">+{countAllChildren(child)} sub</span>
+                            <span className="text-[0.625rem] text-gray-400 dark:text-slate-500 ml-auto">+{countAllChildren(child)} sub</span>
                           )}
                         </div>
                       );
@@ -1537,32 +1522,32 @@ export default function ActivityPage() {
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5  text-[0.625rem] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
                         {popupEntry.conflictPayload.type}
                       </span>
                       <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{popupEntry.conflictPayload.name}</span>
                       <span className="text-xs text-gh-muted dark:text-slate-400">in {popupEntry.conflictPayload.repo}</span>
                     </div>
                     <button
-                      className="text-[11px] font-medium text-gh-blue dark:text-blue-400 hover:text-gh-blueHover mt-0.5 flex items-center gap-1"
+                      className="textlink caps !text-indigo mt-0.5 flex items-center gap-1"
                       onClick={() => setConflictDiffOpenId(prev => prev === popupEntry.id ? null : popupEntry.id)}
                     >
-                      <i className={`fa-solid fa-chevron-${conflictDiffOpenId === popupEntry.id ? 'down' : 'right'} text-[8px]`}></i>
+                      <i className={`fa-solid fa-chevron-${conflictDiffOpenId === popupEntry.id ? 'down' : 'right'} text-[0.5rem]`}></i>
                       {conflictDiffOpenId === popupEntry.id ? "Hide" : "View"} {popupEntry.conflictPayload.differences.length} difference{popupEntry.conflictPayload.differences.length !== 1 ? "s" : ""}
                     </button>
                     {conflictDiffOpenId === popupEntry.id && (() => {
                       const rows = buildConflictComparison(popupEntry.conflictPayload.type, popupEntry.conflictPayload.existingConfig, popupEntry.conflictPayload.templateConfig);
                       return (
-                        <div className="mt-2 border border-gh-border dark:border-slate-700 rounded-md overflow-hidden text-xs">
+                        <div className="mt-2 border border-rule dark:border-rule rounded-md overflow-hidden text-xs">
                           <table className="w-full">
                             <thead>
-                              <tr className="bg-gray-50 dark:bg-slate-800 border-b border-gh-border dark:border-slate-700">
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Setting</th>
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-red-500 uppercase tracking-wider">Existing</th>
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider">Template</th>
+                              <tr className="bg-gray-50 dark:bg-paper-2 border-b border-rule dark:border-rule">
+                                <th className="caps px-3 py-1.5">Setting</th>
+                                <th className="caps text-crimson px-3 py-1.5">Existing</th>
+                                <th className="caps text-forest px-3 py-1.5">Template</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gh-border dark:divide-slate-700">
+                            <tbody className="divide-y divide-rule">
                               {rows.map((r, ri) => (
                                 <tr key={ri} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/30">
                                   <td className="px-3 py-1.5 font-medium text-gh-textBase dark:text-slate-200">{r.label}</td>
@@ -1579,7 +1564,7 @@ export default function ActivityPage() {
                       );
                     })()}
                     {!popupEntry.conflictResolution && (
-                      <p className="text-[11px] text-gh-muted dark:text-slate-400 pt-2">
+                      <p className="text-[0.6875rem] text-gh-muted dark:text-slate-400 pt-2">
                         This conflict was never resolved, and can no longer be, the templates
                         feature that raised it has been removed. The repository still has the
                         configuration shown under &ldquo;Existing&rdquo;.
@@ -1592,11 +1577,11 @@ export default function ActivityPage() {
               {/* Diff viewer */}
               {popupEntry.diff && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-2 border-b dark:border-slate-700 pb-2">Changes Made</h4>
+                  <h4 className="display text-[1rem] text-ink mb-2 border-b pb-2">Changes Made</h4>
                   <div className="space-y-3">
                     {Object.entries(popupEntry.diff).map(([key, changes]: [string, any]) => (
-                      <div key={key} className="border border-gh-border dark:border-slate-700 rounded-md overflow-hidden">
-                        <div className="bg-gray-50 dark:bg-slate-800 px-3 py-1.5 border-b border-gh-border dark:border-slate-700 text-xs font-mono font-semibold text-gray-600 dark:text-slate-400 uppercase tracking-wider">{key}</div>
+                      <div key={key} className="border border-rule dark:border-rule rounded-md overflow-hidden">
+                        <div className="caps bg-gray-50 px-3 py-1.5 border-b border-rule">{key}</div>
                         <DiffViewer oldValue={changes.old} newValue={changes.new} />
                       </div>
                     ))}
@@ -1606,22 +1591,22 @@ export default function ActivityPage() {
             </div>
 
             {/* Footer with undo/redo/retry */}
-            <div className="bg-gray-50 dark:bg-slate-800 px-6 py-3 flex items-center justify-between gap-3 border-t border-gh-border dark:border-slate-700 rounded-b-xl shrink-0">
+            <div className="bg-gray-50 dark:bg-paper-2 px-6 py-3 flex items-center justify-between gap-3 border-t border-rule dark:border-rule rounded-b-xl shrink-0">
               <div className="text-xs text-gh-muted dark:text-slate-400">
                 {!popupCanUndo && !popupCanRedo && !popupCanRetry && !popupIsOverriddenConflict && !popupIsSkippedConflict && 'No actions available'}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setSelectedEvent(null)} className="px-4 py-2 border border-gh-border dark:border-slate-700 shadow-sm text-sm font-medium rounded-md text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700">
+                <button onClick={() => setSelectedEvent(null)} className="stamp stamp-hollow">
                   Close
                 </button>
                 {popupCanRetry && (
                   <button
                     onClick={() => handleRetryFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    className="stamp stamp-indigo"
                   >
                     {retryMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Retrying...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Retrying...</>
                       : <><i className="fa-solid fa-arrow-rotate-right text-xs"></i>{popupFailedCount > 1 ? `Retry All Failed (${popupFailedCount})` : 'Retry'}</>}
                   </button>
                 )}
@@ -1629,10 +1614,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleRedoFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    className="stamp stamp-forest"
                   >
                     {redoMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Redoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Redoing...</>
                       : <><i className="fa-solid fa-rotate-right text-xs"></i>{popupEntry.children && popupEntry.children.length > 0 ? 'Redo All' : 'Redo'}</>}
                   </button>
                 )}
@@ -1640,10 +1625,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleUndoResolution(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+                    className="stamp stamp-ochre"
                   >
                     {undoResolutionMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                       : <><i className="fa-solid fa-rotate-left text-xs"></i>Undo Skip</>}
                   </button>
                 )}
@@ -1652,19 +1637,19 @@ export default function ActivityPage() {
                     <button
                       onClick={() => handleUndoResolution(popupEntry)}
                       disabled={isBusy}
-                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+                      className="stamp stamp-ochre"
                     >
                       {undoResolutionMutation.isPending
-                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                        ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                         : <><i className="fa-solid fa-rotate-left text-xs"></i>Undo Override</>}
                     </button>
                     <button
                       onClick={() => handleUndoFromPopup(popupEntry)}
                       disabled={isBusy}
-                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                      className="stamp stamp-crimson"
                     >
                       {undoMutation.isPending
-                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                        ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                         : <><i className="fa-solid fa-trash text-xs"></i>Undo Event</>}
                     </button>
                   </>
@@ -1673,10 +1658,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleUndoFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+                    className="stamp stamp-ochre"
                   >
                     {undoMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                       : <><i className="fa-solid fa-rotate-left text-xs"></i>{popupEntry.children && popupEntry.children.length > 0 ? 'Undo All' : 'Undo'}</>}
                   </button>
                 )}

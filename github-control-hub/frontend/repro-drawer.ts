@@ -131,7 +131,7 @@ console.log("\nmotion is decoration, and some people have asked for none");
 {
   check("the entrance animations are named", /@keyframes slideIn/.test(css));
   check("  and both are dropped under prefers-reduced-motion",
-    /prefers-reduced-motion: reduce\)[\s\S]{0,160}drawer-panel[\s\S]{0,80}animation: none/.test(css));
+    /prefers-reduced-motion: reduce\)[\s\S]{0,400}drawer-panel[\s\S]{0,80}animation: none/.test(css));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

@@ -24,10 +24,19 @@ import { SURFACE, TYPE } from "../design";
  * table drawn twice.
  */
 
+/**
+ * Three streams, in three of the page's four printed inks.
+ *
+ * The chart used to be drawn in indigo, amber and emerald picked off a generic
+ * palette, which is three saturated hues that meant nothing beyond "these are
+ * different". These are the same inks the rows below the chart carry, so a band
+ * in the graph and a rule down the side of a record are recognisably the same
+ * thing. Written as variables so both editions get them right.
+ */
 const STREAM = {
-  github: { label: "GitHub", line: "#6366f1", area: "rgba(99,102,241,0.28)" },
-  aws:    { label: "AWS",    line: "#f59e0b", area: "rgba(245,158,11,0.28)" },
-  app:    { label: "App",    line: "#10b981", area: "rgba(16,185,129,0.28)" },
+  github: { label: "GitHub", line: "rgb(var(--indigo))", area: "rgb(var(--indigo) / 0.22)" },
+  aws:    { label: "AWS",    line: "rgb(var(--ochre))",  area: "rgb(var(--ochre) / 0.22)" },
+  app:    { label: "App",    line: "rgb(var(--forest))", area: "rgb(var(--forest) / 0.22)" },
 } as const;
 type Stream = keyof typeof STREAM;
 const ALL_STREAMS = Object.keys(STREAM) as Stream[];
@@ -114,24 +123,22 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
   const barW = buckets.length ? Math.max(2, (W / buckets.length) * 0.6) : 0;
 
   return (
-    <section className={`${SURFACE.card} overflow-hidden`}>
-      <div className="flex items-end justify-between gap-4 flex-wrap px-6 pt-5">
+    <section className="border-t-2 border-ink">
+      <div className="flex items-end justify-between gap-5 flex-wrap pt-4">
         <div>
-          <div className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-1.5`}>
-            Whole organization · not affected by the filters below
-          </div>
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[38px] font-black tabular-nums leading-none tracking-[-0.03em] text-slate-900 dark:text-white">
+          <div className="caps mb-2">Whole organization · not affected by the filters below</div>
+          <div className="flex items-baseline gap-3">
+            <span className="figure text-[2.75rem] text-ink">
               {isLoading ? " " : (pulse?.total ?? 0).toLocaleString()}
               {/* At least this many. The sentence underneath says why. */}
-              {pulse && !pulse.exhausted && <span className="text-slate-400 dark:text-slate-500">+</span>}
+              {pulse && !pulse.exhausted && <span className="text-ink-3">+</span>}
             </span>
-            <span className={`${TYPE.sub} text-slate-500 dark:text-slate-400`}>
+            <span className="caps">
               {pulse?.total === 1 ? "event" : "events"} in {label(hours)}
             </span>
           </div>
           {pulse && !pulse.exhausted && (
-            <p className="text-[11.5px] text-amber-700 dark:text-amber-300 mt-1.5 max-w-[52ch]">
+            <p className="standfirst text-[0.75rem] text-ochre mt-2 max-w-[52ch]">
               Counted the newest {pulse.examined.toLocaleString()} rows, back to{" "}
               {pulse.oldest ? new Date(pulse.oldest).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "the limit"}.
               There is more behind that.
@@ -150,13 +157,13 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
         </div>
       </div>
 
-      <div className="relative mt-5 px-6">
+      <div className="relative mt-6">
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
           className="w-full h-[160px] overflow-visible" role="img"
           aria-label={`Activity over ${label(hours)}: ${pulse?.total ?? 0} events`}>
           {[0, 0.25, 0.5, 0.75].map(f => (
             <line key={f} x1="0" x2={W} y1={H * f} y2={H * f}
-              className="stroke-slate-200/70 dark:stroke-white/[0.07]" strokeWidth="1"
+              className="stroke-rule" strokeWidth="1"
               vectorEffect="non-scaling-stroke" />
           ))}
 
@@ -217,17 +224,16 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
 
         {at && (
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none
-                          rounded-xl bg-slate-900 dark:bg-slate-100 px-3.5 py-2.5 shadow-xl
-                          text-[11.5px] text-white dark:text-slate-900 whitespace-nowrap">
-            <div className="font-bold mb-1.5">{when(at.start, pulse!.bucketHours)}</div>
+                          bg-ink px-3.5 py-2.5 text-[0.7188rem] text-reverse whitespace-nowrap">
+            <div className="caps !text-reverse mb-2">{when(at.start, pulse!.bucketHours)}</div>
             <div className="grid gap-1">
               {shown.map(s => (
                 <div key={s} className="flex items-center justify-between gap-5">
                   <span className="flex items-center gap-1.5 opacity-80">
-                    <span className="w-2 h-2 rounded-sm" style={{ background: STREAM[s].line }} />
+                    <span className="w-2 h-2" style={{ background: STREAM[s].line }} />
                     {STREAM[s].label}
                   </span>
-                  <span className="tabular-nums font-bold">{at[s]}</span>
+                  <span className="figure text-[0.875rem]">{at[s]}</span>
                 </div>
               ))}
             </div>
@@ -246,10 +252,9 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
             const last = i === buckets.length - 1;
             return (
               <span key={i}
-                className={`flex-1 min-w-0 text-[10px] font-medium tabular-nums transition-colors
+                className={`flex-1 min-w-0 text-[0.625rem] font-medium tabular-nums transition-colors
                   ${last ? "text-right" : "text-center"}
-                  ${hover === i ? "text-slate-700 dark:text-slate-200 font-bold"
-                                : "text-slate-400 dark:text-slate-500"}`}>
+                  ${hover === i ? "text-ink" : "text-ink-3"}`}>
                 {hover === i || show
                   ? (last && hover !== i ? "now" : axisTick(b.start, pulse?.bucketHours ?? 24))
                   : ""}
@@ -259,7 +264,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 px-6 py-4 mt-1 flex-wrap">
+      <div className="flex items-center gap-6 py-4 mt-2 border-t border-rule flex-wrap">
         {STREAMS.map(s => {
           const off = muted.has(s);
           return (
@@ -272,15 +277,11 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
                 else if (next.size < STREAMS.length - 1) next.add(s);
                 return next;
               })}
-              className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border transition-all
-                ${off
-                  ? "border-transparent opacity-40 hover:opacity-70"
-                  : "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/25"}`}>
-              <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: STREAM[s].line }} />
-              <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">
-                {STREAM[s].label}
-              </span>
-              <span className="text-[12.5px] tabular-nums text-slate-400 dark:text-slate-500">
+              className={`flex items-baseline gap-2.5 transition-opacity ${
+                off ? "opacity-35 hover:opacity-70" : ""}`}>
+              <span className="w-2.5 h-2.5 shrink-0 translate-y-[1px]" style={{ background: STREAM[s].line }} />
+              <span className="caps text-ink">{STREAM[s].label}</span>
+              <span className="figure text-[0.875rem] text-ink-2">
                 {(pulse?.byCategory?.[s] ?? 0).toLocaleString()}
               </span>
             </button>
@@ -298,14 +299,13 @@ function Switch<T extends string>({ value, onChange, options }: {
   options: readonly (readonly [T, string | null, string])[];
 }) {
   return (
-    <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100 dark:bg-white/[0.06]">
-      {options.map(([v, icon, text]) => (
+    <div className="inline-flex items-stretch border-b border-rule-strong">
+      {options.map(([v, icon, text], i) => (
         <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
-          className={`px-2.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 transition-all
-            ${value === v
-              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
-              : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
-          {icon && <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />}
+          className={`caps px-3 py-1.5 -mb-px flex items-center gap-1.5 border-b-2 transition-colors
+            ${i > 0 ? "border-l border-l-rule" : ""}
+            ${value === v ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+          {icon && <i className={`ph-bold ${icon} text-[0.75rem]`} aria-hidden="true" />}
           {text}
         </button>
       ))}

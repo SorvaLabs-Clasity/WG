@@ -1,4 +1,4 @@
-import { getDevAlerts, putDevAlerts } from "../services/devAlertService";
+import { getDevAlerts, putDevAlerts, recordDevEventSeen } from "../services/devAlertService";
 import {
   buildEventCard, wants, withinReviewerLimit,
   type DevEvent, type EventKind,
@@ -131,6 +131,28 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
    * to".
    */
   console.log(`[DevEvent] ${event}/${payload?.action}: ${targets.length} to consider`);
+
+  /**
+   * Written down, not only logged, and before any decision is taken.
+   *
+   * A CloudWatch line proves nothing to somebody looking at the settings
+   * screen, and this is the only evidence that separates "GitHub never sent
+   * it" and "this worker is an old build" from "we received it and chose not
+   * to send". Recorded even when the event names nobody, because zero
+   * recipients is itself the answer in the case where somebody approved their
+   * own pull request.
+   *
+   * Swallowed: a note about a notification must never cost the delivery its
+   * real effects, and a throw here would release the claim and re-run
+   * everything else this event does.
+   */
+  await recordDevEventSeen({
+    at: new Date().toISOString(),
+    event,
+    action: typeof payload?.action === "string" ? payload.action : undefined,
+    considered: targets.length,
+  }).catch(err => console.warn("[DevEvent] Could not record the event:", err?.message ?? err));
+
   if (targets.length === 0) return 0;
 
   const pr = payload.pull_request;

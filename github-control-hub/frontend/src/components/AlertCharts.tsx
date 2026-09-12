@@ -13,17 +13,17 @@ import { SEVERITIES, type Severity, type WeekBucket } from "../lib/alertSituatio
  * unrelated hues would read as four unrelated categories.
  */
 export const SEVERITY_BAR: Record<Severity, string> = {
-  critical: "bg-rose-600 dark:bg-rose-500",
-  high: "bg-rose-400 dark:bg-rose-400/80",
-  medium: "bg-amber-400 dark:bg-amber-400/85",
-  low: "bg-slate-300 dark:bg-slate-500",
+  critical: "bg-crimson",
+  high: "bg-crimson/60",
+  medium: "bg-ochre",
+  low: "bg-rule-strong",
 };
 
 export const SEVERITY_DOT: Record<Severity, string> = {
-  critical: "bg-rose-600 dark:bg-rose-500",
-  high: "bg-rose-400 dark:bg-rose-400/80",
-  medium: "bg-amber-400 dark:bg-amber-400/85",
-  low: "bg-slate-300 dark:bg-slate-500",
+  critical: "bg-crimson",
+  high: "bg-crimson/60",
+  medium: "bg-ochre",
+  low: "bg-rule-strong",
 };
 
 /**
@@ -56,16 +56,16 @@ export function ActivityChart({ buckets, selected, onSelect }: {
               // with no alerts has nothing to aim at otherwise, and "show me
               // the quiet week" is a reasonable thing to click.
               className={`group relative flex-1 h-full flex flex-col justify-end rounded-md
-                ${isOn ? "bg-slate-900/[0.06] dark:bg-white/10" : "hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06]"}
+                ${isOn ? "bg-slate-900/[0.06] dark:bg-ink/10" : "hover:bg-slate-900/[0.04] dark:hover:bg-ink/[0.06]"}
                 ${dimmed ? "opacity-40" : ""} transition-all duration-200 focus:outline-none
-                focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30`}
+                focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-ink/30`}
               aria-pressed={isOn}
               aria-label={`Week of ${b.label}: ${b.total} ${b.total === 1 ? "alert" : "alerts"}`}
             >
               <div className="flex flex-col justify-end w-full px-[2px] pb-[3px]"
                    style={{ height: `${Math.max(4, (b.total / peak) * 100)}%` }}>
                 {b.total === 0 ? (
-                  <div className="w-full h-[3px] rounded-full bg-slate-200 dark:bg-white/10" />
+                  <div className="w-full h-[3px]  bg-slate-200 dark:bg-ink/10" />
                 ) : (
                   SEVERITIES.map(s => b.bySeverity[s] > 0 && (
                     <div key={s}
@@ -80,8 +80,8 @@ export function ActivityChart({ buckets, selected, onSelect }: {
                   next column. */}
               <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20
                               opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap
-                              rounded-lg bg-slate-900 dark:bg-slate-100 px-2.5 py-1.5
-                              text-[11.5px] font-semibold text-white dark:text-slate-900 shadow-lg">
+                              rounded-lg bg-slate-900 dark:bg-paper-3 px-2.5 py-1.5
+                              text-[0.7188rem] font-semibold text-reverse dark:text-slate-900 shadow-lg">
                 {b.label} · {b.total || "nothing"}
                 {b.total > 0 && (
                   <span className="font-normal opacity-70">
@@ -95,7 +95,7 @@ export function ActivityChart({ buckets, selected, onSelect }: {
         })}
       </div>
 
-      <div className="flex justify-between mt-2 text-[10.5px] font-medium text-slate-400 dark:text-slate-500 tabular-nums">
+      <div className="flex justify-between mt-2 text-[0.6562rem] font-medium text-slate-400 dark:text-slate-500 tabular-nums">
         <span>{buckets[0]?.label}</span>
         <span>this week</span>
       </div>
@@ -107,7 +107,7 @@ export function ActivityChart({ buckets, selected, onSelect }: {
  * A tile's own history, so "0 this week" arrives with the context that makes
  * it either reassuring or alarming.
  */
-export function Spark({ values, intent = "bg-slate-400 dark:bg-slate-500", label }: {
+export function Spark({ values, intent = "bg-slate-400 dark:bg-paper-4", label }: {
   values: number[];
   intent?: string;
   /** What these weeks are counting, for the reading of it below. */
@@ -123,7 +123,7 @@ export function Spark({ values, intent = "bg-slate-400 dark:bg-slate-500", label
       aria-label={weeksAloud(values, label)}>
       {values.map((v, i) => (
         <div key={i}
-          className={`w-[3px] rounded-full ${v > 0 ? intent : "bg-slate-200 dark:bg-white/10"}`}
+          className={`w-[3px]  ${v > 0 ? intent : "bg-slate-200 dark:bg-ink/10"}`}
           style={{ height: v > 0 ? `${Math.max(18, (v / peak) * 100)}%` : "3px" }} />
       ))}
     </div>

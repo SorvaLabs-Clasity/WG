@@ -170,6 +170,31 @@ export interface DevAlerts {
   /** Whether an administrator has set the shared flow up. Nothing sends without it. */
   teamsReady: boolean;
   events: EventPrefs;
+  /**
+   * Which of the webhook events these notifications need are NOT ticked on the
+   * GitHub App.
+   *
+   * Empty means both are subscribed. `null` or absent means the subscription
+   * could not be read — an older backend, or no App credentials in this
+   * process — and the screen must keep saying "cannot tell" rather than
+   * rendering that as "nothing is missing".
+   */
+  missingEvents?: string[] | null;
+  /**
+   * The last notification-carrying webhook the worker saw, org-wide.
+   *
+   * Written before any decision is taken, so a recent value proves GitHub is
+   * delivering and the worker is running. Absent means one of those is not
+   * true — which is precisely what the per-person record below cannot say,
+   * because the code that writes it never ran.
+   */
+  lastWebhookSeen?: {
+    at: string;
+    event: string;
+    action?: string;
+    /** How many people it named. Zero is a real answer, not a failure. */
+    considered: number;
+  } | null;
   digest: DigestPrefs;
   lastSentAt?: string;
   /** When the scheduled summary last went out. One per local day. */

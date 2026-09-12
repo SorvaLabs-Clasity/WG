@@ -22,6 +22,8 @@ import {
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
 import { useTheme } from "../hooks/useTheme";
+import ThemePicker from "../components/ThemePicker";
+import { themeEntry } from "../design/themes";
 import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, Segmented, Spinner } from "../design";
 
 /**
@@ -47,7 +49,16 @@ type Stage = "loading" | "offline" | "aws" | "github" | "ready";
 export default function LoginPage() {
   const navigate = useNavigate();
   const loginUrl = getLoginUrl();
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, skin } = useTheme();
+  /**
+   * Reachable before signing in, not only from the account menu.
+   *
+   * This screen is the first thing anybody sees, and it is also the screen
+   * somebody sits on longest when something is wrong. Making them authenticate
+   * before they can choose how the app is set would be an odd order to insist
+   * on.
+   */
+  const [themeOpen, setThemeOpen] = useState(false);
 
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -529,43 +540,38 @@ export default function LoginPage() {
       {/* Chrome at the height the signed-in navbar uses, so arriving at the
           dashboard is the same window continuing rather than a different one
           replacing it. */}
-      <header className="sticky top-0 z-30 shrink-0 h-14 flex items-center gap-3 px-5 bg-white dark:bg-[#11141c] border-b border-slate-200 dark:border-white/[0.08]">
-        <span className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-white flex items-center justify-center shrink-0">
-          <i className="ph-fill ph-shield-check text-[16px] text-white dark:text-slate-900"></i>
-        </span>
-        <span className="min-w-0 truncate">
-          <span className="text-[13.5px] font-black tracking-tight">GitHub Control Hub</span>
-          <span className="ml-2.5 text-[12px] text-slate-400 dark:text-slate-500">{COMPANY_NAME}</span>
-        </span>
+      {/* The masthead, at the height the signed-in one uses, so arriving at the
+          dashboard is the same paper continuing rather than a different one
+          replacing it. */}
+      <header className="sticky top-0 z-30 shrink-0 bg-paper border-b-2 border-ink">
+        <div className="px-5 sm:px-8 py-3.5 flex items-end justify-between gap-5 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="display text-[1.6rem] sm:text-[1.9rem] leading-none text-ink">
+              GitHub Control Hub
+            </h1>
+            {/* Said before anything is typed, because the next thing this screen
+                asks for is a set of AWS keys and the reasonable worry is where
+                they are about to go. The build is here too, not only in the
+                account menu: the menu needs somebody signed in, and the moment
+                you most want to know which build you are running is the moment
+                the app is not working. Which is this screen. */}
+            <div className="dateline mt-2 text-[0.75rem]">
+              <span className="caps">{COMPANY_NAME}</span>
+              <span>Running locally on this machine</span>
+              {appVersion && <span className="font-mono">v{appVersion}</span>}
+            </div>
+          </div>
 
-        <span className="ml-auto flex items-center gap-3.5 shrink-0">
-          {/* Said before anything is typed, because the next thing this screen
-              asks for is a set of AWS keys and the reasonable worry is where
-              they are about to go. */}
-          <span className="hidden sm:flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-            <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-              Running locally on this machine
-            </span>
-          </span>
-
-          {/* Also here, not only in the account menu.
-              The menu needs somebody signed in, and the moment you most want to
-              know which build you are running is the moment the app is not
-              working. Which is this screen. */}
-          {appVersion && (
-            <span className="text-[11px] font-mono text-slate-400 dark:text-slate-600">
-              v{appVersion}
-            </span>
-          )}
-          <button
-            onClick={toggle}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.06] dark:hover:bg-white/10 transition-colors"
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            <i className={"ph-bold " + (theme === "dark" ? "ph-sun" : "ph-moon") + " text-lg"}></i>
-          </button>
-        </span>
+          <div className="flex items-baseline gap-5 shrink-0">
+            <button onClick={() => setThemeOpen(true)} className="textlink caps">
+              {themeEntry(skin).name}
+            </button>
+            <button onClick={toggle} className="textlink caps"
+              title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
+              {theme === "dark" ? "Day edition" : "Night edition"}
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* Above both rooms rather than inside one. A dead backend makes both
@@ -594,7 +600,7 @@ export default function LoginPage() {
           {error && (
             <Banner intent="danger" icon="ph-fill ph-plugs" title="Backend unreachable" index={0}>
               Nothing is responding on the local API. Make sure{" "}
-              <code className="font-mono text-[12.5px] px-1.5 py-0.5 rounded bg-rose-500/15">ghch serve</code>{" "}
+              <code className="font-mono text-[0.7812rem] px-1.5 py-0.5 rounded bg-rose-500/15">ghch serve</code>{" "}
               is running, then reload.
             </Banner>
           )}
@@ -637,7 +643,7 @@ export default function LoginPage() {
                 Adding a profile. You stay signed in to <strong>{status?.aws.profile || "this account"}</strong>.
               </span>
               <button onClick={() => setAddingProfile(false)}
-                className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                className="textlink caps shrink-0">
                 Cancel
               </button>
             </div>
@@ -920,7 +926,7 @@ export default function LoginPage() {
                         placeholder={'export AWS_ACCESS_KEY_ID="AKIA…"\nexport AWS_SECRET_ACCESS_KEY="wJal…"\nexport AWS_SESSION_TOKEN="IQoJ…"'}
                         value={akPasteBlock}
                         onChange={e => setAkPasteBlock(e.target.value)}
-                        className={`${SURFACE.input} font-mono text-[12.5px] leading-relaxed resize-none`}
+                        className={`${SURFACE.input} font-mono text-[0.7812rem] leading-relaxed resize-none`}
                       />
                       {akPasteBlock && !pasteBlockValid && (
                         <Hint intent="danger">
@@ -939,15 +945,15 @@ export default function LoginPage() {
                     <>
                       <Field label="Access key ID">
                         <input type="text" value={akId} onChange={e => setAkId(e.target.value)}
-                          placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       <Field label="Secret access key">
                         <input type="password" value={akSecret} onChange={e => setAkSecret(e.target.value)}
-                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       <Field label="Session token" optional>
                         <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
-                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       {/* Optional, but worth naming: a key pair carries no
                           region, so this is the only thing here that can say
@@ -957,7 +963,7 @@ export default function LoginPage() {
                           machine that does not. */}
                       <Field label="Region" optional>
                         <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                         <Aside>
                           Which region's install to open. Access keys do not carry one, and with
                           one install per region this is what picks between them.
@@ -1034,38 +1040,44 @@ export default function LoginPage() {
                        whichever session the browser holds, which is how
                        "Continue with alice" could produce bob. */
                     href={`${loginUrl}?login=${encodeURIComponent(remembered.login)}`}
-                    className="flex items-center gap-4 w-full p-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all"
+                    className="group flex items-center gap-4 w-full no-underline border-t-2 border-ink pt-4"
                   >
                     {remembered.avatarUrl
-                      ? <img src={remembered.avatarUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
-                      : <span className="w-11 h-11 rounded-xl bg-white/15 dark:bg-slate-900/10 flex items-center justify-center shrink-0">
-                          <i className="ph-fill ph-github-logo text-xl"></i>
+                      ? <img src={remembered.avatarUrl} alt="" className="w-12 h-12 object-cover shrink-0 border border-rule-strong" />
+                      : <span className="w-12 h-12 shrink-0 border border-rule-strong flex items-center justify-center">
+                          <i className="ph-fill ph-github-logo text-2xl text-ink-2"></i>
                         </span>}
                     <span className="flex-1 min-w-0 text-left">
-                      <span className="block text-[11px] uppercase tracking-[0.14em] font-bold opacity-60">Continue with</span>
-                      <span className="block text-[15px] font-black tracking-tight truncate">{remembered.login}</span>
+                      <span className="block caps">Continue with</span>
+                      <span className="display block text-[1.5rem] leading-tight text-ink truncate">
+                        {remembered.login}
+                      </span>
                     </span>
-                    <i className="ph-bold ph-arrow-right text-base mr-1 opacity-70"></i>
+                    <span className="stamp shrink-0 group-hover:bg-transparent group-hover:text-ink">
+                      Sign in
+                    </span>
                   </a>
 
                   {canSwitchAccount && (
                     <button
                       onClick={handleUseDifferentAccount}
                       disabled={switchingAccount}
-                      className="w-full py-2.5 rounded-xl text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                      className="textlink caps"
                     >
                       {switchingAccount ? "Signing out of GitHub…" : "Use a different account"}
                     </button>
                   )}
                 </>
               ) : (
-                <a
-                  href={loginUrl}
-                  className="flex items-center gap-4 w-full px-5 py-4 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all"
-                >
-                  <i className="ph-fill ph-github-logo text-[26px]"></i>
-                  <span className="flex-1 text-[15px] font-black tracking-tight">Sign in with GitHub</span>
-                  <i className="ph-bold ph-arrow-right text-base opacity-70"></i>
+                <a href={loginUrl}
+                  className="group flex items-center gap-4 w-full no-underline border-t-2 border-ink pt-4">
+                  <i className="ph-fill ph-github-logo text-[2rem] text-ink shrink-0"></i>
+                  <span className="display flex-1 text-[1.5rem] leading-tight text-ink">
+                    Sign in with GitHub
+                  </span>
+                  <span className="stamp shrink-0 group-hover:bg-transparent group-hover:text-ink">
+                    Continue
+                  </span>
                 </a>
               )}
             </div>
@@ -1075,63 +1087,46 @@ export default function LoginPage() {
 
       {/* ── The way out ── */}
       {/*
-          Full width, under both rooms, and the app's own green the moment it
+          Full width, under both rooms, and set on the forest ink the moment it
           works. This is a screen whose entire purpose is to be left, so leaving
           is the largest thing on it, and the sentence beside the count says why
           you cannot go yet rather than making anyone infer it from two panels.
+
+          A rule, not a lifted bar. The old version threw a shadow upwards to
+          suggest a floating strip, which is a trick from a design language this
+          one does not use.
       */}
-      {/* The shadow is thrown upwards, not down. SURFACE.raised is the token
-          for a lifted surface and casts downwards, which on a bar pinned to the
-          bottom edge lands off screen and lifts nothing. */}
-      <footer
-        className={`sticky bottom-0 z-30 shrink-0 border-t transition-colors duration-500
-          shadow-[0_-10px_28px_-14px_rgba(15,23,42,0.3)] dark:shadow-[0_-10px_28px_-14px_rgba(0,0,0,0.75)] ${
-          canEnter
-            ? `${INTENT.good.solid} border-transparent`
-            : "bg-white dark:bg-[#11141c] border-slate-200 dark:border-white/[0.08]"}`}
-      >
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-3.5">
-          <span className="flex items-baseline gap-2.5 min-w-0">
-            <span className={`text-[15px] font-black tabular-nums tracking-tight shrink-0 ${
-              canEnter ? "text-white" : "text-slate-500 dark:text-slate-400"}`}>
-              {connected}/2
+      <footer className={`sticky bottom-0 z-30 shrink-0 bg-paper border-t-2 transition-colors duration-500 ${
+        canEnter ? "border-forest" : "border-ink"}`}>
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-5 sm:px-8 py-4">
+          <span className="flex items-baseline gap-3 min-w-0">
+            <span className={`figure text-[1.75rem] shrink-0 ${canEnter ? "text-forest" : "text-ink-3"}`}>
+              {connected}<span className="text-ink-4">/2</span>
             </span>
-            <span className={`text-[13px] leading-snug ${
-              canEnter ? "text-white/75" : "text-slate-500 dark:text-slate-400"}`}>
+            <span className="standfirst text-[0.8438rem] leading-snug">
               {REMAINING[stage](status?.github.org)}
             </span>
           </span>
 
-          <span className="ml-auto flex items-center gap-4 shrink-0">
+          <span className="ml-auto flex items-center gap-6 shrink-0">
             {(awsOk || ghAuthed) && !loading && !error && (
-              <button
-                onClick={handleDisconnectAll}
-                disabled={refreshing !== null}
-                className={`text-[12px] font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
-                  canEnter
-                    ? "text-white/60 hover:text-white"
-                    : "text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"}`}
-              >
-                <i className="ph-bold ph-power text-[13px]"></i>
+              <button onClick={handleDisconnectAll} disabled={refreshing !== null}
+                className="textlink caps hover:!text-crimson">
                 Reset both connections
               </button>
             )}
 
-            <button
-              onClick={() => navigate("/analytics")}
-              disabled={!canEnter}
-              className={
-                "px-6 py-3 rounded-xl text-[14.5px] font-black tracking-tight transition-all flex items-center justify-center gap-2.5 " +
-                (canEnter
-                  ? "bg-white text-emerald-800 shadow-lg hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
-                  : "bg-slate-100 dark:bg-white/[0.06] text-slate-400 dark:text-slate-500 cursor-not-allowed")
-              }
-            >
-              {canEnter ? <>Open the dashboard<i className="ph-bold ph-arrow-right"></i></> : "Open the dashboard"}
+            <button onClick={() => navigate("/analytics")} disabled={!canEnter}
+              className={canEnter
+                ? "stamp !bg-forest !border-forest !text-reverse hover:!bg-transparent hover:!text-forest"
+                : "stamp stamp-hollow"}>
+              Open the dashboard
             </button>
           </span>
         </div>
       </footer>
+
+      <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
     </div>
   );
 }
@@ -1197,57 +1192,53 @@ function Panel({ index, intent, icon, avatar, busy, sealed, service, title, subt
   return (
     <section
       style={enter(index)}
-      className={`relative min-w-0 flex flex-col border-slate-200 dark:border-white/[0.08]
+      className={`relative min-w-0 flex flex-col border-rule
         border-b last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0
-        ${sealed ? "" : "bg-white dark:bg-[#151a23]"}`}
+        ${sealed ? "bg-paper-2" : "bg-paper"}`}
     >
-      {/* The state edge takes the whole width of the room, so posture is
+      {/* The state rule takes the whole width of the room, so posture is
           something noticed from across the desk rather than something read. */}
       <span aria-hidden="true"
-        className={`h-1 shrink-0 ${tone.mark} ${sealed ? "opacity-40" : ""} transition-colors duration-500`} />
+        className={`h-[3px] shrink-0 ${tone.mark} ${sealed ? "opacity-30" : ""} transition-colors duration-500`} />
 
-      <div className="flex-1 px-6 py-7 sm:px-8 sm:py-9">
-        <div className="flex items-start gap-4">
+      <div className="flex-1 px-6 py-8 sm:px-9 sm:py-10">
+        <div className="flex items-start gap-5">
           {avatar ? (
             <img src={avatar} alt={title}
-              className="w-12 h-12 rounded-xl object-cover shrink-0 ring-2 ring-emerald-500/30" />
+              className="w-12 h-12 object-cover shrink-0 border border-rule-strong" />
           ) : (
-            <span className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-              sealed ? "bg-slate-200/70 dark:bg-white/[0.06] text-slate-400 dark:text-slate-500"
-                     : `${tone.soft} ${tone.text}`}`}>
-              <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[23px]"}></i>
+            <span className={`w-12 h-12 flex items-center justify-center shrink-0 border ${
+              sealed ? "border-rule text-ink-4" : `${tone.border} ${tone.text}`}`}>
+              <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[1.4375rem]"}></i>
             </span>
           )}
 
           <div className="min-w-0 flex-1">
-            {/* One step darker than the app's usual muted label. This one names
-                which of the two rooms you are looking at, and at 11px uppercase
-                on a white panel slate-400 does not carry that. */}
-            <p className={`${TYPE.label} text-slate-500 dark:text-slate-400`}>{service}</p>
-            {/* The state is the headline, not a chip beside the service name.
-                Which of the two this is can be told from the icon and from
+            {/* Names which of the two rooms you are looking at. */}
+            <p className="caps text-ink-2">{service}</p>
+            {/* The state is the headline, not a tag beside the service name.
+                Which of the two this is can be told from the mark and from
                 which side of the window it is on; whether it is done cannot. */}
-            <h2 className={`text-[26px] sm:text-[30px] font-black tracking-[-0.025em] leading-none mt-2 truncate ${
-              sealed ? "text-slate-500 dark:text-slate-400"
-                     : intent === "neutral" ? "text-slate-900 dark:text-white" : tone.figure}`}>
-              {sealed && <i className="ph-fill ph-lock-simple text-[0.62em] mr-2.5"></i>}
+            <h2 className={`display text-[1.9rem] sm:text-[2.2rem] leading-none mt-2.5 truncate ${
+              sealed ? "text-ink-3" : intent === "neutral" ? "text-ink" : tone.figure}`}>
+              {sealed && <span aria-hidden="true" className="mr-2.5 text-[0.7em]">✕</span>}
               {title}
             </h2>
-            <p className="text-[13px] leading-snug text-slate-500 dark:text-slate-400 mt-2.5 max-w-[46ch]">
-              {subtitle}
-            </p>
+            <p className="standfirst text-[0.8438rem] mt-3 max-w-[46ch]">{subtitle}</p>
 
             {/* Under the identity rather than opposite it. The half of the
                 window that has settled is the narrow one, which leaves these
                 about 340px, not enough to sit beside a heading without
                 wrapping them a word at a time. */}
             {actions && (
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4">{actions}</div>
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2 mt-5 pt-3 border-t border-rule">
+                {actions}
+              </div>
             )}
           </div>
         </div>
 
-        {children && <div className="mt-8 max-w-[540px]">{children}</div>}
+        {children && <div className="mt-9 max-w-[540px]">{children}</div>}
       </div>
     </section>
   );
@@ -1259,10 +1250,8 @@ function Quiet({ onClick, disabled, icon, label }: {
   onClick: () => void; disabled?: boolean; icon: string; label: string;
 }) {
   return (
-    <button onClick={onClick} disabled={disabled}
-      className="shrink-0 text-[12px] font-semibold text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors flex items-center gap-1.5 disabled:opacity-50">
-      <i className={icon + " text-[13px]"}></i>
-      {label}
+    <button onClick={onClick} disabled={disabled} className="textlink caps shrink-0 hover:!text-crimson">
+      <i className={icon + " text-[0.75rem] mr-1.5"} aria-hidden="true"></i>{label}
     </button>
   );
 }
@@ -1270,7 +1259,7 @@ function Quiet({ onClick, disabled, icon, label }: {
 function Hint({ intent, children }: { intent: Intent; children: React.ReactNode }) {
   const tone = INTENT[intent];
   return (
-    <div className={`px-3.5 py-2.5 rounded-xl text-[12.5px] leading-relaxed ${tone.soft} ${tone.text}`}>
+    <div className={`pl-3.5 pr-3 py-2.5 border-l-2 text-[0.7812rem] leading-relaxed ${tone.soft} ${tone.text} ${tone.border}`}>
       {children}
     </div>
   );
@@ -1281,8 +1270,8 @@ function Field({ label, optional, children }: {
 }) {
   return (
     <label className="block">
-      <span className="block text-[11px] uppercase tracking-[0.14em] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
-        {label}{optional && <span className="normal-case tracking-normal font-medium text-slate-300 dark:text-slate-600"> · optional</span>}
+      <span className="block caps mb-1.5">
+        {label}{optional && <span className="normal-case tracking-normal font-normal text-ink-4"> · optional</span>}
       </span>
       {children}
     </label>
@@ -1298,7 +1287,7 @@ function Field({ label, optional, children }: {
  */
 function Aside({ children }: { children: React.ReactNode }) {
   return (
-    <span className="block mt-1.5 text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+    <span className="standfirst block mt-2 text-[0.7188rem] leading-relaxed">
       {children}
     </span>
   );
@@ -1310,17 +1299,18 @@ function Banner({ intent, icon, title, children, onDismiss, index }: {
 }) {
   const tone = INTENT[intent];
   return (
-    <div style={enter(index)} className={`rounded-2xl border p-4 flex items-start gap-3 ${tone.soft} ${tone.border}`}>
-      <i className={`${icon} ${tone.text} text-lg shrink-0 mt-0.5`}></i>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-bold ${tone.text}`}>{title}</p>
-        <p className={`text-[13px] mt-1 leading-relaxed ${tone.text} opacity-90`}>{children}</p>
+    <div style={enter(index)} className={`border border-rule ${tone.soft}`}>
+      <span className={`block h-[3px] w-full ${tone.mark}`} aria-hidden="true" />
+      <div className="p-4 flex items-start gap-3.5">
+        <i className={`${icon} ${tone.text} text-lg shrink-0 mt-0.5`}></i>
+        <div className="flex-1 min-w-0">
+          <p className={`display text-[1.0625rem] ${tone.text}`}>{title}</p>
+          <p className={`text-[0.8125rem] mt-1.5 leading-relaxed ${tone.text}`}>{children}</p>
+        </div>
+        {onDismiss && (
+          <button onClick={onDismiss} className={`textlink caps shrink-0 !${tone.text}`}>Dismiss</button>
+        )}
       </div>
-      {onDismiss && (
-        <button onClick={onDismiss} className={`shrink-0 ${tone.text} opacity-50 hover:opacity-100 transition-opacity`}>
-          <i className="ph-bold ph-x text-sm"></i>
-        </button>
-      )}
     </div>
   );
 }

@@ -17,10 +17,10 @@ const SEVERITY: Record<string, Intent> = {
 
 /** Each severity gets its own weight so a critical never reads like a low. */
 const SEV_STYLE: Record<string, { chip: string; bar: string; rank: number }> = {
-  critical: { chip: "bg-rose-600 text-white", bar: "bg-rose-500", rank: 0 },
-  high: { chip: "bg-orange-600 text-white", bar: "bg-orange-500", rank: 1 },
-  medium: { chip: "bg-amber-500 text-white", bar: "bg-amber-400", rank: 2 },
-  low: { chip: "bg-slate-400 text-white", bar: "bg-slate-300", rank: 3 },
+  critical: { chip: "bg-crimson text-reverse", bar: "bg-crimson", rank: 0 },
+  high: { chip: "bg-crimson-wash text-crimson border border-crimson-edge", bar: "bg-crimson", rank: 1 },
+  medium: { chip: "bg-ochre-wash text-ochre border border-ochre-edge", bar: "bg-ochre", rank: 2 },
+  low: { chip: "bg-paper-2 text-ink-2 border border-rule", bar: "bg-rule-strong", rank: 3 },
 };
 
 const REPOS_PER_PAGE = 15;
@@ -364,7 +364,7 @@ export default function DependencyDashboardPage() {
                 control nobody can reach. */}
             {view === "alerts" && (
               <Button onClick={() => setManaging(true)}>
-                <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[12px]" aria-hidden="true" />
+                <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[0.75rem]" aria-hidden="true" />
                 Manage
               </Button>
             )}
@@ -407,7 +407,7 @@ export default function DependencyDashboardPage() {
           <div className="flex items-center gap-3">
             {stuck && stuck.total > 0 && (
               <button onClick={() => setManaging(true)}
-                className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+                className="inline-flex items-center gap-1.5 text-[0.7188rem] font-bold
                            text-amber-700 dark:text-amber-400 rounded-lg px-2 py-1 -mx-1
                            hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
@@ -420,20 +420,20 @@ export default function DependencyDashboardPage() {
                 keeps rediscovering: an absence rendered as an answer. It costs
                 a sentence to say instead. */}
             {age && !age.storing && age.problem && (
-              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+              <span className="inline-flex items-center gap-1.5 text-[0.7188rem] font-bold
                                text-rose-700 dark:text-rose-400 rounded-lg px-2 py-1 -mx-1"
                 title={`${age.problem} Until that is fixed, every opening of this tab recomputes the whole organization.`}>
-                <i className="ph-bold ph-warning-circle text-[12px]" aria-hidden="true" />
+                <i className="ph-bold ph-warning-circle text-[0.75rem]" aria-hidden="true" />
                 not being stored
               </span>
             )}
             {age?.computedAt && (
-              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums"
+              <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 tabular-nums"
                 title={age.refreshing
                   ? "A fresh sweep is running now and will be here next time you look."
                   : "Opening this tab does not start a sweep. The stored one is served as it "
                     + "stands, and refreshed at most every half hour. Refresh forces one."}>
-                <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+                <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[0.6875rem]" aria-hidden="true" />
                 swept {new Date(age.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 {/* Only when one is genuinely running. This used to be shown
                     for anything over ten minutes old, which was also when a
@@ -458,13 +458,13 @@ export default function DependencyDashboardPage() {
             it says which repositories are worth selecting, and which cannot be
             helped by anything on this panel. */}
         {stuck && stuck.total > 0 && (
-          <div className="mb-5 rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden">
-            <div className="px-4 py-3 bg-slate-50/80 dark:bg-white/[0.02] border-b border-slate-200/70 dark:border-white/[0.07]">
-              <p className="text-[13px] font-bold text-slate-900 dark:text-white">
+          <div className="mb-5 rounded-2xl border border-slate-200 dark:border-ink/[0.08] overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50/80 dark:bg-ink/[0.02] border-b border-slate-200/70 dark:border-ink/[0.07]">
+              <p className="text-[0.8125rem] font-bold text-slate-900 dark:text-ink">
                 {stuck.total} {stuck.total === 1 ? "repository has" : "repositories have"} findings and no fix pull request
               </p>
             </div>
-            <dl className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            <dl className="divide-y divide-slate-100 dark:divide-ink/[0.05]">
               {([
                 [stuck.scheduled, "Set up correctly, waiting on GitHub", "A re-trigger or the grouped config will help these."],
                 [stuck.transitive, "Findings sit under a parent dependency", "Dependabot cannot bump these without the parent."],
@@ -474,10 +474,10 @@ export default function DependencyDashboardPage() {
                 [stuck.targetBranch, "dependabot.yml sets target-branch", "Puts the config out of scope for security updates."],
               ] as const).filter(([n]) => n > 0).map(([n, label, hint]) => (
                 <div key={label} className="px-4 py-2.5 flex items-baseline gap-3">
-                  <dt className="w-8 shrink-0 text-[15px] font-black tabular-nums text-slate-900 dark:text-white">{n}</dt>
+                  <dt className="w-8 shrink-0 text-[0.9375rem] font-semibold tabular-nums text-slate-900 dark:text-ink">{n}</dt>
                   <dd className="min-w-0">
-                    <span className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200">{label}</span>
-                    <span className="block text-[11.5px] text-slate-400 dark:text-slate-500">{hint}</span>
+                    <span className="text-[0.7812rem] font-bold text-slate-700 dark:text-slate-200">{label}</span>
+                    <span className="block text-[0.7188rem] text-slate-400 dark:text-slate-500">{hint}</span>
                   </dd>
                 </div>
               ))}
@@ -497,7 +497,7 @@ export default function DependencyDashboardPage() {
           notice.ok ? `${INTENT.good.soft} ${INTENT.good.border}` : `${INTENT.danger.soft} ${INTENT.danger.border}`}`}>
           <i className={`${notice.ok ? "ph-fill ph-check-circle" : "ph-fill ph-warning-circle"} text-lg shrink-0 mt-0.5 ${
             notice.ok ? INTENT.good.text : INTENT.danger.text}`}></i>
-          <p className={`flex-1 text-[13px] leading-relaxed ${notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
+          <p className={`flex-1 text-[0.8125rem] leading-relaxed ${notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
             {notice.msg}
           </p>
           <button onClick={() => setNotice(null)}
@@ -607,7 +607,7 @@ export default function DependencyDashboardPage() {
                   <div className="flex items-start justify-between gap-5 flex-wrap mb-1">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{repo}</h3>
+                        <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>{repo}</h3>
                         {off && <Pill intent="neutral">not watching</Pill>}
                         {scanning && <Pill intent="info">scanning</Pill>}
                         {clean && <Pill intent="good">clean</Pill>}
@@ -619,7 +619,7 @@ export default function DependencyDashboardPage() {
                       )}
                       {scanning && (
                         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
-                          <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
+                          <i className="ph-bold ph-circle-notch animate-spin text-[0.8125rem]"></i>
                           Just switched on. GitHub is still scanning. Results appear shortly.
                         </p>
                       )}
@@ -664,7 +664,7 @@ export default function DependencyDashboardPage() {
 
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
-                          className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
+                          className="stamp stamp-hollow">
                           <i className="ph-fill ph-github-logo"></i>GitHub
                         </a>
                       )}
@@ -702,12 +702,12 @@ export default function DependencyDashboardPage() {
                       and inside the card, because that is the repository they
                       belong to. */}
                   {prsOpen && repoPrs.length > 0 && (
-                    <div className="mt-3 rounded-2xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.07] p-3">
+                    <div className="mt-3 rounded-2xl bg-slate-50/80 dark:bg-ink/[0.02] border border-slate-200/80 dark:border-ink/[0.07] p-3">
                       <div className="flex items-baseline justify-between gap-3 mb-2 px-0.5">
                         <span className={`${TYPE.label} text-slate-500 dark:text-slate-400`}>
                           Open fix pull requests
                         </span>
-                        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+                        <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">
                           {repoPrs.filter(p => p.readiness === "ready").length} ready to merge
                         </span>
                       </div>
@@ -720,7 +720,7 @@ export default function DependencyDashboardPage() {
                           the @dependabot close command, and on a backlog this
                           size that is easy to do to a hundred of them before
                           noticing. */}
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5 px-0.5 leading-relaxed">
+                      <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-2.5 px-0.5 leading-relaxed">
                         Closing one without merging stops Dependabot raising it again.
                         Comment <span className="font-mono">@dependabot reopen</span> to undo that.
                       </p>
@@ -734,7 +734,7 @@ export default function DependencyDashboardPage() {
                       </ul>
                       {(hidden > 0 || isOpen) && (
                         <button onClick={() => toggle(repo)}
-                          className="mt-3 text-[13px] font-bold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1.5">
+                          className="textlink caps !text-indigo mt-3 inline-flex items-center gap-1.5">
                           <i className={`ph-bold ph-caret-${isOpen ? "up" : "down"} text-xs`}></i>
                           {isOpen
                             ? `Hide ${real.length - COLLAPSED} ${real.length - COLLAPSED === 1 ? "vulnerability" : "vulnerabilities"}`
@@ -827,7 +827,7 @@ function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
           {expected > 0 || open !== 1 ? "fix PRs" : "fix PR"}
         </span>
         {expandable && (
-          <i className={`ph-bold ph-caret-down text-[9px] text-slate-400 dark:text-slate-500
+          <i className={`ph-bold ph-caret-down text-[0.5625rem] text-slate-400 dark:text-slate-500
                          transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
         )}
       </div>
@@ -841,7 +841,7 @@ function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
   return (
     <button onClick={onToggle} aria-expanded={expanded}
       title={`${expanded ? "Hide" : "Show"} the ${open} open fix pull request${open === 1 ? "" : "s"}`}
-      className="text-right rounded-xl -m-1.5 p-1.5 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+      className="text-right -m-1.5 p-1.5 hover:bg-ink/[0.035] transition-colors">
       {body}
     </button>
   );
@@ -855,10 +855,9 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
 
   return (
     <a href={pr.url} target="_blank" rel="noopener noreferrer" title={r.hint}
-      className="group flex items-center gap-3 rounded-xl pl-0 pr-3 py-2 overflow-hidden
-                 bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.07]
-                 hover:border-slate-300 dark:hover:border-white/20 transition-colors">
-      <span className={`w-1 self-stretch shrink-0 rounded-l-xl ${INTENT[r.intent].mark}`} aria-hidden="true" />
+      className="group flex items-center gap-3 pl-0 pr-3 py-2 overflow-hidden no-underline
+                 bg-paper border border-rule hover:bg-ink/[0.035] transition-colors">
+      <span className={`w-[3px] self-stretch shrink-0 ${INTENT[r.intent].mark}`} aria-hidden="true" />
 
       <span className="min-w-0 flex-1 flex items-baseline gap-2 flex-wrap">
         {/* The package, where the branch named one. A grouped pull request
@@ -866,40 +865,36 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
             shows instead of an invented name. */}
         {pr.packageName ? (
           <>
-            <span className="font-mono text-[12.5px] font-bold text-slate-800 dark:text-slate-100 truncate">
-              {pr.packageName}
-            </span>
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">{pr.title}</span>
+            <span className="font-mono text-[0.7812rem] text-ink truncate">{pr.packageName}</span>
+            <span className="text-[0.7188rem] text-ink-3 truncate">{pr.title}</span>
           </>
         ) : (
-          <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-            {pr.title}
-          </span>
+          <span className="display text-[0.9375rem] text-ink truncate">{pr.title}</span>
         )}
         {pr.draft && <Pill intent="neutral">draft</Pill>}
       </span>
 
-      <span className="shrink-0 flex items-center gap-2.5 text-[11.5px] text-slate-500 dark:text-slate-400">
+      <span className="shrink-0 flex items-center gap-2.5 text-[0.7188rem] text-slate-500 dark:text-slate-400">
         {checks && (
           <span className={
-            pr.checks === "SUCCESS" ? "text-emerald-700 dark:text-emerald-400 font-bold"
-              : pr.checks === "FAILURE" || pr.checks === "ERROR" ? "text-rose-700 dark:text-rose-400 font-bold"
+            pr.checks === "SUCCESS" ? "text-forest"
+              : pr.checks === "FAILURE" || pr.checks === "ERROR" ? "text-crimson"
               : ""
           }>{checks}</span>
         )}
         {review && <span className="hidden sm:inline">{review}</span>}
         {pr.mergeable === "CONFLICTING" && (
-          <span className="text-amber-700 dark:text-amber-400 font-bold">conflicts</span>
+          <span className="text-ochre">conflicts</span>
         )}
         {pr.changedFiles !== undefined && (
           <span className="hidden md:inline tabular-nums">
-            <span className="text-emerald-700 dark:text-emerald-400">+{pr.additions ?? 0}</span>{" "}
-            <span className="text-rose-700 dark:text-rose-400">-{pr.deletions ?? 0}</span>
+            <span className="text-forest">+{pr.additions ?? 0}</span>{" "}
+            <span className="text-crimson">-{pr.deletions ?? 0}</span>
           </span>
         )}
         <span className="tabular-nums">{pr.ageDays}d</span>
         <span className="tabular-nums text-slate-400 dark:text-slate-500">#{pr.number}</span>
-        <i className="ph-bold ph-arrow-up-right text-[11px] opacity-40 group-hover:opacity-100 transition-opacity" />
+        <i className="ph-bold ph-arrow-up-right text-[0.6875rem] opacity-40 group-hover:opacity-100 transition-opacity" />
       </span>
     </a>
   );
@@ -908,23 +903,21 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
 function VulnRow({ alert: a }: { alert: DependencyAlert }) {
   const sev = SEV_STYLE[a.severity] ?? SEV_STYLE.low;
   return (
-    <li className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-white/[0.05] border border-slate-200/70 dark:border-white/[0.08]">
-      <span className={`absolute left-0 top-0 bottom-0 w-1 ${sev.bar}`} />
+    <li className="relative bg-paper-2 border border-rule">
+      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${sev.bar}`} />
       <div className="pl-4 pr-3.5 py-3 flex items-center gap-4 flex-wrap">
-        <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-1 rounded-md shrink-0 ${sev.chip}`}>
-          {a.severity}
-        </span>
+        <span className={`caps caps-tight px-1.5 py-1 shrink-0 ${sev.chip}`}>{a.severity}</span>
 
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[14px] font-bold text-slate-900 dark:text-white truncate">
+          <p className="font-mono text-[0.8438rem] text-ink truncate">
             {a.dependency}
-            <span className="ml-2 font-sans text-[12px] font-medium text-slate-400 dark:text-slate-500">{a.ecosystem}</span>
+            <span className="ml-2.5 font-sans caps">{a.ecosystem}</span>
           </p>
-          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[0.7812rem] text-ink-2 mt-1">
             <span className="font-mono">{a.vulnerable_version}</span>
             {a.patched_version
-              ? <> → fixed in <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{a.patched_version}</span></>
-              : <> · <span className="font-semibold text-rose-600 dark:text-rose-400">no fix available</span></>}
+              ? <> → fixed in <span className="font-mono text-forest">{a.patched_version}</span></>
+              : <> · <span className="text-crimson">no fix available</span></>}
           </p>
         </div>
 
@@ -932,8 +925,8 @@ function VulnRow({ alert: a }: { alert: DependencyAlert }) {
           <a href={`https://github.com/advisories?query=${encodeURIComponent(a.cve)}`}
             target="_blank" rel="noreferrer"
             title="Look up this advisory on GitHub"
-            className="shrink-0 font-mono text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 transition-colors inline-flex items-center gap-1.5">
-            {a.cve}<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+            className="stamp stamp-hollow shrink-0">
+            {a.cve}<i className="ph-bold ph-arrow-square-out text-[0.6875rem]"></i>
           </a>
         )}
       </div>

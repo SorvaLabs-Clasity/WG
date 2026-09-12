@@ -5,7 +5,8 @@ import { router } from "./router";
 import { isAuthenticated, clearToken, getToken, getUserInfo, DEMO_MODE } from "./api/client";
 import { fetchAuthStatus } from "./api/auth";
 import { DEMO_USER } from "./api/mock";
-import { ThemeContext, getInitialTheme, applyTheme, type Theme } from "./hooks/useTheme";
+import { ThemeContext, getInitialTheme, getInitialSkin, applyTheme, type Theme } from "./hooks/useTheme";
+import type { Skin } from "./design/themes";
 import UpdateOverlay from "./components/UpdateOverlay";
 import MutationErrors from "./components/MutationErrors";
 import RateLimitBanner from "./components/RateLimitBanner";
@@ -100,14 +101,17 @@ function PrefetchPulls() {
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [skin, setSkin] = useState<Skin>(getInitialSkin);
 
-  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => { applyTheme(theme, skin); }, [theme, skin]);
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => (prev === "light" ? "dark" : "light"));
   }, []);
 
-  const themeValue = useMemo(() => ({ theme, toggle: toggleTheme }), [theme, toggleTheme]);
+  const themeValue = useMemo(
+    () => ({ theme, skin, toggle: toggleTheme, setSkin }),
+    [theme, skin, toggleTheme]);
 
   const user = useMemo<User | null>(() => {
     if (DEMO_MODE) return DEMO_USER;

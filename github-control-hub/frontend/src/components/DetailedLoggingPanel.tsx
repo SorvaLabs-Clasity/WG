@@ -46,12 +46,12 @@ export default function DetailedLoggingPanel() {
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle mb-4">
+    <div className="bg-white dark:bg-paper rounded-lg border border-rule dark:border-rule shadow-subtle mb-4">
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <i className="fa-solid fa-list-check text-gh-muted dark:text-slate-400"></i>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gh-textBase dark:text-slate-200">
+            <div className="display text-[1rem] text-ink dark:text-slate-200">
               Detailed GitHub logging
             </div>
             <div className="text-xs text-gh-muted dark:text-slate-400 truncate">
@@ -64,7 +64,7 @@ export default function DetailedLoggingPanel() {
         <div className="flex items-center gap-3 shrink-0">
           {settings.enabled && (
             <button onClick={() => setOpen(!open)}
-              className="text-xs font-semibold text-gh-blue hover:underline">
+              className="textlink caps">
               {open ? "Hide kinds" : "Choose kinds"}
             </button>
           )}
@@ -75,18 +75,17 @@ export default function DetailedLoggingPanel() {
             aria-checked={settings.enabled}
             disabled={save.isPending}
             onClick={() => save.mutate({ enabled: !settings.enabled, disabledKinds: settings.disabledKinds })}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              settings.enabled ? "bg-gh-blue" : "bg-slate-300 dark:bg-slate-600"} ${
+            className={`relative inline-flex h-5 w-9 items-center border border-rule-strong transition-colors ${
+              settings.enabled ? "bg-ink" : "bg-paper-2"} ${
               save.isPending ? "opacity-60" : ""}`}
           >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              settings.enabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+            <span className={`inline-block h-3.5 w-3.5 transform transition-colors transition-transform ${settings.enabled ? "translate-x-[18px] bg-paper" : "translate-x-0.5 bg-ink-3"}`} />
           </button>
         </div>
       </div>
 
       {settings.enabled && open && (
-        <div className="border-t border-gh-border dark:border-slate-700 px-4 py-3">
+        <div className="border-t border-rule dark:border-rule px-4 py-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             {kinds.map(k => (
               <label key={k.id} className="flex items-start gap-2 cursor-pointer">
@@ -95,7 +94,7 @@ export default function DetailedLoggingPanel() {
                   checked={!disabled.has(k.id)}
                   disabled={save.isPending}
                   onChange={() => toggleKind(k.id)}
-                  className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-gh-blue focus:ring-gh-blue"
+                  className="field-line text-[0.8438rem] mt-0.5"
                 />
                 <span className="min-w-0">
                   <span className="block text-sm text-gh-textBase dark:text-slate-200">{k.label}</span>

@@ -53,8 +53,11 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/../${p}`, "utf8");
       check(`${where} reads the version`,
         /getAppVersion\?\.\(\)/.test(src), file);
       check(`  and renders it`, /\{appVersion\}/.test(src) && /v\{appVersion\}/.test(src), file);
+      // Guarded, in whichever shape the markup happens to take. It was pinned
+      // to `{appVersion && (`, so wrapping the line in a span instead of a
+      // fragment failed a test about not rendering a bare "v".
       check(`  hiding the line when there is none, rather than showing "v"`,
-        /\{appVersion && \(/.test(src),
+        /\{appVersion && [(<]/.test(src),
         "a browser has no installed build to name");
       check(`  and a failure to read it cannot break the screen`,
         /getAppVersion\?\.\(\)[\s\S]{0,160}\.catch\(/.test(src), file);

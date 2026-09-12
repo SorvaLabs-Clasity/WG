@@ -60,10 +60,10 @@ function StatusDot({ alarm }: { alarm: WidgetAlarm }) {
   return (
     <span className="relative flex w-2.5 h-2.5 shrink-0 mt-[7px]" aria-hidden="true">
       {firing && (
-        <span className="absolute inline-flex w-full h-full rounded-full bg-rose-400 opacity-70 animate-ping" />
+        <span className="absolute inline-flex w-full h-full  bg-rose-400 opacity-70 animate-ping" />
       )}
       <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${
-        !alarm.enabled ? "bg-slate-300 dark:bg-slate-600"
+        !alarm.enabled ? "bg-rule-strong"
           : firing ? "bg-rose-500" : "bg-emerald-500"}`} />
     </span>
   );
@@ -88,28 +88,26 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
 
   return (
     <div className={`group relative flex items-start gap-3.5 pl-5 pr-4 py-4
-                     hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors
+                     hover:bg-slate-50/80 dark:hover:bg-ink/[0.035] transition-colors
                      ${alarm.enabled ? "" : "opacity-60"}`}>
       <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${
-        !alarm.enabled ? "bg-slate-200 dark:bg-slate-700"
+        !alarm.enabled ? "bg-slate-200 dark:bg-paper-3"
           : firing ? "bg-rose-500" : "bg-emerald-500/70"}`} aria-hidden="true" />
 
       <StatusDot alarm={alarm} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{alarm.name}</span>
+          <span className="text-[0.8438rem] font-semibold text-slate-900 dark:text-slate-100">{alarm.name}</span>
           {subject.guardrail && (
-            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
-                             bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400">AWS</span>
+            <span className="caps text-ochre px-1.5 py-0.5 bg-amber-100">AWS</span>
           )}
           {!alarm.enabled && (
-            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
-                             bg-slate-100 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">paused</span>
+            <span className="caps px-1.5 py-0.5 bg-slate-100">paused</span>
           )}
         </div>
 
-        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+        <div className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-1">
           {subject.missing
             // Said plainly. An alarm whose subject is gone reads zero for ever,
             // which looks exactly like nothing being wrong.
@@ -118,9 +116,9 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
                 {" "}· {describeCondition(alarm.condition, ALL_METRIC_SPECS)}</>}
         </div>
 
-        <div className="flex items-center gap-2 mt-1.5 text-[11.5px] text-slate-400 dark:text-slate-500 flex-wrap">
+        <div className="flex items-center gap-2 mt-1.5 text-[0.7188rem] text-slate-400 dark:text-slate-500 flex-wrap">
           <span className="inline-flex items-center gap-1">
-            <i className="ph-fill ph-users-three text-[12px]" aria-hidden="true" />
+            <i className="ph-fill ph-users-three text-[0.75rem]" aria-hidden="true" />
             {groupName ?? <span className="text-amber-600 dark:text-amber-500">group deleted</span>}
           </span>
           <span aria-hidden="true">·</span>
@@ -147,7 +145,7 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
         </div>
 
         {!alarm.lastCheckedAt && (
-          <p className="mt-1 text-[11.5px] text-amber-700 dark:text-amber-500/90 leading-relaxed">
+          <p className="mt-1 text-[0.7188rem] text-amber-700 dark:text-amber-500/90 leading-relaxed">
             Nothing has evaluated this yet. The evaluator runs in AWS on a
             five-minute schedule, so a stack deployed before this alarm existed
             will not pick it up until it is deployed again.
@@ -158,8 +156,8 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
             because the two send somebody to completely different places: one is
             a broken check, the other is a healthy check nobody heard. */}
         {alarm.lastDeliveryError && (
-          <p className="mt-1 text-[11.5px] text-amber-700 dark:text-amber-500/90 leading-relaxed">
-            <i className="ph-bold ph-warning-circle mr-1 text-[11px]" aria-hidden="true" />
+          <p className="mt-1 text-[0.7188rem] text-amber-700 dark:text-amber-500/90 leading-relaxed">
+            <i className="ph-bold ph-warning-circle mr-1 text-[0.6875rem]" aria-hidden="true" />
             Sent, but not delivered everywhere: {alarm.lastDeliveryError}
           </p>
         )}
@@ -167,7 +165,7 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
         {/* A check that could not take a reading is not a passing check, and
             the difference is the whole reason this line exists. */}
         {alarm.lastError && (
-          <div className="mt-2 text-[11.5px] text-amber-700 dark:text-amber-400
+          <div className="mt-2 text-[0.7188rem] text-amber-700 dark:text-amber-400
                           bg-amber-50 dark:bg-amber-500/10 rounded-lg px-2.5 py-1.5">
             Could not read a value: {alarm.lastError}
           </div>
@@ -176,12 +174,12 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
 
       <div className="shrink-0 text-right">
         {alarm.lastValue !== undefined && alarm.lastValue !== null && (
-          <div className={`text-[20px] font-black tabular-nums leading-none
+          <div className={`text-[1.25rem] font-semibold tabular-nums leading-none
             ${firing ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
             {alarm.lastValue}
           </div>
         )}
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-1">
+        <div className="caps mt-1">
           {alarm.lastValue !== undefined && alarm.lastValue !== null ? "last read" : "no reading"}
         </div>
       </div>
@@ -195,18 +193,18 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
       <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <button onClick={onToggle} title={alarm.enabled ? "Pause" : "Resume"}
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
-          <i className={`ph-bold ${alarm.enabled ? "ph-pause" : "ph-play"} text-[13px]`} />
+                     hover:bg-slate-100 dark:hover:bg-ink/[0.08]">
+          <i className={`ph-bold ${alarm.enabled ? "ph-pause" : "ph-play"} text-[0.8125rem]`} />
         </button>
         <button onClick={onEdit} title="Edit"
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
-          <i className="ph-bold ph-pencil-simple text-[13px]" />
+                     hover:bg-slate-100 dark:hover:bg-ink/[0.08]">
+          <i className="ph-bold ph-pencil-simple text-[0.8125rem]" />
         </button>
         <button onClick={onDelete} title="Delete"
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-400
                      hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400">
-          <i className="ph-bold ph-trash text-[13px]" />
+          <i className="ph-bold ph-trash text-[0.8125rem]" />
         </button>
       </div>
       )}
@@ -290,14 +288,14 @@ export default function AlarmsPage() {
         actions={<RefreshButton busy={isFetching} onRefresh={() => refetch()} />}
       />
 
-      <div className="mb-5">
+      <div className="mb-7">
         <Segmented value={lens} onChange={v => setLens(v as Lens)}
           options={[["alarms", `Alarms${rows.length ? ` (${rows.length})` : ""}`],
                     ["groups", "Groups"]]} />
       </div>
 
       {lens === "groups" ? <EmailGroupsPanel /> : isLoading ? (
-        <div className="py-20 flex justify-center"><Spinner /></div>
+        <Spinner label="Reading your alarms" />
       ) : isError ? (
         <LoadFailed what="your alarms" error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
@@ -311,57 +309,44 @@ export default function AlarmsPage() {
           {/* ── the one question this page exists to answer ───────────
               A flat list makes you read every row to find out whether
               anything is wrong. This says it before the list starts. */}
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-            <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
-              <div aria-hidden="true"
-                className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
-                  ${firing.length ? "bg-rose-500" : "bg-emerald-500"}`} />
-              <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Currently firing</div>
-              <div className="flex items-end gap-3 mt-2.5">
-                <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
-                  ${firing.length ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
+          <div className="mb-2">
+            <span className={`block h-[3px] w-full ${firing.length ? "bg-crimson" : "bg-forest"}`}
+              aria-hidden="true" />
+            <div className="grid gap-0 sm:grid-cols-[1.35fr_1fr_1fr] columned pt-5">
+              <div className="pr-8">
+                <p className="caps">Currently firing</p>
+                <p className={`figure text-[clamp(3rem,6vw,4.25rem)] mt-3 ${
+                  firing.length ? "text-crimson" : "text-ink-4"}`}>
                   {firing.length}
-                </span>
-                {firing.length === 0 && (
-                  <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
-                                   bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                    <i className="ph-bold ph-check text-[12px]" aria-hidden="true" />all clear
-                  </span>
-                )}
+                </p>
+                <p className="standfirst text-[0.8125rem] mt-3 max-w-[34ch]">
+                  {firing.length === 0
+                    ? `${rows.length - paused.length} watching, nothing over its threshold.`
+                    : `${firing.length === 1 ? "One alarm is" : `${firing.length} alarms are`} over their threshold.`}
+                </p>
               </div>
-              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
-                {firing.length === 0
-                  ? `${rows.length - paused.length} watching, nothing over its threshold.`
-                  : `${firing.length === 1 ? "One alarm is" : `${firing.length} alarms are`} over their threshold.`}
-              </p>
-            </div>
 
-            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
-              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
-                <i className={`ph-fill ph-pause-circle text-[19px] ${paused.length ? "text-slate-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-black tabular-nums leading-none ${paused.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{paused.length}</span>
-                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Paused</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">watching nothing while paused</p>
-                </div>
+              <div className="px-0 sm:px-8 py-4 sm:py-0">
+                <p className="caps">Paused</p>
+                <p className={`figure text-[2.5rem] mt-3 ${paused.length ? "text-ink" : "text-ink-4"}`}>
+                  {paused.length}
+                </p>
+                <p className="standfirst text-[0.75rem] mt-2">watching nothing while paused</p>
               </div>
+
               {/* Its own number, because an alarm that cannot take a reading is
                   not a passing alarm and does not belong in either count above. */}
-              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
-                <i className={`ph-fill ph-warning-circle text-[19px] ${unreadable.length ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-black tabular-nums leading-none ${unreadable.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{unreadable.length}</span>
-                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Cannot read</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                    {unreadable.length ? "not the same as passing" : "every check took a reading"}
-                  </p>
-                </div>
+              <div className="px-0 sm:px-8 py-4 sm:py-0">
+                <p className="caps">Cannot read</p>
+                <p className={`figure text-[2.5rem] mt-3 ${unreadable.length ? "text-ochre" : "text-ink-4"}`}>
+                  {unreadable.length}
+                </p>
+                <p className="standfirst text-[0.75rem] mt-2">
+                  {unreadable.length ? "not the same as passing" : "every check took a reading"}
+                </p>
               </div>
             </div>
+            <div className="border-t border-rule mt-6" />
           </div>
 
           {([
@@ -383,37 +368,37 @@ export default function AlarmsPage() {
             <section key={section.key} className={`${SURFACE.card} overflow-hidden`}>
               <div className="px-5 pt-4">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <i className={`ph-bold ${section.icon} text-[14px] text-slate-400 dark:text-slate-500`}
+                  <i className={`ph-bold ${section.icon} text-[0.875rem] text-slate-400 dark:text-slate-500`}
                     aria-hidden="true" />
-                  <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+                  <h3 className="display text-[1.1875rem] text-ink">
                     {section.title}
                   </h3>
-                  <span className="text-[11px] font-bold tabular-nums text-slate-300 dark:text-slate-600">
+                  <span className="text-[0.6875rem] font-bold tabular-nums text-slate-300 dark:text-slate-600">
                     {section.rows.length}
                   </span>
                   {/* Read-only is said once, at the top, rather than implied by
                       a row whose controls quietly never appear. */}
                   {!section.canEdit && (
                     <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded
-                                     text-[10.5px] font-bold bg-slate-100 dark:bg-white/[0.08]
+                                     text-[0.6562rem] font-bold bg-slate-100 dark:bg-ink/[0.08]
                                      text-slate-500 dark:text-slate-400">
-                      <i className="ph-fill ph-lock-simple text-[9px]" aria-hidden="true" />
+                      <i className="ph-fill ph-lock-simple text-[0.5625rem]" aria-hidden="true" />
                       view only · {section.team ?? "admin"}
                     </span>
                   )}
                 </div>
-                <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
                   {section.blurb} Firing first, then paused.
                 </p>
-                <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+                <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
               </div>
 
               {section.rows.length === 0 ? (
-                <p className="px-5 py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
+                <p className="px-5 py-6 text-[0.7812rem] text-slate-400 dark:text-slate-500">
                   {section.none}
                 </p>
               ) : (
-                <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
                   {section.rows.map(a => {
                     const guardrail = a.widgetId.startsWith("guardrail:");
                     const widget = guardrail ? undefined : widgetById.get(a.widgetId);

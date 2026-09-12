@@ -215,44 +215,44 @@ export const TONE: Record<Level, {
   wash: string; ring: string; track: string; bar: string; figure: string; chip: string; edge: string; lift: string;
 }> = {
   danger: {
-    wash: "bg-gradient-to-br from-rose-500/[0.13] to-rose-500/[0.04] dark:from-rose-500/[0.20] dark:to-rose-500/[0.06]",
-    ring: "stroke-rose-500 dark:stroke-rose-400",
-    track: "stroke-rose-500/15 dark:stroke-rose-400/15",
-    bar: "bg-rose-500 dark:bg-rose-400",
-    figure: "text-rose-600 dark:[color:#ff8095]",
-    chip: "bg-rose-500 text-white",
-    edge: "border-rose-200/80 dark:border-rose-500/25",
-    lift: "shadow-[0_18px_40px_-16px_rgba(225,29,72,0.35)] dark:shadow-[0_18px_44px_-16px_rgba(0,0,0,0.8)]",
+    wash: "bg-crimson-wash",
+    ring: "stroke-crimson",
+    track: "stroke-rule",
+    bar: "bg-crimson",
+    figure: "text-crimson",
+    chip: "bg-crimson text-reverse",
+    edge: "border-crimson-edge",
+    lift: "",
   },
   warn: {
-    wash: "bg-gradient-to-br from-amber-500/[0.13] to-amber-500/[0.04] dark:from-amber-500/[0.20] dark:to-amber-500/[0.06]",
-    ring: "stroke-amber-500 dark:stroke-amber-400",
-    track: "stroke-amber-500/15 dark:stroke-amber-400/15",
-    bar: "bg-amber-500 dark:bg-amber-400",
-    figure: "text-amber-600 dark:[color:#ffc14d]",
-    chip: "bg-amber-500 text-white",
-    edge: "border-amber-200/80 dark:border-amber-500/25",
-    lift: "shadow-[0_14px_32px_-16px_rgba(217,119,6,0.30)] dark:shadow-[0_14px_36px_-16px_rgba(0,0,0,0.7)]",
+    wash: "bg-ochre-wash",
+    ring: "stroke-ochre",
+    track: "stroke-rule",
+    bar: "bg-ochre",
+    figure: "text-ochre",
+    chip: "bg-ochre text-reverse",
+    edge: "border-ochre-edge",
+    lift: "",
   },
   info: {
-    wash: "bg-gradient-to-br from-blue-500/[0.10] to-blue-500/[0.03] dark:from-blue-500/[0.16] dark:to-blue-500/[0.05]",
-    ring: "stroke-blue-500 dark:stroke-blue-400",
-    track: "stroke-blue-500/15 dark:stroke-blue-400/15",
-    bar: "bg-blue-500 dark:bg-blue-400",
-    figure: "text-blue-600 dark:[color:#6bb4ff]",
-    chip: "bg-blue-500 text-white",
-    edge: "border-blue-200/80 dark:border-blue-500/25",
-    lift: "shadow-sm",
+    wash: "bg-indigo-wash",
+    ring: "stroke-indigo",
+    track: "stroke-rule",
+    bar: "bg-indigo",
+    figure: "text-indigo",
+    chip: "bg-indigo text-reverse",
+    edge: "border-indigo-edge",
+    lift: "",
   },
   clear: {
-    wash: "bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.03] dark:from-emerald-500/[0.14] dark:to-emerald-500/[0.04]",
-    ring: "stroke-emerald-500 dark:stroke-emerald-400",
-    track: "stroke-emerald-500/15 dark:stroke-emerald-400/15",
-    bar: "bg-emerald-500 dark:bg-emerald-400",
-    figure: "text-emerald-600 dark:[color:#3ddc97]",
-    chip: "bg-emerald-500 text-white",
-    edge: "border-emerald-200/80 dark:border-emerald-500/25",
-    lift: "shadow-sm",
+    wash: "bg-forest-wash",
+    ring: "stroke-forest",
+    track: "stroke-rule",
+    bar: "bg-forest",
+    figure: "text-forest",
+    chip: "bg-forest text-reverse",
+    edge: "border-forest-edge",
+    lift: "",
   },
 };
 
@@ -413,19 +413,23 @@ export default function AnalyticsPage() {
         />
       ) : (
         <>
-      <header className="mb-9" style={enter(0)}>
-        <div className="flex items-start justify-between gap-6 flex-wrap">
+      {/* The front page. The verdict is the headline, set in the display serif
+          at a size nothing else on the screen competes with, and the dateline
+          under it carries the things that qualify it: whose organization, how
+          many checks, and how old the answers are. */}
+      <header className="mb-8" style={enter(0)}>
+        <div className="flex items-end justify-between gap-8 flex-wrap pb-4">
           <div className="min-w-0">
-            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
+            <p className="caps mb-3">
               {orgName || "Organization"} · {posture.total} {posture.total === 1 ? "check" : "checks"}
             </p>
-            <h1 className="text-[38px] sm:text-[52px] font-black tracking-[-0.035em] leading-[1.02] max-w-[18ch]">
+            <h1 className="display text-[clamp(2.25rem,4.6vw,3.4rem)] leading-[1.05] max-w-[20ch] text-ink">
               {widgetsLoading ? (
-                <span className="text-slate-300 dark:text-slate-700">Reading the organization…</span>
+                <span className="text-ink-4">Reading the organization…</span>
               ) : posture.total === 0 ? (
                 <>Nothing is being watched yet.</>
               ) : posture.answered === 0 ? (
-                <span className="text-slate-300 dark:text-slate-700">Working it out…</span>
+                <span className="text-ink-4">Working it out…</span>
               ) : posture.attention === 0 ? (
                 <>Everything checked is <span className={TONE.clear.figure}>clear</span>.</>
               ) : (
@@ -439,20 +443,16 @@ export default function AnalyticsPage() {
                 scheduled pass, and a figure presented as current when it is
                 twenty minutes old is the thing this is meant to avoid. */}
             {oldestComputedAt && !live && (
-              <p className="mt-1.5 text-[12.5px] text-slate-400 dark:text-slate-500">
+              <p className="standfirst text-[0.8125rem] mt-3">
                 Checked {ago(oldestComputedAt)} · refresh to run them now
               </p>
             )}
-            {live && (
-              <p className="mt-1.5 text-[12.5px] text-slate-400 dark:text-slate-500">
-                Running every check now…
-              </p>
-            )}
+            {live && <p className="standfirst text-[0.8125rem] mt-3">Running every check now…</p>}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 pt-1">
+          <div className="flex items-center gap-5 shrink-0 flex-wrap">
             {/* Recompute now, rather than waiting for the next scheduled pass.
-                Every card drops its stored answer and runs its own check -
+                Every card drops its stored answer and runs its own check —
                 which is what the page used to do on every open. Deliberately a
                 choice now, not the default. */}
             <RefreshButton
@@ -474,21 +474,21 @@ export default function AnalyticsPage() {
               }}
             />
             {/* Gated to match the endpoint. Syncing walks the whole organization
-                and spends its GitHub budget, so it is admin-only on the server -
+                and spends its GitHub budget, so it is admin-only on the server —
                 and a button everyone can see, that only some can use, teaches
-                the rest that the app is broken. */}
-            {/* Deliberately not the same shape as Refresh beside it. That one
+                the rest that the app is broken.
+
+                Deliberately not the same shape as Refresh beside it. That one
                 re-reads a stored answer in a second; this one re-reads the
                 whole organization over several minutes. They looked identical,
                 which is how the expensive one got pressed by mistake. */}
             {canEditDashboard && <RecrawlButton dense className="whitespace-nowrap" />}
             {canEditDashboard && (
-              <Button variant="primary" onClick={() => setShowAddModal(true)}>
-                <i className="ph-bold ph-plus mr-2"></i>Add check
-              </Button>
+              <Button variant="primary" onClick={() => setShowAddModal(true)}>Add check</Button>
             )}
           </div>
         </div>
+        <div className="border-t-2 border-ink" />
       </header>
 
       {/* Search and view, above the checks rather than in the header, because
@@ -496,49 +496,37 @@ export default function AnalyticsPage() {
           belongs next to the list. Hidden entirely when there is nothing to
           search or switch: a filter over two cards is furniture. */}
       {widgets.length > 2 && (
-        <div style={enter(1)} className="mb-5 flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
-            <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm pointer-events-none"></i>
+        <div style={enter(1)} className="mb-6 flex items-end gap-6 flex-wrap border-b border-rule pb-3">
+          <label className="relative flex-1 min-w-[15rem] max-w-md flex items-baseline gap-2.5">
+            <span className="caps shrink-0">Find</span>
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search checks by name or what they ask"
+              placeholder="a check by name, or by what it asks"
               aria-label="Search checks"
-              className="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue"
+              className="field-line text-[0.8438rem] w-full"
             />
             {search && (
-              <button
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-              >
-                <i className="ph-bold ph-x text-sm"></i>
+              <button onClick={() => setSearch("")} aria-label="Clear search" className="textlink caps shrink-0">
+                Clear
               </button>
             )}
-          </div>
+          </label>
 
           {/* Said out loud, because a filtered list that looks like the whole
               list is how somebody concludes a check has been deleted. */}
           {search && (
-            <span className="text-[12.5px] text-slate-500 dark:text-slate-400">
-              {visible.length} of {widgets.length}
-            </span>
+            <span className="caps text-ink">{visible.length} of {widgets.length}</span>
           )}
 
-          <div className="ml-auto inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
-            {([["cards", "ph-squares-four", "Cards"], ["rows", "ph-list", "List"]] as const).map(([v, icon, label]) => (
-              <button
-                key={v}
-                onClick={() => setViewPersistent(v)}
-                aria-pressed={view === v}
-                title={`${label} view`}
-                className={`px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
-                  view === v
-                    ? "bg-slate-900 dark:bg-slate-200 text-white dark:text-slate-900"
-                    : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
-              >
-                <i className={`ph-bold ${icon}`}></i>{label}
+          <div className="ml-auto flex items-baseline gap-4 shrink-0">
+            <span className="caps">Set as</span>
+            {([["cards", "Cards"], ["rows", "Column"]] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setViewPersistent(v)} aria-pressed={view === v}
+                className={`caps transition-colors ${
+                  view === v ? "text-ink underline underline-offset-4 decoration-ink" : "hover:text-ink"}`}>
+                {label}
               </button>
             ))}
           </div>
@@ -600,11 +588,11 @@ export default function AnalyticsPage() {
         /* One row per check, ordered exactly as the cards are, so switching
            view never reorders anything. Denser on purpose: this is the view for
            twenty checks, where a grid of cards is three screens of scrolling. */
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
-          <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            <span>Check</span>
-            <span className="text-right">Found</span>
-            <span>Share</span>
+        <div className="border-t-2 border-ink">
+          <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 px-3 py-2 border-b border-rule">
+            <span className="caps">Check</span>
+            <span className="caps text-right">Found</span>
+            <span className="caps">Share</span>
             <span></span>
           </div>
           {visible.map((w, i) => (
@@ -654,23 +642,26 @@ export default function AnalyticsPage() {
  * the value: animating that rather than the geometry keeps it on the compositor.
  */
 function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Level]; children: React.ReactNode }) {
-  const R = 26, C = 2 * Math.PI * R;
+  const R = 27, C = 2 * Math.PI * R;
   return (
     <div className="relative w-[68px] h-[68px] shrink-0">
+      {/* An engraved arc: a hairline track and a 2px sweep, no round cap and no
+          filled puck. The dash offset carries the value, so the animation stays
+          on the compositor. */}
       <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-        <circle cx="32" cy="32" r={R} fill="none" strokeWidth="7" className={tone.track} />
+        <circle cx="32" cy="32" r={R} fill="none" strokeWidth="1" className={tone.track} />
         <circle
-          cx="32" cy="32" r={R} fill="none" strokeWidth="7" strokeLinecap="round"
+          cx="32" cy="32" r={R} fill="none" strokeWidth="2.5"
           className={tone.ring}
           style={{
             strokeDasharray: C,
             strokeDashoffset: C * (1 - Math.max(0, Math.min(1, share))),
-            transition: "stroke-dashoffset 900ms cubic-bezier(0.16,1,0.3,1)",
+            transition: "stroke-dashoffset 900ms cubic-bezier(0.22,1,0.36,1)",
           }}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className={`text-[15px] font-black tabular-nums ${tone.figure}`}>{children}</span>
+        <span className={`figure text-[1.0625rem] ${tone.figure}`}>{children}</span>
       </div>
     </div>
   );
@@ -720,46 +711,43 @@ export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgNa
         </div>
       )}
 
-      <div className={`${SURFACE.sheet} mb-5`}>
-        <div className={`${tone.wash} px-6 sm:px-8 py-7 flex items-start gap-6 flex-wrap`}>
+      <div className="mb-7">
+        <span className={`block h-[3px] w-full ${tone.bar}`} aria-hidden="true" />
+        <div className="pt-5 flex items-start gap-7 flex-wrap">
           {pct === null
             ? <Emblem kind={entity} tone={tone} />
             : <Ring share={verdict.share ?? 0} tone={tone}>{`${pct}%`}</Ring>}
 
-          <div className="flex-1 min-w-[220px]">
-            <p className={`${TYPE.label} ${tone.figure} mb-2`}>
+          <div className="flex-1 min-w-[14rem]">
+            <p className={`caps ${tone.figure} mb-2`}>
               {config.type === "preset" && config.presetId === "vuln-repos"
                 ? describeSeverities(parseSeverities(config.queryParam))
                 : verdict.eyebrow}
             </p>
-            <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{config.title}</h2>
-            <p className="flex items-baseline gap-2 mt-3">
-              <span className={`text-[38px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
-              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+            <h2 className="display text-[clamp(1.75rem,3vw,2.25rem)] leading-tight text-ink">{config.title}</h2>
+            <p className="flex items-baseline gap-3 mt-4">
+              <span className={`figure text-[2.75rem] ${tone.figure}`}>{n}</span>
+              <span className="caps">
                 {verdict.share === null && verdict.value > 0 ? nounFor(entity, verdict.value) : verdict.caption}
               </span>
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-4 flex-wrap">
             {canAlarm && (
               <Button onClick={onAlarm}>
-                <i className="ph-bold ph-bell mr-2"></i>
                 {alarmCount > 0 ? `Alarms (${alarmCount})` : "Add alarm"}
               </Button>
             )}
-            {canEdit && (
-              <Button onClick={onEdit}>
-                <i className="ph-bold ph-pencil-simple mr-2"></i>Edit check
-              </Button>
-            )}
+            {canEdit && <Button onClick={onEdit}>Edit check</Button>}
           </div>
         </div>
+        <div className="border-t-2 border-ink mt-6" />
       </div>
 
-      <div className={`${SURFACE.sheet} overflow-x-auto`}>
+      <div className="overflow-x-auto">
         {isLoading
-          ? <Spinner />
+          ? <Spinner label="Reading the check" />
           : <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />}
       </div>
     </div>
@@ -804,8 +792,8 @@ const EMBLEM: Record<Entity, string> = {
  */
 function Emblem({ kind, tone }: { kind: Entity; tone: typeof TONE[Level] }) {
   return (
-    <div className={`w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center ${tone.wash} border ${tone.edge}`}>
-      <i className={`${EMBLEM[kind]} text-[26px] ${tone.figure}`}></i>
+    <div className={`w-[68px] h-[68px] shrink-0 flex items-center justify-center border ${tone.edge} ${tone.wash}`}>
+      <i className={`${EMBLEM[kind]} text-[1.5rem] ${tone.figure}`}></i>
     </div>
   );
 }
@@ -867,58 +855,56 @@ function CheckRow({
     <button
       onClick={onOpen}
       style={enter(Math.min(index, 8))}
-      className="w-full text-left grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+      className="w-full text-left grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 items-baseline px-3 py-3.5 border-b border-rule last:border-b-0 hover:bg-ink/[0.035] transition-colors"
     >
-      <span className="min-w-0 flex items-center gap-3">
-        {/* The same colour the card uses, as a bar rather than a ring. It is
-            the only thing here that is scannable down a column of twenty. */}
-        <span className={`w-1 h-8 rounded-full shrink-0 ${
-          broken ? "bg-slate-300 dark:bg-slate-600" : tone.bar}`} />
+      <span className="min-w-0 flex items-baseline gap-3">
+        {/* The same ink the card uses, as a marginal rule rather than an arc. It
+            is the only thing here that is scannable down a column of twenty. */}
+        <span className={`w-[3px] h-7 shrink-0 translate-y-1 ${
+          broken ? "bg-rule-strong" : tone.bar}`} />
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+          <span className="display block text-[1.0625rem] text-ink truncate leading-snug">
             {config.title}
           </span>
-          <span className="block text-[12px] text-slate-400 dark:text-slate-500 truncate">
+          <span className="block caps truncate mt-1">
             {label}{config.queryParam ? ` · ${config.queryParam}` : ""}
           </span>
         </span>
       </span>
 
-      <span className="text-right tabular-nums">
+      <span className="text-right">
         {isLoading ? (
-          <span className="inline-block w-8 h-4 rounded bg-slate-100 dark:bg-slate-800 animate-pulse" />
+          <span className="inline-block w-10 h-3 bg-paper-3 animate-pulse" />
         ) : broken ? (
-          <span className="text-xs text-slate-400 dark:text-slate-500">unreadable</span>
+          <span className="caps">unreadable</span>
         ) : (
           <>
-            <span className={`text-lg font-bold ${tone.figure}`}>{verdict.value}</span>
+            <span className={`figure text-[1.5rem] ${tone.figure}`}>{verdict.value}</span>
             {verdict.denominator !== null && (
-              <span className="text-[12px] text-slate-400 dark:text-slate-500">/{verdict.denominator}</span>
+              <span className="figure text-[0.9rem] text-ink-4">/{verdict.denominator}</span>
             )}
           </>
         )}
       </span>
 
-      {/* Both hidden on narrow screens rather than wrapped: a share bar folded
+      {/* Both hidden on narrow screens rather than wrapped: a share rule folded
           onto its own line reads as a second finding. */}
       <span className="hidden sm:block min-w-0">
         {!isLoading && !broken && (
           pct === null ? (
-            <span className="text-[12px] text-slate-400 dark:text-slate-500 truncate block">{verdict.caption}</span>
+            <span className="caps truncate block">{verdict.caption}</span>
           ) : (
-            <span className="flex items-center gap-2">
-              <span className="h-1.5 flex-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                <span className={`block h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+            <span className="flex items-center gap-3">
+              <span className="h-[3px] flex-1 bg-rule overflow-hidden">
+                <span className={`block h-full ${tone.bar}`} style={{ width: `${Math.max(pct, 2)}%` }} />
               </span>
-              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums w-9 text-right">{pct}%</span>
+              <span className="figure text-[0.8125rem] text-ink-2 w-9 text-right">{pct}%</span>
             </span>
           )
         )}
       </span>
 
-      <span className="hidden sm:flex justify-end text-slate-300 dark:text-slate-600">
-        <i className="ph-bold ph-caret-right text-sm"></i>
-      </span>
+      <span className="hidden sm:flex justify-end caps text-ink-4">Open</span>
     </button>
   );
 }
@@ -980,17 +966,17 @@ export function CheckCard({
     const pctDone = error.total > 0 ? Math.round((error.covered / error.total) * 100) : 0;
     return (
       <article style={enter(index)}
-        className="group rounded-2xl border border-slate-200/80 dark:border-white/[0.09] bg-white dark:bg-[#151a23] overflow-hidden h-full">
+        className="group rounded-2xl border border-slate-200/80 dark:border-ink/[0.09] bg-white dark:bg-paper overflow-hidden h-full">
         <div className="px-5 pt-5 pb-4 flex items-start gap-4">
-          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-gh-blue/10 border border-gh-blue/20">
-            <i className="ph ph-circle-notch text-[26px] text-gh-blue animate-spin"></i>
+          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-ink/10 border border-gh-blue/20">
+            <i className="ph ph-circle-notch text-[1.625rem] text-gh-blue animate-spin"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <p className={`${TYPE.label} text-gh-blue mb-1.5`}>Building coverage</p>
-            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">
+            <h3 className="display text-[1.1875rem] text-ink line-clamp-2">
               {config.title}
             </h3>
-            <p className="text-[13px] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-[0.8125rem] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
               {error.covered} of {error.total} checked
             </p>
           </div>
@@ -998,13 +984,13 @@ export function CheckCard({
         {/* A bar, because "75 of 250" and "230 of 250" are the same sentence at
             a glance and completely different amounts of waiting. */}
         <div className="px-5">
-          <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-hidden">
-            <div className="h-full rounded-full bg-gh-blue transition-[width] duration-700"
+          <div className="h-1.5 rounded-full bg-slate-100 dark:bg-ink/[0.07] overflow-hidden">
+            <div className="h-full  bg-ink transition-[width] duration-700"
               style={{ width: `${Math.max(2, pctDone)}%` }} />
           </div>
         </div>
         <div className="px-5 py-4">
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          <p className="text-[0.8125rem] text-slate-500 dark:text-slate-400 leading-relaxed">
             This check reads one account or repository at a time against a GitHub limit measured
             per minute, so it covers them in batches. It updates on its own.
           </p>
@@ -1012,12 +998,12 @@ export function CheckCard({
             <button
               onClick={e => { e.stopPropagation(); refreshNow.mutate(batchedId!); }}
               disabled={refreshNow.isPending}
-              className="mt-3 text-[12.5px] font-bold text-gh-blue hover:underline disabled:opacity-50">
+              className="textlink caps mt-3">
               {refreshNow.isPending ? "Checking…" : "Check the rest now"}
             </button>
           )}
           {refreshNow.data && (
-            <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
+            <p className="mt-2 text-[0.75rem] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
           )}
         </div>
       </article>
@@ -1026,29 +1012,27 @@ export function CheckCard({
 
   if (error) {
     return (
-      <article style={enter(index)}
-        className="group rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-white dark:bg-[#151a23] overflow-hidden h-full">
-        <div className="bg-gradient-to-br from-amber-500/[0.13] to-amber-500/[0.04] dark:from-amber-500/[0.20] dark:to-amber-500/[0.06] px-5 pt-5 pb-4 flex items-start gap-4">
-          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/25">
-            <i className="ph-fill ph-warning text-[26px] text-amber-600 dark:[color:#ffc14d]"></i>
+      <article style={enter(index)} className="border border-rule bg-paper h-full">
+        <span className="block h-[3px] w-full bg-ochre" aria-hidden="true" />
+        <div className="px-5 pt-5 pb-4 flex items-start gap-4">
+          <div className="w-[68px] h-[68px] shrink-0 flex items-center justify-center border border-ochre-edge bg-ochre-wash">
+            <i className="ph-fill ph-warning text-[1.5rem] text-ochre"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
-            <p className={`${TYPE.label} text-amber-600 dark:[color:#ffc14d] mb-1.5`}>
+            <p className="caps text-ochre mb-1.5">
               {/* "Needs data" and "no longer exists" are different problems
                   with different fixes, and the card is where that is decided. */}
               {/recrawl/i.test(error.message) ? "Needs a recrawl" : "Not running"}
             </p>
-            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">{config.title}</h3>
+            <h3 className="display text-[1.125rem] text-ink leading-snug line-clamp-2">{config.title}</h3>
           </div>
         </div>
-        <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">{error.message}</p>
+        <div className="px-5 py-4 border-t border-rule">
+          <p className="standfirst text-[0.8125rem]">{error.message}</p>
           {canEdit && !/recrawl/i.test(error.message) && (
-            <div className="flex gap-2 mt-3">
-              <button onClick={e => { e.stopPropagation(); onEdit(); }}
-                className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200 hover:underline">Edit check</button>
-              <button onClick={e => { e.stopPropagation(); onRemove(); }}
-                className="text-[12.5px] font-bold text-rose-600 dark:text-rose-400 hover:underline">Remove</button>
+            <div className="flex gap-5 mt-3">
+              <button onClick={e => { e.stopPropagation(); onEdit(); }} className="textlink caps">Edit check</button>
+              <button onClick={e => { e.stopPropagation(); onRemove(); }} className="textlink caps hover:!text-crimson">Remove</button>
             </div>
           )}
         </div>
@@ -1058,12 +1042,12 @@ export function CheckCard({
 
   if (isLoading) {
     return (
-      <div className={`${SURFACE.card} p-6 h-full min-h-[268px]`} style={enter(index)}>
+      <div className="border border-rule bg-paper p-5 h-full min-h-[268px]" style={enter(index)}>
         <div className="flex items-center gap-4">
-          <div className="w-[68px] h-[68px] rounded-full bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
-          <div className="flex-1 space-y-2">
-            <div className="h-3 w-20 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
-            <div className="h-4 w-32 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+          <div className="w-[68px] h-[68px] border border-rule animate-pulse" />
+          <div className="flex-1 space-y-2.5">
+            <div className="h-2.5 w-20 bg-paper-3 animate-pulse" />
+            <div className="h-4 w-32 bg-paper-3 animate-pulse" />
           </div>
         </div>
       </div>
@@ -1077,68 +1061,63 @@ export function CheckCard({
       tabIndex={0}
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={enter(index)}
-      className={`group cursor-pointer rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
-        h-full flex flex-col
-        transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5
-        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30`}
+      className={`group cursor-pointer border ${tone.edge} bg-paper h-full flex flex-col
+        transition-colors duration-150 hover:bg-ink/[0.035] focus-visible:outline-none`}
     >
-      {/* Header: the wash lives here rather than over the whole card, so the
-          names below stay on a plain surface and remain readable. */}
-      <div className={`${tone.wash} px-5 pt-5 pb-4`}>
+      {/* The state's ink as a rule across the head, rather than a wash over the
+          whole card: the names below stay on the page's own stock and remain
+          readable, and the state is still the first thing seen. */}
+      <span className={`block h-[3px] w-full ${tone.bar}`} aria-hidden="true" />
+
+      <div className="px-5 pt-5 pb-4">
         <div className="flex items-start gap-4">
           {pct === null ? (
-            // Nothing to take a share of, a check about people or teams has no
-            // repository count behind it, so a ring reading " " was a chart of
-            // nothing. A marked disc says what kind of thing was counted
-            // instead, and keeps the header the same height either way.
+            // Nothing to take a share of — a check about people or teams has no
+            // repository count behind it, so an arc reading " " was a chart of
+            // nothing. A marked square says what kind of thing was counted
+            // instead, and keeps the head the same height either way.
             <Emblem kind={entity} tone={tone} />
           ) : (
             <Ring share={verdict.share ?? 0} tone={tone}>{`${pct}%`}</Ring>
           )}
 
-          <div className="flex-1 min-w-0 pt-1">
-            <p className={`${TYPE.label} ${tone.figure} mb-1.5 truncate`}>
+          <div className="flex-1 min-w-0 pt-0.5">
+            <p className={`caps ${tone.figure} mb-1.5 truncate`}>
               {/* Two of these can sit side by side counting different
                   severities, and the title alone will not say which. */}
               {config.type === "preset" && config.presetId === "vuln-repos"
                 ? describeSeverities(parseSeverities(config.queryParam))
                 : verdict.eyebrow}
             </p>
-            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">
+            <h3 className="display text-[1.1875rem] text-ink leading-snug line-clamp-2">
               {config.title}
             </h3>
           </div>
 
           {canEdit && (
-            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 hover:opacity-100 transition-opacity">
-              <button onClick={e => { e.stopPropagation(); onEdit(); }} title="Edit"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
-                <i className="ph-bold ph-pencil-simple text-[13px]"></i>
-              </button>
-              <button onClick={e => { e.stopPropagation(); onRemove(); }} title="Remove"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
-                <i className="ph-bold ph-trash text-[13px]"></i>
-              </button>
+            <div className="flex items-baseline gap-4 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <button onClick={e => { e.stopPropagation(); onEdit(); }} className="textlink caps">Edit</button>
+              <button onClick={e => { e.stopPropagation(); onRemove(); }} className="textlink caps hover:!text-crimson">Remove</button>
             </div>
           )}
         </div>
 
-        <div className="mt-4">
-          <p className="flex items-baseline gap-2">
-            <span className={`text-[32px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
-            <span className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="mt-5 pt-4 border-t border-rule">
+          <p className="flex items-baseline gap-2.5">
+            <span className={`figure text-[2.75rem] ${tone.figure}`}>{n}</span>
+            <span className="caps">
               {verdict.share === null && verdict.value > 0
                 ? nounFor(entity, verdict.value)
                 : verdict.caption}
             </span>
           </p>
           {verdict.share !== null && (
-            <div className="mt-3 h-1.5 rounded-full bg-slate-900/[0.07] dark:bg-white/[0.08] overflow-hidden">
+            <div className="mt-3 h-[3px] bg-rule overflow-hidden">
               <div
-                className={`h-full rounded-full origin-left ${tone.bar}`}
+                className={`h-full origin-left ${tone.bar}`}
                 style={{
                   transform: `scaleX(${drawn ? Math.max(verdict.share, verdict.value > 0 ? 0.012 : 0) : 0})`,
-                  transition: "transform 700ms cubic-bezier(0.16,1,0.3,1)",
+                  transition: "transform 700ms cubic-bezier(0.22,1,0.36,1)",
                 }}
               />
             </div>
@@ -1146,53 +1125,48 @@ export function CheckCard({
         </div>
       </div>
 
-      {/* Names. Two-line cells, so what is affected is on the card rather than
-          one click away. */}
-      {/* `flex-1`: a card showing one name and a card showing three end up the
+      {/* Names. A count sizes a problem; a name locates it, so what is affected
+          is on the card rather than one click away.
+
+          `flex-1`: a card showing one name and a card showing three end up the
           same height, and the difference reads as space under the list rather
           than as a ragged grid. */}
-      <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06] flex-1">
+      <div className="px-5 py-4 border-t border-rule flex-1">
         {preview.length === 0 ? (
-          <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1.5">
+          <p className="standfirst text-[0.8125rem] py-1">
             {graphEmpty ? "No graph data. Sync to populate." : "Nothing to show."}
           </p>
         ) : (
-          <ul className="space-y-1.5">
+          <ul>
             {preview.map((item: any, k: number) => (
-              <li key={k} className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="font-mono text-slate-700 dark:text-slate-200 truncate">{nameOf(item)}</span>
-                <span className="text-slate-400 dark:text-slate-500 shrink-0 truncate max-w-[45%]"
+              <li key={k} className="flex items-baseline justify-between gap-3 py-1.5 border-b border-rule last:border-0">
+                <span className="font-mono text-[0.7812rem] text-ink truncate">{nameOf(item)}</span>
+                <span className="text-[0.75rem] text-ink-3 shrink-0 truncate max-w-[45%]"
                   title={item.checkedAt ? `Checked ${since(item.checkedAt)}` : undefined}>
                   {detailOf(item, config)}
-                  {/* Per row, because subjects are checked at different times -
+                  {/* Per row, because subjects are checked at different times —
                       one may be twenty hours old while its neighbour is fresh,
                       and a single date on the card would hide that. */}
-                  {item.checkedAt && (
-                    <span className="ml-1.5 opacity-60">· {since(item.checkedAt)}</span>
-                  )}
+                  {item.checkedAt && <span className="ml-1.5 text-ink-4">· {since(item.checkedAt)}</span>}
                 </span>
               </li>
             ))}
           </ul>
         )}
 
-        <button
-          onClick={onOpen}
-          className={`mt-3 -mb-1 w-full flex items-center justify-between text-[12.5px] font-bold ${tone.figure} hover:opacity-80 transition-opacity`}
-        >
-          <span>{hidden > 0 ? `${hidden} more` : "Open"}</span>
-          <i className="ph-bold ph-arrow-right text-[11px]"></i>
+        <button onClick={onOpen} className={`textlink caps mt-4 ${tone.figure}`}>
+          {hidden > 0 ? `${hidden} more →` : "Open →"}
         </button>
 
         {/* When this was established, for the checks whose answers are stored
             rather than derived on the spot. A finding with no date on it is a
-            claim the reader cannot weigh, "this repository bypasses its rules"
+            claim the reader cannot weigh: "this repository bypasses its rules"
             means something different four minutes old than twenty hours old.
             The oldest is shown, not the newest, because the oldest is the one
             that decides how much the whole card can be trusted. */}
         {batchedQuery && freshness?.batched && freshness.oldestAt && (
-          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-2">
-            <span className="text-[12px] text-slate-400 dark:text-slate-500">
+          <div className="mt-4 pt-3 border-t border-rule flex items-baseline justify-between gap-3">
+            <span className="caps">
               Oldest check {since(freshness.oldestAt)}
               {freshness.checked > 0 && ` · ${freshness.checked} stored`}
             </span>
@@ -1200,14 +1174,14 @@ export function CheckCard({
               <button
                 onClick={e => { e.stopPropagation(); refreshNow.mutate(batchedId!); }}
                 disabled={refreshNow.isPending}
-                className="text-[12px] font-bold text-gh-blue hover:underline disabled:opacity-50 shrink-0">
+                className="textlink caps shrink-0">
                 {refreshNow.isPending ? "Re-checking…" : "Re-check all"}
               </button>
             )}
           </div>
         )}
         {batchedQuery && refreshNow.data && (
-          <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
+          <p className="standfirst text-[0.75rem] mt-2">{refreshNow.data.message}</p>
         )}
       </div>
 
@@ -1464,7 +1438,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
           {cols.customised && (
             <button
               onClick={cols.resetAll}
-              className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+              className="textlink caps shrink-0 transition-colors"
             >
               <i className="ph-bold ph-arrows-in-line-horizontal mr-1.5"></i>Reset columns
             </button>
@@ -1498,7 +1472,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
             <col key={c.id} style={i === columns.length - 1 ? undefined : { width: cols.widths[c.id] ?? c.width }} />
           ))}
         </colgroup>
-        <thead className="bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
+        <thead className="caps bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
           <tr>
             {columns.map((c, i) => (
               <th
@@ -1522,13 +1496,13 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
+        <tbody className="divide-y divide-slate-100 dark:divide-rule text-sm">
           {table.visible.map((item: any, idx: number) => {
             const name = item.repo || item.user || item.team || "Unknown";
             return (
               <tr
                 key={idx}
-                className={`group hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer ${idx % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''}`}
+                className={`group hover:bg-slate-50 dark:hover:bg-paper-2 transition-colors cursor-pointer ${idx % 2 === 1 ? 'bg-slate-50/50 dark:bg-paper-2/50' : ''}`}
                 onClick={() => setSelectedItem(item)}
               >
                 <td className="px-6 py-4 font-mono text-slate-400 dark:text-slate-500 text-xs">{String((table.page - 1) * 50 + idx + 1).padStart(3, "0")}</td>
@@ -1551,11 +1525,11 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 {config.type === "preset" && config.presetId === "vuln-repos" && (
                   <>
                     <td className="px-6 py-4 text-center">
-                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${
+                      <span className={`inline-flex px-2.5 py-0.5  text-xs font-bold uppercase tracking-wide ${
                         item.worst === "critical" ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
                         : item.worst === "high" ? "bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400"
                         : item.worst === "medium" || item.worst === "moderate" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"}`}>
+                        : "bg-slate-100 text-slate-600 dark:bg-paper-2 dark:text-slate-400"}`}>
                         {item.worst}
                       </span>
                     </td>
@@ -1588,7 +1562,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                         title={`Open #${item.number} on GitHub`}
                         className="inline-flex items-center gap-1 text-xs font-semibold text-gh-blue hover:underline"
                       >
-                        Open <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                        Open <i className="fa-solid fa-arrow-up-right-from-square text-[0.5625rem]"></i>
                       </a>
                     </td>
                   </>
@@ -1607,7 +1581,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
 
                 {config.type === "query" && columns.some(c => c.id === "visibility") && (
                   <td className="px-6 py-4 text-center">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5  text-xs font-medium border ${
                       item.visibility === "public"
                         ? "bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border-rose-200 dark:border-red-800"
                         : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"}`}>
@@ -1620,11 +1594,11 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 {config.type === "query" && hasStatus && (
                   <td className="px-6 py-4 text-center">
                     {item.status === "pass" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5  text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                         <i className="fas fa-check-circle"></i> Pass
                       </span>
                     ) : item.status === "fail" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5  text-xs font-medium bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800">
                         <i className="fas fa-times-circle"></i> Fail
                       </span>
                     ) : null}
@@ -1638,7 +1612,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                         {/* The kind, always. Without it a team slug and a
                             username look identical, and "who owns this" gets a
                             different answer depending on which you assumed. */}
-                        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        <span className="ml-1.5 text-[0.6875rem] text-slate-400 dark:text-slate-500">
                           {item.ownerKind === "team" ? "team"
                             : item.ownerKind === "admin" ? "admin"
                             : item.ownerKind === "unlinked-committer" ? "top committer \u00b7 no account"
@@ -1700,10 +1674,10 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
   // someone adds a transform higher up later.
   return createPortal((
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0 rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+      <div className="absolute inset-0 bg-slate-900/40  animate-fade-in" onClick={onClose}></div>
+      <div className="bg-white dark:bg-paper rounded-2xl shadow-xl border border-slate-200 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between bg-white dark:bg-paper shrink-0 rounded-t-2xl">
+          <h3 className="display text-[1.1875rem] text-ink flex items-center gap-2">
             <i className="ph-fill ph-info text-blue-600 dark:text-blue-400"></i>
             {name}
           </h3>
@@ -1713,21 +1687,21 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                 href={githubLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                className="stamp stamp-hollow"
               >
                 <i className="ph-fill ph-github-logo text-sm"></i>
                 View in GitHub
               </a>
             )}
-            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink hover:bg-slate-100 dark:hover:bg-paper-2 transition-colors">
               <i className="ph ph-x text-lg"></i>
             </button>
           </div>
         </div>
-        <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex-1 rounded-b-2xl">
+        <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-paper flex-1 rounded-b-2xl">
           <div className="flex flex-col gap-4">
             {item.status && (
-              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex flex-col border-b border-slate-100 dark:border-rule pb-3">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Status</span>
                 <div>
                   {item.status === "pass" ? (
@@ -1739,7 +1713,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
               </div>
             )}
             {item.status === "fail" && item.reason && (
-              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex flex-col border-b border-slate-100 dark:border-rule pb-3">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Failure Details</span>
                 <div className="space-y-2">
                   {item.reason.split(" | ").map((part: string, idx: number) => {
@@ -1748,7 +1722,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
                       <div key={idx} className="bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[0.625rem]"></i>{branchName}</span>}
                         <p className="text-sm text-rose-700 dark:text-red-400">{detail}</p>
                       </div>
                     );
@@ -1757,7 +1731,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
               </div>
             )}
             {item.status === "pass" && item.reason && (
-              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+              <div className="flex flex-col border-b border-slate-100 dark:border-rule pb-3">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Branch Details</span>
                 <div className="space-y-2">
                   {item.reason.split(" | ").map((part: string, idx: number) => {
@@ -1766,7 +1740,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
                       <div key={idx} className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[0.625rem]"></i>{branchName}</span>}
                         <p className="text-sm text-emerald-700 dark:text-emerald-400">{detail}</p>
                       </div>
                     );
@@ -1775,17 +1749,17 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
               </div>
             )}
             {Object.entries(item).filter(([k]) => !["repo", "user", "team", "status", "reason"].includes(k)).map(([k, v], i) => (
-              <div key={i} className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3 last:border-0 last:pb-0">
+              <div key={i} className="flex flex-col border-b border-slate-100 dark:border-rule pb-3 last:border-0 last:pb-0">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">{k}</span>
-                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto whitespace-pre-wrap font-mono">
+                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-paper p-3 rounded-lg border border-slate-200 dark:border-rule overflow-x-auto whitespace-pre-wrap font-mono">
                   {typeof v === "object" ? JSON.stringify(v, null, 2) : String(v)}
                 </pre>
               </div>
             ))}
             {!item.status && Object.entries(item).filter(([k]) => ["reason"].includes(k)).map(([k, v], i) => (
-              <div key={`r-${i}`} className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3 last:border-0 last:pb-0">
+              <div key={`r-${i}`} className="flex flex-col border-b border-slate-100 dark:border-rule pb-3 last:border-0 last:pb-0">
                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">{k}</span>
-                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto whitespace-pre-wrap font-mono">
+                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-paper p-3 rounded-lg border border-slate-200 dark:border-rule overflow-x-auto whitespace-pre-wrap font-mono">
                   {String(v)}
                 </pre>
               </div>
@@ -1902,46 +1876,49 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
-          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white"><i className="ph ph-x text-lg"></i></button>
+      <div className="absolute inset-0 bg-ink/45 animate-fade-in" onClick={onClose}></div>
+      <div className="bg-paper border border-ink w-full max-w-xl relative z-10 animate-slide-up flex flex-col max-h-[88vh]">
+        <span className="block h-[3px] w-full bg-ink shrink-0" aria-hidden="true" />
+        <div className="px-7 py-5 border-b border-rule flex items-baseline justify-between gap-4 shrink-0">
+          <h3 className="display text-[1.375rem] text-ink">
+            {isEditing ? "Edit check" : "Add a check"}
+          </h3>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="px-7 py-6 space-y-7 overflow-y-auto">
           <div>
-            <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Widget Title</label>
+            <label className="caps block mb-1">Widget Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="field-line text-[0.8438rem] w-full"
               placeholder="e.g. My Custom Metric"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Data Source</label>
+            <label className="caps block mb-1">Data Source</label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as WidgetType)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+              className="field-line text-[0.8438rem] w-full"
             >
               <option value="preset">Built-in Ranking Presets</option>
               <option value="query">Security Insight Query</option>
             </select>
           </div>
 
-          <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg space-y-4">
+          <div className="p-4 bg-slate-50 dark:bg-paper border border-slate-200 dark:border-rule rounded-lg space-y-4">
             {type === "preset" ? (
               <div>
-                <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Select Preset</label>
+                <label className="caps block mb-1">Select Preset</label>
                 <select
                   value={presetId}
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+                  className="field-line text-[0.8438rem] w-full"
                 >
                   {presetOptions(initialData?.presetId).map(id => (
                     <option key={id} value={id}>{PRESET_LABELS[id] ?? id}</option>
@@ -1951,11 +1928,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                 {presetId === "vuln-repos" && (
                   <div className="mt-4">
                     <div className="flex items-baseline justify-between gap-3 mb-2">
-                      <label className="block text-sm font-semibold text-slate-900 dark:text-white">Count which severities</label>
+                      <label className="caps block">Count which severities</label>
                       <button
                         type="button"
                         onClick={() => setSeverities(picked.length === SEVERITIES.length ? ["critical"] : [...SEVERITIES])}
-                        className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                        className="textlink caps !text-indigo"
                       >
                         {picked.length === SEVERITIES.length ? "Critical only" : "Select all"}
                       </button>
@@ -1975,8 +1952,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                             )}
                             className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm font-semibold capitalize transition-colors ${
                               on
-                                ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                                : "border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500"}`}
+                                ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                                : "border-slate-300 dark:border-rule text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-rule"}`}
                           >
                             <i className={`ph-bold ${on ? "ph-check-square" : "ph-square"} text-base`}></i>
                             {sev}
@@ -1996,11 +1973,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Select Insight Query</label>
+                  <label className="caps block mb-1">Select Insight Query</label>
                   <select
                     value={selectedQueryId}
                     onChange={(e) => handleQuerySelect(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+                    className="field-line text-[0.8438rem] w-full"
                   >
                     {QUERY_OPTIONS.map(q => (
                       <option key={q.id} value={q.id}>{q.label}</option>
@@ -2010,7 +1987,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
                 {selectedQuery?.requiresParam && (
                   <div>
-                    <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">{selectedQuery.paramLabel}</label>
+                    <label className="caps block mb-1">{selectedQuery.paramLabel}</label>
                     {selectedQuery.useTagInput ? (
                       <>
                         <TagInput
@@ -2039,7 +2016,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         type="text"
                         value={paramValue}
                         onChange={(e) => setParamValue(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+                        className="field-line text-[0.8438rem] w-full"
                         required
                       />
                     )}
@@ -2047,16 +2024,16 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                 )}
 
                 {selectedQuery?.hasAdvancedRules && (
-                  <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Branch Rule Configuration</label>
+                  <div className="pt-3 border-t border-slate-200 dark:border-rule space-y-3">
+                    <label className="caps block">Branch Rule Configuration</label>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 dark:text-white mb-1">Protection Type</label>
+                        <label className="caps block mb-1">Protection Type</label>
                         <select
                           value={protectionType}
                           onChange={(e) => setProtectionType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="classic">Must use Classic Protection</option>
@@ -2064,11 +2041,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 dark:text-white mb-1">Rule Matching Mode</label>
+                        <label className="caps block mb-1">Rule Matching Mode</label>
                         <select
                           value={ruleMatchType}
                           onChange={(e) => setRuleMatchType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -2078,8 +2055,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                     </div>
 
                     {ruleMatchType !== "any" && (
-                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
-                        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Required Rules</h4>
+                      <div className="bg-white dark:bg-paper border border-slate-200 dark:border-rule rounded-lg p-3">
+                        <h4 className="caps mb-2">Required Rules</h4>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
                           <label className="flex items-center gap-2">
                             <input type="checkbox" checked={requirePr} onChange={e => setRequirePr(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
@@ -2092,7 +2069,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                                 type="number" min={1} max={5}
                                 value={minApprovals}
                                 onChange={(e) => setMinApprovals(parseInt(e.target.value))}
-                                className="w-16 rounded-md border-slate-300 dark:border-slate-600 py-1 px-2 text-xs ring-1 ring-inset ring-slate-300 dark:ring-slate-600 outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
+                                className="field-line text-[0.8438rem]"
                               />
                             </div>
                           )}
@@ -2115,8 +2092,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         </div>
 
                         <details className="group/det mt-3">
-                          <summary className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100 dark:border-slate-700">
-                            <i className="ph-bold ph-caret-right text-[10px] group-open/det:rotate-90 transition-transform"></i>
+                          <summary className="text-[0.6875rem] font-semibold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100 dark:border-rule">
+                            <i className="ph-bold ph-caret-right text-[0.625rem] group-open/det:rotate-90 transition-transform"></i>
                             Advanced Rules
                           </summary>
                           <div className="grid grid-cols-2 gap-y-2 gap-x-4 pt-3 mt-1 text-sm">
@@ -2154,12 +2131,12 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-300 transition-colors" disabled={isSaving}>
+          <div className="flex justify-end items-center gap-5 pt-5 border-t border-rule">
+            <button type="button" onClick={onClose} className="textlink caps" disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors" disabled={isSaving}>
-              {isSaving ? "Saving..." : isEditing ? "Update Widget" : "Save Widget"}
+            <button type="submit" className="stamp" disabled={isSaving}>
+              {isSaving ? "Saving…" : isEditing ? "Update check" : "Save check"}
             </button>
           </div>
         </form>

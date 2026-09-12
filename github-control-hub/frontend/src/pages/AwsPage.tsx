@@ -67,20 +67,20 @@ export default function AwsPage() {
 
   return (
     <Page user={user}>
-        <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+        <div className="flex items-end justify-between gap-6 mb-7 flex-wrap pb-3 border-b-2 border-ink">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">AWS Guardrails</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Checked when resources are created, every 10 minutes, and on demand.
+            <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">AWS Guardrails</h1>
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[58ch]">
+              Checked when resources are created, every ten minutes, and on demand.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-5 shrink-0 flex-wrap">
             <RefreshButton
               busy={rulesFetching || findingsFetching}
               onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions(), refetchAccounts()])}
             />
             <Button onClick={() => setView({ k: "exclusions" })}>
-              Exclusions <span className="text-slate-400 font-mono ml-1">{exclusions?.length ?? 0}</span>
+              Exclusions <span className="font-mono ml-1.5">{exclusions?.length ?? 0}</span>
             </Button>
             {isAdmin && <Button onClick={() => setEditing("new")}>New rule</Button>}
             {isAdmin && (
@@ -256,7 +256,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
               <div className="flex items-center gap-6">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className={`${TYPE.heading} ${r.enabled ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
+                    <h3 className={`${TYPE.heading} ${r.enabled ? "text-slate-900 dark:text-ink" : "text-slate-400 dark:text-slate-500"}`}>
                       {r.name}
                     </h3>
                     {r.mode === "enforce" && <Pill intent="info">auto-fix</Pill>}
@@ -265,7 +265,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
                   </div>
                   <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{entry?.summary ?? r.kind}</p>
                   {excluded > 0 && (
-                    <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1.5">{excluded} excluded by a list</p>
+                    <p className="text-[0.75rem] text-slate-400 dark:text-slate-500 mt-1.5">{excluded} excluded by a list</p>
                   )}
                 </div>
 
@@ -381,10 +381,10 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           subtitle={entry?.summary}
           aside={
             <div>
-              <p className="text-[44px] font-black text-white leading-none tabular-nums">
+              <p className={`figure text-[2.75rem] ${INTENT[intent].figure}`}>
                 {failing.length > 0 ? failing.length : checked}
               </p>
-              <p className={`${TYPE.label} text-white/70 mt-1.5`}>
+              <p className="caps mt-2">
                 {failing.length > 0 ? "failing" : checked > 0 ? "passing" : "not checked"}
               </p>
             </div>
@@ -392,24 +392,24 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
         />
 
         {isAdmin && (
-          <div className="px-7 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center gap-5 bg-slate-50/70 dark:bg-slate-800/40 flex-wrap">
+          <div className="px-6 py-3 border-b border-rule flex items-baseline gap-6 bg-paper-2 flex-wrap">
             <button onClick={onRun} disabled={running}
-              className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70 disabled:opacity-40">
+              className="textlink caps">
               {running ? "Running…" : "Run now"}
             </button>
-            <button onClick={onEdit} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
-            <button onClick={onToggleEnabled} className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
+            <button onClick={onEdit} className="textlink caps !text-indigo">Edit</button>
+            <button onClick={onToggleEnabled} className="textlink caps">
               {rule.enabled ? "Pause" : "Resume"}
             </button>
             {/* In the row with the other actions rather than floating below the
                 findings. Guardrail results were reachable only by looking at
                 them; an alarm is how drift reaches somebody who is not. */}
             <button onClick={() => setAlarmFor(rule.id)}
-              className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
+              className="textlink caps">
               Add alarm
             </button>
             <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings go too.`)) onDelete(); }}
-              className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70 ml-auto">Delete</button>
+              className="textlink caps !text-crimson ml-auto">Delete</button>
           </div>
         )}
 
@@ -434,7 +434,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           title={`Resources, ${failing.length} failing of ${checked} checked${excluded ? `, ${excluded} excluded` : ""}`}
           action={rest.length > 0 && (
             <button onClick={() => setShowPassing(v => !v)}
-              className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              className="textlink caps !text-indigo">
               {showPassing ? "Hide passing" : `View ${rest.length} passing`}
             </button>
           )}>
@@ -483,25 +483,25 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                       <Pill intent={fi}>{label}</Pill>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
+                          <p className="font-mono text-[0.8438rem] font-bold text-slate-900 dark:text-ink break-all">{f.resourceId}</p>
                           {/* The region, not the account: there is only one
                               account now, but a finding's region still tells you
                               where to go and look. */}
                           {f.region && (
-                            <span className="shrink-0 text-[11.5px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            <span className="caps shrink-0">
                               {f.region}
                             </span>
                           )}
                         </div>
-                        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5">
                           {f.summary}
                           {f.proposedFix && !f.remediated && !f.excluded && (
                             <span className="text-slate-400 dark:text-slate-500">. Would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
                           )}
                         </p>
-                        {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
+                        {f.error && <p className="text-[0.7812rem] text-rose-500 mt-0.5">{f.error}</p>}
                         {fixNote?.id === f.resourceId && (
-                          <p className={`text-[12.5px] mt-0.5 ${fixNote.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-500"}`}>
+                          <p className={`text-[0.7812rem] mt-0.5 ${fixNote.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-500"}`}>
                             {fixNote.text}
                           </p>
                         )}
@@ -519,18 +519,18 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                           title={rule?.mode === "enforce"
                             ? "Fix it now, rather than waiting for the next sweep"
                             : "Fix this one resource. The rule keeps reporting, so a change back is reported rather than corrected."}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                          className="stamp stamp-hollow shrink-0"
                         >
                           {fixing === f.resourceId
-                            ? <><i className="ph-bold ph-circle-notch animate-spin text-[11px]"></i>Fixing</>
-                            : <><i className="ph-bold ph-wrench text-[11px]"></i>Fix</>}
+                            ? <><i className="ph-bold ph-circle-notch animate-spin text-[0.6875rem]"></i>Fixing</>
+                            : <><i className="ph-bold ph-wrench text-[0.6875rem]"></i>Fix</>}
                         </button>
                       )}
                       {href && (
                         <a href={href} target="_blank" rel="noreferrer"
                           title={consoleLinkLabel(f.resourceType)}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
-                          AWS<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+                          className="stamp stamp-hollow shrink-0">
+                          AWS<i className="ph-bold ph-arrow-square-out text-[0.6875rem]"></i>
                         </a>
                       )}
                     </div>
@@ -565,9 +565,9 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 py-2 border-b border-slate-50 dark:border-slate-800/60">
-      <dt className="text-[14px] text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="text-[14px] font-semibold text-slate-800 dark:text-slate-200 text-right">{children}</dd>
+    <div className="flex items-baseline justify-between gap-6 py-2 border-b border-slate-50 dark:border-rule/60">
+      <dt className="text-[0.875rem] text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="text-[0.875rem] font-semibold text-slate-800 dark:text-slate-200 text-right">{children}</dd>
     </div>
   );
 }
@@ -625,7 +625,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
     }
   };
 
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const input = "field-line text-[0.8438rem]";
 
   return (
     <Modal title={rule ? "Edit guardrail" : "New guardrail"} onClose={onClose} onSubmit={submit} error={error}>
@@ -633,7 +633,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
         <select className={input} value={kind} onChange={e => onKindChange(e.target.value)} disabled={!!rule}>
           {catalog.map(c => <option key={c.kind} value={c.kind}>{label(c.kind)}</option>)}
         </select>
-        {rule && <p className="text-[11px] text-slate-400 mt-1">Rule type can't be changed after creation, delete and recreate instead.</p>}
+        {rule && <p className="text-[0.6875rem] text-slate-400 mt-1">Rule type can't be changed after creation, delete and recreate instead.</p>}
       </Field>
 
       <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
@@ -651,10 +651,10 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
             <button key={m} type="button"
               onClick={() => !(m === "enforce" && enforceBlocked) && setMode(m)}
               disabled={m === "enforce" && enforceBlocked}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
+              className={`caps px-3 py-1.5 border transition-colors ${
                 mode === m
-                  ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                  ? "bg-ink text-reverse border-ink"
+                  : "bg-paper border-rule hover:border-ink hover:text-ink"
               } ${m === "enforce" && enforceBlocked ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               {m === "enforce" && enforceBlocked && <i className="ph-fill ph-lock-simple mr-1"></i>}
@@ -671,7 +671,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
       }>
         <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
-            disabled={!entry?.triggerEvents.length} className="rounded border-slate-300 dark:border-slate-600" />
+            disabled={!entry?.triggerEvents.length} className="rounded border-slate-300 dark:border-rule" />
           Enabled
         </label>
       </Field>
@@ -699,7 +699,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
               <label key={l.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
                 <input type="checkbox" checked={selected.includes(l.id)}
                   onChange={e => setSelected(s => e.target.checked ? [...s, l.id] : s.filter(x => x !== l.id))}
-                  className="rounded border-slate-300 dark:border-slate-600" />
+                  className="rounded border-slate-300 dark:border-rule" />
                 {l.name}
               </label>
             ))}
@@ -717,7 +717,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
     return (
       <label className="flex items-start gap-2.5 cursor-pointer">
         <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)}
-          className="mt-0.5 rounded border-slate-300 dark:border-slate-600" />
+          className="mt-0.5 rounded border-slate-300 dark:border-rule" />
         <span className="text-sm text-slate-700 dark:text-slate-300">
           {spec.label}
           {spec.help && <span className="block text-xs text-slate-400 dark:text-slate-500">{spec.help}</span>}
@@ -725,7 +725,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
       </label>
     );
   }
-  const field = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const field = "field-line text-[0.8438rem]";
   return (
     <label className="block">
       <span className="block text-sm text-slate-700 dark:text-slate-300 mb-1.5">{spec.label}</span>
@@ -757,9 +757,9 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">{label}</label>
+      <label className="caps block mb-1">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
+      {hint && <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -768,23 +768,24 @@ function Modal({ title, onClose, onSubmit, error, children }: {
   title: string; onClose: () => void; onSubmit: () => void; error: string | null; children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45  p-4" onClick={onClose}>
+      <div className="bg-paper border border-ink w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900">
-          <h3 className="font-bold text-slate-900 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><i className="ph-bold ph-x"></i></button>
+        <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+        <div className="px-6 py-4 border-b border-rule flex items-baseline justify-between gap-4 sticky top-0 bg-paper">
+          <h3 className="display text-[1.25rem] text-ink">{title}</h3>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
         <div className="p-5">
           {children}
           {error && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300">
+            <div className="mb-4 pl-3 pr-3 py-2 border-l-2 border-crimson bg-crimson-wash text-[0.7812rem] text-crimson">
               {error}
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">Cancel</button>
-            <button onClick={onSubmit} className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold hover:opacity-90">Save</button>
+            <button onClick={onClose} className="textlink caps">Cancel</button>
+            <button onClick={onSubmit} className="stamp">Save</button>
           </div>
         </div>
       </div>
@@ -819,18 +820,18 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-3 mb-1">
-        <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{label}</span>
+        <span className="text-[0.75rem] font-bold text-slate-600 dark:text-slate-300">{label}</span>
         <button
           onClick={() => {
             navigator.clipboard.writeText(value);
             setCopied(true);
             setTimeout(() => setCopied(false), 1600);
           }}
-          className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:opacity-70 shrink-0">
+          className="textlink caps !text-indigo shrink-0">
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div className={`px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-[12px] break-all ${mono ? "font-mono" : ""} text-slate-700 dark:text-slate-200`}>
+      <div className={`px-3 py-2 bg-paper-2 border border-rule text-[0.75rem] break-all ${mono ? "font-mono" : ""} text-ink`}>
         {value}
       </div>
     </div>
@@ -843,8 +844,8 @@ function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[
     <dl className="grid gap-2">
       {rows.map(([label, value], i) => (
         <div key={i} className="grid sm:grid-cols-[170px_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-          <dt className="text-[12.5px] font-bold text-slate-500 dark:text-slate-400">{label}</dt>
-          <dd className="text-[12.5px] text-slate-600 dark:text-slate-300">{value}</dd>
+          <dt className="text-[0.7812rem] font-bold text-slate-500 dark:text-slate-400">{label}</dt>
+          <dd className="text-[0.7812rem] text-slate-600 dark:text-slate-300">{value}</dd>
         </div>
       ))}
     </dl>
@@ -854,12 +855,12 @@ function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 mb-5">
-      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[12px] font-black grid place-items-center mt-0.5">
+      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-[0.75rem] font-semibold grid place-items-center mt-0.5">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-bold text-slate-900 dark:text-white mb-1.5">{title}</p>
-        <div className="text-[13px] text-slate-600 dark:text-slate-300">{children}</div>
+        <p className="text-[0.8438rem] font-bold text-slate-900 dark:text-ink mb-1.5">{title}</p>
+        <div className="text-[0.8125rem] text-slate-600 dark:text-slate-300">{children}</div>
       </div>
     </div>
   );
@@ -922,41 +923,41 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
               <RailCard key={l.id} intent="neutral" index={i}>
                 <div className="flex items-start justify-between gap-5 flex-wrap">
                   <div className="min-w-0 flex-1">
-                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{l.name}</h3>
+                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>{l.name}</h3>
                     {l.description && (
                       <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{l.description}</p>
                     )}
                     <ul className="mt-3 grid gap-1.5">
                       {(l.patterns ?? []).map(p => (
-                        <li key={p.id} className="text-[13px] text-slate-600 dark:text-slate-300">
+                        <li key={p.id} className="text-[0.8125rem] text-slate-600 dark:text-slate-300">
                           <span className="text-slate-400 dark:text-slate-500">Skip anything whose </span>
                           {describeRule(p.type as MatchType, p.value)}
                         </li>
                       ))}
                       {(l.resources ?? []).map(r => (
-                        <li key={r} className="text-[13px] text-slate-600 dark:text-slate-300">
+                        <li key={r} className="text-[0.8125rem] text-slate-600 dark:text-slate-300">
                           <span className="text-slate-400 dark:text-slate-500">Skip exactly </span>
                           <span className="font-mono font-semibold">{r}</span>
                         </li>
                       ))}
                       {(l.whitelist ?? []).map(w => (
-                        <li key={w} className="text-[13px] text-emerald-700 dark:text-emerald-400">
+                        <li key={w} className="text-[0.8125rem] text-emerald-700 dark:text-emerald-400">
                           <span className="opacity-70">But always check </span>
                           <span className="font-mono font-semibold">{w}</span>
                         </li>
                       ))}
                     </ul>
                     {rules + named + kept === 0 && (
-                      <p className="text-[13px] text-amber-600 dark:text-amber-400 mt-2">
+                      <p className="text-[0.8125rem] text-amber-600 dark:text-amber-400 mt-2">
                         This list is empty, so it excludes nothing.
                       </p>
                     )}
                   </div>
                   <div className="flex gap-4 shrink-0">
                     <button onClick={() => setEditing(l)}
-                      className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
+                      className="textlink caps !text-indigo">Edit</button>
                     <button onClick={() => { if (confirm(`Delete "${l.name}"? Rules using it will start checking those resources again.`)) remove.mutate(l.id); }}
-                      className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70">Delete</button>
+                      className="textlink caps !text-crimson">Delete</button>
                   </div>
                 </div>
               </RailCard>
@@ -1095,7 +1096,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
                           <i className="ph-bold ph-trash"></i>
                         </button>
                       </div>
-                      <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+                      <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
                         {kind.help} <span className="text-slate-400 dark:text-slate-500">e.g. {kind.example}</span>
                       </p>
                     </div>
@@ -1113,7 +1114,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               placeholder="my-bucket-name, press Enter"
               intent="neutral"
             />
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
               Skip these specific resources, whatever the rules above say.
             </p>
           </Block>
@@ -1126,7 +1127,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               placeholder="prod-logs, press Enter"
               intent="good"
             />
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
               These win over everything above, use one when a rule casts too wide a net and you want a
               single resource pulled back in.
             </p>
@@ -1135,7 +1136,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
           <div className="px-7 py-5 flex items-center gap-3 flex-wrap">
             <Button variant="primary" onClick={submit}>{list ? "Save list" : "Create list"}</Button>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            {error && <span className="text-[13px] font-semibold text-rose-600 dark:text-rose-400">{error}</span>}
+            {error && <span className="text-[0.8125rem] font-semibold text-rose-600 dark:text-rose-400">{error}</span>}
           </div>
         </Sheet>
 
@@ -1146,8 +1147,8 @@ function ExclusionEditor({ list, onClose, onSave }: {
               title="What this skips"
               aside={
                 <div>
-                  <p className="text-[34px] font-black text-white leading-none tabular-nums">{matched.length}</p>
-                  <p className={`${TYPE.label} text-white/70 mt-1`}>of {known.length}</p>
+                  <p className="text-[2.125rem] font-semibold text-reverse leading-none tabular-nums">{matched.length}</p>
+                  <p className={`${TYPE.label} text-reverse/70 mt-1`}>of {known.length}</p>
                 </div>
               } />
             <div className="px-6 py-5">
@@ -1162,14 +1163,14 @@ function ExclusionEditor({ list, onClose, onSave }: {
               ) : (
                 <ul className="grid gap-1.5 max-h-[380px] overflow-y-auto">
                   {matched.slice(0, 100).map(id => (
-                    <li key={id} className="font-mono text-[12.5px] text-slate-600 dark:text-slate-300 truncate" title={id}>
+                    <li key={id} className="font-mono text-[0.7812rem] text-slate-600 dark:text-slate-300 truncate" title={id}>
                       {id}
                     </li>
                   ))}
                 </ul>
               )}
               {hasTagRule && (
-                <p className="text-[12.5px] text-amber-600 dark:text-amber-400 mt-3">
+                <p className="text-[0.7812rem] text-amber-600 dark:text-amber-400 mt-3">
                   Tag rules are not previewed here. Tags are read when a guardrail runs, not stored with findings.
                   They will still apply.
                 </p>
@@ -1196,10 +1197,10 @@ function TokenInput({ values, draft, setDraft, onAdd, onRemove, placeholder, int
     <div>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {values.map(v => (
-          <span key={v} className={`inline-flex items-center gap-1.5 text-[12px] font-mono font-semibold px-2.5 py-1 rounded-lg ${INTENT[intent].soft} ${INTENT[intent].text}`}>
+          <span key={v} className={`inline-flex items-center gap-1.5 text-[0.75rem] font-mono font-semibold px-2.5 py-1 rounded-lg ${INTENT[intent].soft} ${INTENT[intent].text}`}>
             {v}
             <button onClick={() => onRemove(v)} className="opacity-50 hover:opacity-100" title="Remove">
-              <i className="ph-bold ph-x text-[10px]"></i>
+              <i className="ph-bold ph-x text-[0.625rem]"></i>
             </button>
           </span>
         ))}

@@ -2,201 +2,1451 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Native controls have to be told which scheme they are in.
- *
- * A <select> is styled by CSS, but the list it opens is drawn by the operating
- * system. Without color-scheme, Windows draws that list light while the option
- * text inherits the dark theme's near-white, white on white, and the app looks
- * like it lost its menu. macOS happens to guess right, which is why it went
- * unnoticed.
- *
- * The option rules are belt and braces: Canvas and CanvasText are system
- * colours that follow color-scheme, so they stay correct in both themes and on
- * platforms that ignore the property.
- */
-:root { color-scheme: light; }
-:root.dark { color-scheme: dark; }
+/* ============================================================================
+   FIVE THEMES, ONE APPLICATION
+   ---------------------------------------------------------------------------
+   The app is set once, in a vocabulary — masthead, headline, standfirst,
+   small-cap column head, ruled record, dateline, figure, stamp, text link,
+   ruled field — and a *theme* decides what each of those looks like. Nothing in
+   the markup knows which theme is running.
 
+   That works because three things are variables rather than literals:
+
+     colour   every Tailwind colour resolves to `rgb(var(--x))`
+     shape    every radius and shadow step resolves to `var(--r-*)` / `var(--shadow-*)`
+     type     the display, running and monospace faces are `var(--font-*)`
+
+   and because the idiom classes below are written against those variables too.
+   A theme is then a block of variables plus, where a theme genuinely differs in
+   kind rather than in degree, a short list of class overrides.
+
+   Two axes, and they are independent:
+
+     data-skin      broadsheet | control | terminal | swiss | riso
+     data-edition   light | dark
+
+   `data-edition` carries the light/dark decision for *colour*; the `.dark`
+   class is still set alongside it because several thousand lines of markup use
+   Tailwind's `dark:` variant. Both are set on <html> — and both can be set on
+   any element, which is what makes the live previews in the theme picker
+   actual running copies of each theme rather than screenshots.
+
+   THEME OVERRIDES ARE WRITTEN `:where([data-skin="x"]) .caps`, NOT
+   `[data-skin="x"] .caps`. The `:where()` holds the selector at the same
+   specificity as the bare `.caps` it is replacing, so a theme beats the base
+   idiom (it comes later in the components layer) while an inline Tailwind
+   utility still beats the theme (utilities come later still). Drop the
+   `:where()` and `className="caps text-ink"` silently stops working.
+   ========================================================================== */
+
+/* ── The contract ─────────────────────────────────────────────────────────
+   Broadsheet's values are the defaults, so a theme only declares what it
+   changes. Colours are unwrapped RGB triples so Tailwind's `/40` alpha slot
+   keeps working through the variable.
+
+   THE SELECTOR IS `[data-skin]`, NOT `[data-skin="broadsheet"]`, and that
+   matters. Custom properties inherit, so a theme that simply omits a variable
+   picks up whatever its *ancestor* last set rather than the value below. At
+   the root that is harmless — the ancestor is this block. Nested, it is not:
+   the theme picker renders each preview inside the running theme, so a Swiss
+   card sitting inside a Risograph page was inheriting Risograph's hard offset
+   shadow and advertising a Swiss that does not exist. Declaring the whole
+   contract on every skinned element, ahead of the theme blocks, means each one
+   starts from the same floor wherever it is mounted. */
+
+:root,
+[data-skin] {
+  /* stock and ink */
+  --paper:   247 244 237;
+  --paper-2: 240 236 226;
+  --paper-3: 231 226 213;
+  --paper-4: 216 209 195;
+  --ink:   34 30 26;
+  --ink-2: 92 84 74;
+  --ink-3: 139 130 118;
+  --ink-4: 175 166 153;
+  --rule:        222 216 203;
+  --rule-strong: 189 181 165;
+
+  /* the four inks that carry meaning */
+  --crimson-wash: 245 232 229;  --crimson-edge: 223 194 187;
+  --crimson:      158  39  42;  --crimson-deep: 124  30  33;
+  --ochre-wash:   246 239 222;  --ochre-edge:   225 209 172;
+  --ochre:        148  96  20;  --ochre-deep:   116  75  15;
+  --forest-wash:  229 239 231;  --forest-edge:  190 214 196;
+  --forest:        44  94  63;  --forest-deep:   32  72  51;
+  --indigo-wash:  231 234 243;  --indigo-edge:  194 201 222;
+  --indigo:        45  62 122;  --indigo-deep:   35  48  95;
+
+  /* faces */
+  --font-display: "Iowan Old Style", Charter, "Hoefler Text", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-ui: "Avenir Next", Seravek, Optima, "Gill Sans", Inter, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* shape */
+  --r-sm: 0; --r: 0; --r-md: 0; --r-lg: 0; --r-xl: 0; --r-2xl: 0; --r-3xl: 0;
+  --shadow-sm: none; --shadow: none; --shadow-md: none;
+  --shadow-lg: none; --shadow-xl: none;
+  --shadow-press: 3px 3px 0 0 rgb(var(--rule-strong));
+
+  /* ── structure ──────────────────────────────────────────────────────
+     The four levers that decide whether two themes read as two designs or
+     as one design in two outfits. Surface treatment — colour, radius,
+     shadow, typeface — turns out not to be enough on its own.
+
+     `--root-size` is the strongest of them. Tailwind's spacing scale is in
+     rem and so is every type size in this app, so one number here moves
+     every padding, gap, rule offset and letter in the build together. A
+     theme at 13.5px and a theme at 17.5px are not the same product. */
+  --root-size: 16px;
+  /** How wide the sheet is allowed to get, and what runs down its side. */
+  --page-max: 86.25rem;
+  --page-pad: 2rem;
+  /** Where navigation lives. Set by the theme register, read by <Page>. */
+  --rail-w: 0rem;
+  /** Alternating row tint, for themes that rank a table by stripe. */
+  --row-zebra: transparent;
+
+  /* running text */
+  --body-size: 0.9375rem;
+  --body-line: 1.5;
+  --body-weight: 400;
+  --page-image: none;
+
+  /* headlines and figures */
+  --display-weight: 400;
+  --display-tracking: 0.005em;
+  --display-transform: none;
+  --display-style: normal;
+  --figure-family: var(--font-display);
+  --figure-weight: 400;
+  --figure-tracking: -0.02em;
+
+  /* small capitals */
+  --caps-family: var(--font-ui);
+  --caps-size: 0.6875rem;
+  --caps-weight: 600;
+  --caps-tracking: 0.14em;
+  --caps-transform: uppercase;
+
+  /* the italic line under a headline */
+  --standfirst-family: var(--font-display);
+  --standfirst-style: italic;
+  --standfirst-weight: 400;
+
+  /* the default action */
+  --link-size: 0.8125rem;
+  --link-weight: 500;
+  --link-transform: none;
+  --link-tracking: 0;
+  --link-decoration: underline;
+  --link-thickness: 1px;
+  --link-offset: 0.28em;
+
+  /* the one filled control */
+  --stamp-radius: 0;
+  --stamp-pad-y: 0.5rem;
+  --stamp-pad-x: 0.95rem;
+  --stamp-size: 0.6875rem;
+  --stamp-weight: 700;
+  --stamp-tracking: 0.14em;
+  --stamp-transform: uppercase;
+  --stamp-border-w: 1px;
+  --stamp-shadow: none;
+  --stamp-press: none;
+
+  /* a field */
+  --field-radius: 0;
+  --field-pad-y: 0.35rem;
+  --field-pad-x: 0;
+  --field-border: 0 0 1px 0;
+  --field-bg: transparent;
+
+  /* rules and boxes */
+  --rule-w: 1px;
+  --rule-heavy-w: 2px;
+  --rule-heavy-color: rgb(var(--ink));
+  --card-radius: 0;
+  --card-border-w: 1px;
+  --card-shadow: none;
+
+  --focus: rgb(var(--crimson));
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --measure: 78ch;
+  color-scheme: light;
+}
+
+[data-skin="broadsheet"][data-edition="dark"] {
+  --paper:   20 18 16;
+  --paper-2: 28 25 22;
+  --paper-3: 39 35 30;
+  --paper-4: 54 48 41;
+  --ink:   237 231 220;
+  --ink-2: 176 167 154;
+  --ink-3: 128 119 107;
+  --ink-4:  98  90  80;
+  --rule:        52 47 40;
+  --rule-strong: 78 71 61;
+  --crimson-wash: 43 26 24;  --crimson-edge: 80 47 42;
+  --crimson:     226 122 116; --crimson-deep: 226 122 116;
+  --ochre-wash:   42 34 23;  --ochre-edge:   78 62 38;
+  --ochre:       217 171  97; --ochre-deep:  217 171  97;
+  --forest-wash:  24 36 32;  --forest-edge:  44 65 57;
+  --forest:      126 176 139; --forest-deep: 126 176 139;
+  --indigo-wash:  26 29 42;  --indigo-edge:  47 53 80;
+  --indigo:      147 169 214; --indigo-deep: 147 169 214;
+  color-scheme: dark;
+}
+
+/* ── CONTROL ──────────────────────────────────────────────────────────────
+   The design this app wore before: a modern console. Rounded cards on a cool
+   blue-grey ground, real shadows, Inter set heavy and tight, and saturated
+   status colour. Kept as a theme rather than deleted, because it is a
+   perfectly good way to read a dashboard and some people prefer it. */
+
+[data-skin="control"] {
+  --paper:   246 247 250;
+  --paper-2: 255 255 255;
+  --paper-3: 237 241 247;
+  --paper-4: 226 232 240;
+  --ink:    15  23  42;
+  --ink-2:  71  85 105;
+  --ink-3: 100 116 139;
+  --ink-4: 148 163 184;
+  --rule:        226 232 240;
+  --rule-strong: 203 213 225;
+
+  --crimson-wash: 255 241 242;  --crimson-edge: 254 205 211;
+  --crimson:      225  29  72;  --crimson-deep: 159  18  57;
+  --ochre-wash:   255 251 235;  --ochre-edge:   253 230 138;
+  --ochre:        217 119   6;  --ochre-deep:   146  64  14;
+  --forest-wash:  236 253 245;  --forest-edge:  167 243 208;
+  --forest:         5 150 105;  --forest-deep:    6  95  70;
+  --indigo-wash:  239 246 255;  --indigo-edge:  191 219 254;
+  --indigo:        37  99 235;  --indigo-deep:   30  58 138;
+
+  --font-display: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --r-sm: 0.25rem; --r: 0.375rem; --r-md: 0.5rem;
+  --r-lg: 0.625rem; --r-xl: 0.75rem; --r-2xl: 1rem; --r-3xl: 1.5rem;
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.1);
+  --shadow: 0 1px 3px rgb(15 23 42 / 0.1), 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.12), 0 4px 6px -4px rgb(15 23 42 / 0.08);
+  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.14), 0 8px 10px -6px rgb(15 23 42 / 0.08);
+  --shadow-press: var(--shadow-md);
+
+  --display-weight: 800;
+  --display-tracking: -0.03em;
+  --figure-family: var(--font-ui);
+  --figure-weight: 800;
+  --figure-tracking: -0.03em;
+
+  --caps-weight: 700;
+  --caps-tracking: 0.18em;
+
+  --standfirst-family: var(--font-ui);
+  --standfirst-style: normal;
+
+  --link-weight: 700;
+  --link-decoration: none;
+
+  --stamp-radius: var(--r-xl);
+  --stamp-pad-y: 0.625rem;
+  --stamp-pad-x: 1rem;
+  --stamp-size: 0.875rem;
+  --stamp-weight: 700;
+  --stamp-tracking: -0.01em;
+  --stamp-transform: none;
+  --stamp-border-w: 0;
+  --stamp-shadow: var(--shadow-sm);
+
+  --field-radius: var(--r-xl);
+  --field-pad-y: 0.625rem;
+  --field-pad-x: 0.875rem;
+  --field-border: 1px;
+  --field-bg: rgb(var(--paper-2));
+
+  --rule-heavy-w: 1px;
+  --rule-heavy-color: rgb(var(--rule));
+  --card-radius: var(--r-2xl);
+  --card-shadow: var(--shadow-sm);
+
+  --focus: rgb(var(--indigo));
+  color-scheme: light;
+}
+
+[data-skin="control"][data-edition="dark"] {
+  --paper:    11  14  20;
+  --paper-2:  21  26  35;
+  --paper-3:  28  34  48;
+  --paper-4:  39  47  61;
+  --ink:    248 250 252;
+  --ink-2:  203 213 225;
+  --ink-3:  148 163 184;
+  --ink-4:  100 116 139;
+  --rule:        39  47  61;
+  --rule-strong: 55  65  81;
+  --crimson-wash: 45 16 25;  --crimson-edge: 86 24 43;
+  --crimson:     251 113 133; --crimson-deep: 159 18 57;
+  --ochre-wash:   45 32 12;  --ochre-edge:   87 58 20;
+  --ochre:       251 191  36; --ochre-deep:  180 83 9;
+  --forest-wash:  10 42 33;  --forest-edge:  17 79 60;
+  --forest:       52 211 153; --forest-deep:  6 95 70;
+  --indigo-wash:  17 30 56;  --indigo-edge:  30 58 110;
+  --indigo:       96 165 250; --indigo-deep: 30 64 175;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.7);
+  color-scheme: dark;
+}
+
+/* ── TERMINAL ─────────────────────────────────────────────────────────────
+   An engineering console. One monospace does every job, the ground carries a
+   faint grid, boxes are hard 1px rules, and a single phosphor green does the
+   signalling that is not already danger or caution. Light is a drafting sheet;
+   dark is a CRT. */
+
+[data-skin="terminal"] {
+  --paper:   240 241 236;
+  --paper-2: 231 233 226;
+  --paper-3: 220 223 214;
+  --paper-4: 203 207 196;
+  --ink:    22  25  27;
+  --ink-2:  75  83  79;
+  --ink-3: 118 127 121;
+  --ink-4: 156 164 157;
+  --rule:        205 209 200;
+  --rule-strong: 168 174 164;
+
+  --crimson-wash: 250 232 229;  --crimson-edge: 226 176 167;
+  --crimson:      177  44  30;  --crimson-deep: 138  33  22;
+  --ochre-wash:   249 240 219;  --ochre-edge:   223 197 141;
+  --ochre:        150  97  10;  --ochre-deep:   117  76   8;
+  --forest-wash:  221 240 227;  --forest-edge:  160 202 175;
+  --forest:        15 110  63;  --forest-deep:   11  84  48;
+  --indigo-wash:  225 233 244;  --indigo-edge:  166 189 219;
+  --indigo:        26  78 146;  --indigo-deep:   20  60 113;
+
+  --font-display: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-ui: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* A monospace at the same measure as a proportional face reads much wider,
+     so the whole build comes down a step to compensate. */
+  --root-size: 14.5px;
+  --body-size: 0.9375rem;
+  --body-line: 1.6;
+
+  --display-weight: 500;
+  --display-tracking: -0.01em;
+  --figure-family: var(--font-mono);
+  --figure-weight: 500;
+  --figure-tracking: -0.01em;
+
+  --caps-size: 0.6875rem;
+  --caps-weight: 600;
+  --caps-tracking: 0.1em;
+
+  --standfirst-family: var(--font-mono);
+  --standfirst-style: normal;
+
+  --link-decoration: underline;
+  --link-thickness: 1px;
+  --link-offset: 0.22em;
+  --link-weight: 500;
+
+  --stamp-pad-y: 0.4rem;
+  --stamp-pad-x: 0.7rem;
+  --stamp-weight: 600;
+  --stamp-tracking: 0.1em;
+  --stamp-border-w: 1px;
+
+  --field-pad-y: 0.35rem;
+  --field-pad-x: 0.5rem;
+  --field-border: 1px;
+  --field-bg: rgb(var(--paper-2));
+
+  --rule-heavy-w: 1px;
+  --rule-heavy-color: rgb(var(--ink));
+
+  /* The grid the sheet is ruled on. 24px, and faint enough to read through. */
+  --page-image:
+    linear-gradient(to right, rgb(var(--ink) / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--ink) / 0.045) 1px, transparent 1px);
+
+  --focus: rgb(var(--forest));
+  color-scheme: light;
+}
+
+[data-skin="terminal"][data-edition="dark"] {
+  --paper:    10  13  12;
+  --paper-2:  16  21  19;
+  --paper-3:  24  31  28;
+  --paper-4:  36  46  41;
+  --ink:    200 214 205;
+  --ink-2:  138 160 148;
+  --ink-3:  100 120 110;
+  --ink-4:   74  92  84;
+  --rule:         33  43  38;
+  --rule-strong:  54  70  62;
+  --crimson-wash: 44 19 16;  --crimson-edge: 86 35 29;
+  --crimson:     255 107  94; --crimson-deep: 255 107 94;
+  --ochre-wash:   44 33 13;  --ochre-edge:   88 65 25;
+  --ochre:       255 180  84; --ochre-deep:  255 180 84;
+  --forest-wash:  12 41 26;  --forest-edge:  23 78 50;
+  --forest:       74 222 128; --forest-deep:  74 222 128;
+  --indigo-wash:  14 29 46;  --indigo-edge:  28 57 90;
+  --indigo:      108 182 255; --indigo-deep: 108 182 255;
+  --page-image:
+    linear-gradient(to right, rgb(var(--forest) / 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--forest) / 0.055) 1px, transparent 1px);
+  color-scheme: dark;
+}
+
+/* ── SWISS ────────────────────────────────────────────────────────────────
+   International style. A neue-grotesque set large and flat, a visible column
+   grid, generous white, everything hard-left, and one signal red. There are no
+   boxes: size and position do the ranking that a border would otherwise do. */
+
+[data-skin="swiss"] {
+  --paper:   255 255 255;
+  --paper-2: 244 244 244;
+  --paper-3: 232 232 232;
+  --paper-4: 214 214 214;
+  --ink:     17  17  17;
+  --ink-2:   85  85  85;
+  --ink-3:  138 138 138;
+  --ink-4:  178 178 178;
+  --rule:        222 222 222;
+  --rule-strong:  17  17  17;
+
+  --crimson-wash: 253 234 233;  --crimson-edge: 244 180 176;
+  --crimson:      226  35  26;  --crimson-deep: 179  26  19;
+  --ochre-wash:   253 242 226;  --ochre-edge:   238 198 141;
+  --ochre:        199 107   0;  --ochre-deep:   150  80   0;
+  --forest-wash:  226 242 232;  --forest-edge:  158 205 178;
+  --forest:         0 132  61;  --forest-deep:    0  99  46;
+  --indigo-wash:  226 236 249;  --indigo-edge:  156 189 230;
+  --indigo:         0  87 184;  --indigo-deep:    0  65 138;
+
+  --font-display: "Helvetica Neue", Helvetica, Inter, Arial, sans-serif;
+  --font-ui: "Helvetica Neue", Helvetica, Inter, Arial, sans-serif;
+
+  /* Swiss wants air, and the grid it is set on is wider than the others. */
+  --root-size: 16.5px;
+  --page-max: 92rem;
+  --body-size: 0.9375rem;
+  --body-line: 1.45;
+
+  --display-weight: 700;
+  --display-tracking: -0.028em;
+  --figure-family: var(--font-ui);
+  --figure-weight: 700;
+  --figure-tracking: -0.045em;
+
+  --caps-weight: 500;
+  --caps-tracking: 0.075em;
+
+  --standfirst-family: var(--font-ui);
+  --standfirst-style: normal;
+  --standfirst-weight: 400;
+
+  --link-decoration: none;
+  --link-weight: 600;
+  --link-transform: uppercase;
+  --link-tracking: 0.06em;
+  --link-size: 0.6875rem;
+
+  --stamp-pad-y: 0.6rem;
+  --stamp-pad-x: 1.15rem;
+  --stamp-weight: 600;
+  --stamp-tracking: 0.06em;
+  --stamp-border-w: 0;
+
+  --field-pad-y: 0.45rem;
+  --field-border: 0 0 1px 0;
+
+  --rule-w: 1px;
+  --rule-heavy-w: 3px;
+  --card-border-w: 0;
+
+  --focus: rgb(var(--crimson));
+  color-scheme: light;
+}
+
+[data-skin="swiss"][data-edition="dark"] {
+  --paper:    17  17  17;
+  --paper-2:  28  28  28;
+  --paper-3:  38  38  38;
+  --paper-4:  56  56  56;
+  --ink:    245 245 245;
+  --ink-2:  186 186 186;
+  --ink-3:  138 138 138;
+  --ink-4:   99  99  99;
+  --rule:         46  46  46;
+  --rule-strong: 245 245 245;
+  --crimson-wash: 48 16 14;  --crimson-edge: 94 30 26;
+  --crimson:     255  77  64; --crimson-deep: 255 77 64;
+  --ochre-wash:   45 30 10;  --ochre-edge:   92 61 20;
+  --ochre:       255 168  46; --ochre-deep:  255 168 46;
+  --forest-wash:  10 40 24;  --forest-edge:  20 78 47;
+  --forest:       46 204 113; --forest-deep:  46 204 113;
+  --indigo-wash:  10 28 50;  --indigo-edge:  21 57 100;
+  --indigo:       77 152 255; --indigo-deep:  77 152 255;
+  color-scheme: dark;
+}
+
+/* ── RISOGRAPH ────────────────────────────────────────────────────────────
+   Brutalist print. Two flat inks overprinted on newsprint, 2px black rules,
+   and shadows that are hard offsets rather than blurs — a shape that only
+   exists because the paper moved under the drum. */
+
+[data-skin="riso"] {
+  --paper:   247 244 234;
+  --paper-2: 240 235 220;
+  --paper-3: 229 222 203;
+  --paper-4: 212 203 179;
+  --ink:     17  17  17;
+  --ink-2:   66  62  55;
+  --ink-3:  120 113 100;
+  --ink-4:  158 150 134;
+  --rule:         17  17  17;
+  --rule-strong:  17  17  17;
+
+  --crimson-wash: 255 224 236;  --crimson-edge: 255 150 190;
+  --crimson:      240  18  92;  --crimson-deep: 194  12  72;
+  --ochre-wash:   255 235 209;  --ochre-edge:   255 190 120;
+  --ochre:        255 138   0;  --ochre-deep:   204 106   0;
+  --forest-wash:  213 245 227;  --forest-edge:  130 214 170;
+  --forest:         0 168  90;  --forest-deep:    0 128  68;
+  --indigo-wash:  219 229 255;  --indigo-edge:  150 175 255;
+  --indigo:        10  88 255;  --indigo-deep:    6  62 194;
+
+  --font-display: Archivo, "Archivo Black", Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-ui: Archivo, Inter, "Helvetica Neue", Arial, sans-serif;
+
+  --root-size: 16px;
+  --body-size: 0.90625rem;
+  --body-line: 1.45;
+  --body-weight: 500;
+
+  --display-weight: 800;
+  --display-tracking: -0.022em;
+  --figure-family: var(--font-ui);
+  --figure-weight: 800;
+  --figure-tracking: -0.035em;
+
+  --caps-weight: 800;
+  --caps-tracking: 0.1em;
+
+  --standfirst-family: var(--font-ui);
+  --standfirst-style: normal;
+  --standfirst-weight: 500;
+
+  --link-weight: 700;
+  --link-thickness: 2px;
+  --link-offset: 0.2em;
+
+  --stamp-pad-y: 0.5rem;
+  --stamp-pad-x: 1rem;
+  --stamp-weight: 800;
+  --stamp-tracking: 0.1em;
+  --stamp-border-w: 2px;
+  --stamp-shadow: 4px 4px 0 0 rgb(var(--ink));
+  --stamp-press: translate(2px, 2px);
+
+  --field-pad-y: 0.45rem;
+  --field-pad-x: 0.55rem;
+  --field-border: 2px;
+  --field-bg: rgb(var(--paper-2));
+
+  --rule-w: 2px;
+  --rule-heavy-w: 3px;
+  --card-border-w: 2px;
+  --card-shadow: 5px 5px 0 0 rgb(var(--ink));
+  --shadow-sm: 3px 3px 0 0 rgb(var(--ink));
+  --shadow: 4px 4px 0 0 rgb(var(--ink));
+  --shadow-md: 5px 5px 0 0 rgb(var(--ink));
+  --shadow-lg: 6px 6px 0 0 rgb(var(--ink));
+  --shadow-xl: 8px 8px 0 0 rgb(var(--ink));
+  --shadow-press: 4px 4px 0 0 rgb(var(--ink));
+
+  --focus: rgb(var(--indigo));
+  color-scheme: light;
+}
+
+[data-skin="riso"][data-edition="dark"] {
+  --paper:    21  19  15;
+  --paper-2:  31  28  22;
+  --paper-3:  44  40  31;
+  --paper-4:  63  57  44;
+  --ink:    242 237 224;
+  --ink-2:  196 188 170;
+  --ink-3:  146 138 122;
+  --ink-4:  108 101  88;
+  --rule:        242 237 224;
+  --rule-strong: 242 237 224;
+  --crimson-wash: 58 14 32;  --crimson-edge: 116 24 62;
+  --crimson:     255  74 139; --crimson-deep: 255 74 139;
+  --ochre-wash:   56 34  8;  --ochre-edge:   112 68 16;
+  --ochre:       255 166  51; --ochre-deep:  255 166 51;
+  --forest-wash:   8 48 28;  --forest-edge:  16 96 56;
+  --forest:       45 224 130; --forest-deep:  45 224 130;
+  --indigo-wash:  14 28 68;  --indigo-edge:  28 56 136;
+  --indigo:       92 146 255; --indigo-deep:  92 146 255;
+  --shadow-sm: 3px 3px 0 0 rgb(var(--ink));
+  --shadow: 4px 4px 0 0 rgb(var(--ink));
+  --shadow-md: 5px 5px 0 0 rgb(var(--ink));
+  --shadow-lg: 6px 6px 0 0 rgb(var(--ink));
+  --shadow-xl: 8px 8px 0 0 rgb(var(--ink));
+  --card-shadow: 5px 5px 0 0 rgb(var(--ink));
+  --stamp-shadow: 4px 4px 0 0 rgb(var(--ink));
+  color-scheme: dark;
+}
+
+/* ── COCKPIT ──────────────────────────────────────────────────────────────
+   An instrument, not a document. Navigation moves to a rail down the left,
+   the whole build drops to a 13.5px root — which takes every padding, gap and
+   type step with it — cards give up their boxes for single rules, and tables
+   rank by stripe. Full width, because a monitoring screen that stops at
+   1380px is throwing away the columns you opened it for. */
+
+[data-skin="cockpit"] {
+  --paper:   232 236 241;
+  --paper-2: 243 245 248;
+  --paper-3: 219 225 233;
+  --paper-4: 199 208 219;
+  --ink:     15  23  35;
+  --ink-2:   67  82 100;
+  --ink-3:  109 125 145;
+  --ink-4:  146 161 179;
+  --rule:        207 215 225;
+  --rule-strong: 176 188 202;
+
+  --crimson-wash: 253 236 236;  --crimson-edge: 240 186 186;
+  --crimson:      205  40  50;  --crimson-deep: 160  28  38;
+  --ochre-wash:   253 243 224;  --ochre-edge:   235 205 142;
+  --ochre:        176 106   8;  --ochre-deep:   138  82   6;
+  --forest-wash:  226 246 238;  --forest-edge:  150 213 190;
+  --forest:         9 132  99;  --forest-deep:    6 102  76;
+  --indigo-wash:  224 240 250;  --indigo-edge:  150 199 231;
+  --indigo:         8 112 168;  --indigo-deep:    6  86 129;
+
+  --font-display: Inter, "SF Pro Text", system-ui, -apple-system, sans-serif;
+  --font-ui: Inter, "SF Pro Text", system-ui, -apple-system, sans-serif;
+
+  --root-size: 13.5px;
+  --page-max: none;
+  --page-pad: 1.75rem;
+  --rail-w: 13.5rem;
+  --body-size: 0.9375rem;
+  --body-line: 1.45;
+  --row-zebra: rgb(var(--ink) / 0.022);
+
+  --display-weight: 650;
+  --display-tracking: -0.02em;
+  --figure-family: var(--font-ui);
+  --figure-weight: 650;
+  --figure-tracking: -0.03em;
+
+  --caps-size: 0.6875rem;
+  --caps-weight: 600;
+  --caps-tracking: 0.08em;
+
+  --standfirst-family: var(--font-ui);
+  --standfirst-style: normal;
+
+  --link-decoration: none;
+  --link-weight: 600;
+
+  --r-sm: 0.125rem; --r: 0.1875rem; --r-md: 0.25rem;
+  --r-lg: 0.25rem; --r-xl: 0.3125rem; --r-2xl: 0.375rem; --r-3xl: 0.5rem;
+
+  --stamp-radius: var(--r-md);
+  --stamp-pad-y: 0.4rem;
+  --stamp-pad-x: 0.8rem;
+  --stamp-size: 0.8125rem;
+  --stamp-weight: 600;
+  --stamp-tracking: 0;
+  --stamp-transform: none;
+  --stamp-border-w: 0;
+
+  --field-radius: var(--r-md);
+  --field-pad-y: 0.35rem;
+  --field-pad-x: 0.5rem;
+  --field-border: 1px;
+  --field-bg: rgb(var(--paper-2));
+
+  --rule-heavy-w: 1px;
+  --rule-heavy-color: rgb(var(--rule-strong));
+  --card-border-w: 0;
+
+  --focus: rgb(var(--indigo));
+  color-scheme: light;
+}
+
+[data-skin="cockpit"][data-edition="dark"] {
+  --paper:    11  15  20;
+  --paper-2:  18  24  31;
+  --paper-3:  26  34  44;
+  --paper-4:  39  50  63;
+  --ink:    226 234 243;
+  --ink-2:  159 175 192;
+  --ink-3:  118 135 154;
+  --ink-4:   86 101 118;
+  --rule:         32  42  54;
+  --rule-strong:  51  66  82;
+  --crimson-wash: 48 18 21;  --crimson-edge: 92 32 38;
+  --crimson:     255 107 117; --crimson-deep: 255 107 117;
+  --ochre-wash:   46 34 12;  --ochre-edge:   88 64 22;
+  --ochre:       247 184  75; --ochre-deep:  247 184 75;
+  --forest-wash:  10 42 34;  --forest-edge:  18 80 64;
+  --forest:       45 212 160; --forest-deep:  45 212 160;
+  --indigo-wash:  10 33 50;  --indigo-edge:  20 66 100;
+  --indigo:       84 178 247; --indigo-deep:  84 178 247;
+  --row-zebra: rgb(var(--ink) / 0.028);
+  color-scheme: dark;
+}
+
+/* ── QUIET ────────────────────────────────────────────────────────────────
+   The opposite extreme. A 17.5px root, one 52rem column, very open leading,
+   and no boxes, fills or shadows anywhere — whitespace does all the ranking a
+   border would otherwise do. The labels come out of small capitals into
+   sentence case, which changes the texture of the page more than any other
+   single decision here. */
+
+[data-skin="quiet"] {
+  --paper:   252 252 250;
+  --paper-2: 246 246 243;
+  --paper-3: 238 238 234;
+  --paper-4: 224 224 219;
+  --ink:     41  41  38;
+  --ink-2:  102 102  96;
+  --ink-3:  145 145 138;
+  --ink-4:  181 181 174;
+  --rule:        231 231 226;
+  --rule-strong: 213 213 206;
+
+  --crimson-wash: 250 240 238;  --crimson-edge: 230 199 194;
+  --crimson:      166  62  52;  --crimson-deep: 133  50  42;
+  --ochre-wash:   250 245 233;  --ochre-edge:   228 211 174;
+  --ochre:        150 111  40;  --ochre-deep:   120  89  32;
+  --forest-wash:  237 245 239;  --forest-edge:  196 216 202;
+  --forest:        63 110  80;  --forest-deep:   50  88  64;
+  --indigo-wash:  238 241 247;  --indigo-edge:  199 208 226;
+  --indigo:        70  90 138;  --indigo-deep:   56  72 110;
+
+  --font-display: "Seravek", "Avenir Next", "SF Pro Text", Inter, system-ui, sans-serif;
+  --font-ui: "Seravek", "Avenir Next", "SF Pro Text", Inter, system-ui, sans-serif;
+
+  --root-size: 17.5px;
+  --page-max: 52rem;
+  --page-pad: 2.5rem;
+  --body-size: 1rem;
+  --body-line: 1.72;
+
+  --display-weight: 500;
+  --display-tracking: -0.012em;
+  --figure-family: var(--font-ui);
+  --figure-weight: 400;
+  --figure-tracking: -0.03em;
+
+  /* Sentence case, not small capitals. Nothing else changes the feel of the
+     page as much: every column head, eyebrow and legend in the app stops
+     shouting at once. */
+  --caps-transform: none;
+  --caps-size: 0.8125rem;
+  --caps-weight: 500;
+  --caps-tracking: 0;
+
+  --standfirst-family: var(--font-ui);
+  --standfirst-style: normal;
+
+  --link-decoration: none;
+  --link-weight: 500;
+  --link-size: 0.875rem;
+
+  --r-sm: 0.25rem; --r: 0.375rem; --r-md: 0.5rem;
+  --r-lg: 0.625rem; --r-xl: 0.75rem; --r-2xl: 0.875rem; --r-3xl: 1rem;
+
+  --stamp-radius: 999px;
+  --stamp-pad-y: 0.55rem;
+  --stamp-pad-x: 1.35rem;
+  --stamp-size: 0.875rem;
+  --stamp-weight: 500;
+  --stamp-tracking: 0;
+  --stamp-transform: none;
+  --stamp-border-w: 0;
+
+  --field-radius: 0;
+  --field-pad-y: 0.5rem;
+  --field-pad-x: 0;
+  --field-border: 0 0 1px 0;
+
+  --rule-w: 1px;
+  --rule-heavy-w: 1px;
+  --rule-heavy-color: rgb(var(--rule));
+  --card-border-w: 0;
+
+  --focus: rgb(var(--indigo));
+  color-scheme: light;
+}
+
+[data-skin="quiet"][data-edition="dark"] {
+  --paper:    24  24  22;
+  --paper-2:  32  32  29;
+  --paper-3:  43  43  39;
+  --paper-4:  60  60  55;
+  --ink:    235 235 230;
+  --ink-2:  169 169 161;
+  --ink-3:  128 128 120;
+  --ink-4:   97  97  90;
+  --rule:         49  49  45;
+  --rule-strong:  70  70  64;
+  --crimson-wash: 45 27 25;  --crimson-edge: 84 50 45;
+  --crimson:     224 136 124; --crimson-deep: 224 136 124;
+  --ochre-wash:   44 36 22;  --ochre-edge:   82 68 42;
+  --ochre:       216 180 112; --ochre-deep:  216 180 112;
+  --forest-wash:  24 38 29;  --forest-edge:  45 72 55;
+  --forest:      139 184 154; --forest-deep: 139 184 154;
+  --indigo-wash:  26 30 42;  --indigo-edge:  49 57 80;
+  --indigo:      152 170 214; --indigo-deep: 152 170 214;
+  color-scheme: dark;
+}
+
+/* ── BLUEPRINT ────────────────────────────────────────────────────────────
+   A technical drawing. Cyan linework on deep navy, everything outlined,
+   labels in a monospace, a fine cyan grid under the whole sheet, and a title
+   block where the masthead was.
+
+   Dark in *both* editions, which is the point: the day edition is a lighter
+   drafting film rather than white paper. It is the one theme here that does
+   not pretend a light ground is the natural state of a screen. */
+
+[data-skin="blueprint"] {
+  --paper:    18  38  58;
+  --paper-2:  24  48  72;
+  --paper-3:  32  60  88;
+  --paper-4:  44  78 110;
+  --ink:    214 233 245;
+  --ink-2:  150 186 212;
+  --ink-3:  108 148 178;
+  --ink-4:   80 116 145;
+  --rule:         41  72 102;
+  --rule-strong:  63 104 141;
+
+  --crimson-wash: 62 29 34;  --crimson-edge: 106 50 58;
+  --crimson:     255 122 122; --crimson-deep: 255 122 122;
+  --ochre-wash:   60 48 22;  --ochre-edge:   104 84 38;
+  --ochre:       255 209 102; --ochre-deep:  255 209 102;
+  --forest-wash:  16 56 50;  --forest-edge:  28 96 84;
+  --forest:        6 214 160; --forest-deep:   6 214 160;
+  --indigo-wash:  18 52 80;  --indigo-edge:  36 94 136;
+  --indigo:       79 195 247; --indigo-deep:  79 195 247;
+
+  --font-display: "Iosevka", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-ui: "Inter", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --root-size: 14.5px;
+  --page-max: 84rem;
+  --body-size: 0.9375rem;
+  --body-line: 1.55;
+
+  --display-weight: 400;
+  --display-tracking: 0.01em;
+  --figure-family: var(--font-display);
+  --figure-weight: 400;
+  --figure-tracking: 0;
+
+  --caps-family: var(--font-mono);
+  --caps-size: 0.6875rem;
+  --caps-weight: 500;
+  --caps-tracking: 0.16em;
+
+  --standfirst-family: var(--font-mono);
+  --standfirst-style: normal;
+
+  --link-decoration: underline;
+  --link-thickness: 1px;
+  --link-offset: 0.25em;
+  --link-weight: 500;
+
+  --stamp-pad-y: 0.4rem;
+  --stamp-pad-x: 0.85rem;
+  --stamp-weight: 500;
+  --stamp-tracking: 0.16em;
+  --stamp-border-w: 1px;
+
+  --field-pad-y: 0.35rem;
+  --field-pad-x: 0.5rem;
+  --field-border: 1px;
+  --field-bg: rgb(var(--paper-2));
+
+  --rule-w: 1px;
+  --rule-heavy-w: 1px;
+  --rule-heavy-color: rgb(var(--indigo));
+
+  /* Drafting film: a fine grid, and a heavier line every fifth square. */
+  --page-image:
+    linear-gradient(to right, rgb(var(--indigo) / 0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--indigo) / 0.10) 1px, transparent 1px);
+
+  --focus: rgb(var(--indigo));
+  color-scheme: dark;
+}
+
+[data-skin="blueprint"][data-edition="dark"] {
+  --paper:     6  16  27;
+  --paper-2:  11  25  40;
+  --paper-3:  17  35  54;
+  --paper-4:  27  51  74;
+  --ink:    198 224 240;
+  --ink-2:  134 172 200;
+  --ink-3:   94 134 165;
+  --ink-4:   68 102 131;
+  --rule:         27  54  80;
+  --rule-strong:  45  82 116;
+  --page-image:
+    linear-gradient(to right, rgb(var(--indigo) / 0.13) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--indigo) / 0.13) 1px, transparent 1px);
+  color-scheme: dark;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Every rem in the app resolves against this, which is the whole point. */
+  font-size: var(--root-size);
+}
+
+body {
+  margin: 0;
+  background-color: rgb(var(--paper));
+  background-image: var(--page-image);
+  background-size: 24px 24px;
+  color: rgb(var(--ink));
+  font-family: var(--font-ui);
+  font-size: var(--body-size);
+  font-weight: var(--body-weight);
+  line-height: var(--body-line);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Kept so nothing that still targets it can reintroduce a slate ground. */
+.dark body,
+html.dark body {
+  background-color: rgb(var(--paper));
+  color: rgb(var(--ink));
+}
+
+::selection {
+  background: rgb(var(--ink) / 0.88);
+  color: rgb(var(--paper));
+}
+
+/* Native menus have to be told which edition they are in, or Windows draws a
+   light list behind near-white option text. Canvas/CanvasText follow
+   color-scheme, so they stay right on platforms that ignore the property. */
 select option,
 select optgroup {
   background-color: Canvas;
   color: CanvasText;
 }
 
-/* Custom scrollbar to match the technical aesthetic */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent; 
-}
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #d0d7de; 
-  border-radius: 4px;
+  background: rgb(var(--rule-strong));
+  border: 4px solid rgb(var(--paper));
+  border-radius: var(--r-lg);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #afb8c1; 
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--ink-3)); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* One focus ring for the whole app, in whichever ink the theme reserves. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
 }
 
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
+input, textarea, select, button { font: inherit; color: inherit; }
+input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
 
-/* Base Setup */
-body {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* ── The vocabulary ──────────────────────────────────────────────────────── */
 
-.dark body,
-html.dark body {
-  background-color: #020617;
-  color: #e2e8f0;
-}
-
-/* Animated Mesh Gradient Background */
-.mesh-gradient {
-  background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7);
-  background-size: 400% 400%;
-  animation: gradientBG 15s ease infinite;
-}
-
-/* Subtle Noise Overlay for Texture (Anti-Banding) */
-.noise-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.03;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  z-index: 10;
-}
-
-/* Entrance Animations */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+@layer components {
+  /**
+   * The label idiom. Sections, column heads, eyebrows and legends are all the
+   * same thing, and every theme agrees they are small and set apart — they
+   * disagree only about how.
+   */
+  .caps {
+    font-family: var(--caps-family);
+    font-size: var(--caps-size);
+    font-weight: var(--caps-weight);
+    letter-spacing: var(--caps-tracking);
+    text-transform: var(--caps-transform);
+    color: rgb(var(--ink-3));
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .caps-tight { font-size: calc(var(--caps-size) - 0.0625rem); letter-spacing: calc(var(--caps-tracking) - 0.02em); }
+
+  /** Display type. Headlines, standfirsts and every figure on the page. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: var(--display-weight);
+    font-style: var(--display-style);
+    letter-spacing: var(--display-tracking);
+    text-transform: var(--display-transform);
   }
+
+  /** The line under a headline. */
+  .standfirst {
+    font-family: var(--standfirst-family);
+    font-style: var(--standfirst-style);
+    font-weight: var(--standfirst-weight);
+    color: rgb(var(--ink-2));
+    line-height: 1.45;
+  }
+
+  /** A number the page exists to report. */
+  .figure {
+    font-family: var(--figure-family);
+    font-weight: var(--figure-weight);
+    font-variant-numeric: tabular-nums lining-nums;
+    /* The display serifs ship fraction ligatures, which turned "1/2 connected"
+       into a vulgar fraction. Every figure here is a count, never a fraction. */
+    font-variant-ligatures: none;
+    font-feature-settings: "frac" 0, "afrc" 0, "dlig" 0;
+    letter-spacing: var(--figure-tracking);
+    line-height: 0.9;
+  }
+
+  /**
+   * The dateline: facts separated by middots. Children are spans; the
+   * separator is drawn between them and never after the last.
+   */
+  .dateline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: rgb(var(--ink-2));
+  }
+  .dateline > * + *::before {
+    content: "·";
+    margin-right: 0.5rem;
+    color: rgb(var(--ink-4));
+  }
+
+  /** The app's default action. */
+  .textlink {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font-size: var(--link-size);
+    font-weight: var(--link-weight);
+    color: rgb(var(--ink-2));
+    text-decoration: var(--link-decoration);
+    text-decoration-thickness: var(--link-thickness);
+    text-decoration-color: rgb(var(--rule-strong));
+    text-underline-offset: var(--link-offset);
+    transition: color 160ms var(--ease), text-decoration-color 160ms var(--ease);
+  }
+  .textlink:hover { color: rgb(var(--ink)); text-decoration: underline; text-decoration-color: currentColor; }
+  .textlink[aria-pressed="true"] { color: rgb(var(--ink)); text-decoration-color: currentColor; }
+  .textlink:disabled { color: rgb(var(--ink-4)); cursor: default; text-decoration-color: transparent; }
+
+  /**
+   * The one filled control, reserved for the action a screen is for so that it
+   * stays rare enough to mean something.
+   */
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: var(--stamp-pad-y) var(--stamp-pad-x);
+    border: var(--stamp-border-w) solid rgb(var(--ink));
+    border-radius: var(--stamp-radius);
+    background: rgb(var(--ink));
+    color: rgb(var(--paper));
+    box-shadow: var(--stamp-shadow);
+    font-size: var(--stamp-size);
+    font-weight: var(--stamp-weight);
+    letter-spacing: var(--stamp-tracking);
+    text-transform: var(--stamp-transform);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 150ms var(--ease), color 150ms var(--ease),
+                box-shadow 120ms var(--ease), transform 120ms var(--ease);
+  }
+  .stamp:hover { background: transparent; color: rgb(var(--ink)); }
+  .stamp:active { transform: var(--stamp-press); }
+  .stamp:disabled { opacity: 0.35; cursor: default; background: rgb(var(--ink)); color: rgb(var(--paper)); }
+
+  /** The same stamp, unfilled. For the secondary of a pair. */
+  .stamp-hollow {
+    background: transparent;
+    color: rgb(var(--ink));
+    border-width: max(1px, var(--stamp-border-w));
+    border-color: rgb(var(--rule-strong));
+  }
+  .stamp-hollow:hover { background: rgb(var(--ink)); color: rgb(var(--paper)); border-color: rgb(var(--ink)); }
+  .stamp-hollow:disabled { background: transparent; color: rgb(var(--ink-4)); }
+
+  /** A stamp carrying a warning, a caution, a confirmation or a note. */
+  .stamp-crimson { background: rgb(var(--crimson)); border-color: rgb(var(--crimson)); color: rgb(var(--paper)); }
+  .stamp-crimson:hover { background: transparent; color: rgb(var(--crimson)); }
+  .stamp-crimson:disabled { background: rgb(var(--crimson)); color: rgb(var(--paper)); }
+
+  .stamp-ochre { background: rgb(var(--ochre)); border-color: rgb(var(--ochre)); color: rgb(var(--paper)); }
+  .stamp-ochre:hover { background: transparent; color: rgb(var(--ochre)); }
+  .stamp-ochre:disabled { background: rgb(var(--ochre)); color: rgb(var(--paper)); }
+
+  .stamp-forest { background: rgb(var(--forest)); border-color: rgb(var(--forest)); color: rgb(var(--paper)); }
+  .stamp-forest:hover { background: transparent; color: rgb(var(--forest)); }
+  .stamp-forest:disabled { background: rgb(var(--forest)); color: rgb(var(--paper)); }
+
+  .stamp-indigo { background: rgb(var(--indigo)); border-color: rgb(var(--indigo)); color: rgb(var(--paper)); }
+  .stamp-indigo:hover { background: transparent; color: rgb(var(--indigo)); }
+  .stamp-indigo:disabled { background: rgb(var(--indigo)); color: rgb(var(--paper)); }
+
+  /** A stamp at half size, for a control inside a row of records. */
+  .stamp-sm { padding: 0.3rem 0.6rem; font-size: calc(var(--stamp-size) - 0.0625rem); }
+
+  /** A field. */
+  .field-line {
+    display: block;
+    width: 100%;
+    background: var(--field-bg);
+    border: 0 solid rgb(var(--rule-strong));
+    border-width: var(--field-border);
+    border-radius: var(--field-radius);
+    padding: var(--field-pad-y) var(--field-pad-x);
+    color: rgb(var(--ink));
+    transition: border-color 180ms var(--ease);
+  }
+  .field-line:focus { outline: none; border-color: rgb(var(--ink)); }
+  .field-line:disabled { color: rgb(var(--ink-3)); border-style: dashed; }
+
+  /** A field that shares a line with others rather than owning one. */
+  .field-inline { display: inline-block; width: auto; }
+
+  /**
+   * The ground the app is printed on.
+   *
+   * The page wrapper paints its own background over the body's, so a theme
+   * whose surface is part of its identity — Terminal rules its ground into a
+   * grid — has to be able to reach it. Anything that fills the viewport uses
+   * this rather than a bare `bg-paper`.
+   */
+  .page-ground {
+    background-color: rgb(var(--paper));
+    background-image: var(--page-image);
+    background-size: 24px 24px;
+  }
+
+  /** A record: one hairline-separated row in a list of them. */
+  .record { border-bottom: var(--rule-w) solid rgb(var(--rule)); }
+  .record:last-child { border-bottom: 0; }
+
+  /** The rule that opens a section, and the lighter one that closes a row. */
+  .rule-heavy { border-top: var(--rule-heavy-w) solid var(--rule-heavy-color); }
+  .rule-hair  { border-top: var(--rule-w) solid rgb(var(--rule)); }
+
+  /**
+   * Column rules, the thing that makes a sheet read as set rather than as a
+   * stack of boxes. Collapses to stacked rules below the width that fits them.
+   */
+  .columned > * + * { border-left: var(--rule-w) solid rgb(var(--rule)); }
+  @media (max-width: 900px) {
+    .columned > * + * { border-left: 0; border-top: var(--rule-w) solid rgb(var(--rule)); }
+  }
+
+  /* ── Theme overrides ───────────────────────────────────────────────────
+     Only what a variable cannot express. Each is `:where()`-wrapped so it
+     stays at the same specificity as the base class it replaces. */
+
+  /* Control: the old console's ghost button, and a lifted stamp. */
+  :where([data-skin="control"]) .textlink:hover { text-decoration: none; }
+  :where([data-skin="control"]) .stamp:hover {
+    background: rgb(var(--ink)); color: rgb(var(--paper));
+    box-shadow: var(--shadow-md); transform: translateY(-1px);
+  }
+  :where([data-skin="control"]) .stamp-hollow {
+    background: rgb(var(--paper-2)); border-color: rgb(var(--rule));
+    box-shadow: var(--shadow-sm);
+  }
+  :where([data-skin="control"]) .stamp-hollow:hover {
+    background: rgb(var(--paper-3)); color: rgb(var(--ink));
+    border-color: rgb(var(--rule-strong));
+  }
+  :where([data-skin="control"]) .rule-heavy { border-top-width: 1px; }
+  :where([data-skin="swiss"]) .rule-heavy { border-top-width: 3px; }
+
+  /* Terminal: bracketed controls, and a caret that blinks in the phosphor. */
+  :where([data-skin="terminal"]) .stamp {
+    background: transparent;
+    color: rgb(var(--ink));
+    border-color: rgb(var(--ink));
+  }
+  :where([data-skin="terminal"]) .stamp::before { content: "["; opacity: 0.5; }
+  :where([data-skin="terminal"]) .stamp::after  { content: "]"; opacity: 0.5; }
+  :where([data-skin="terminal"]) .stamp:hover { background: rgb(var(--ink)); color: rgb(var(--paper)); }
+  :where([data-skin="terminal"]) .stamp:disabled { background: transparent; color: rgb(var(--ink-4)); }
+  :where([data-skin="terminal"]) .stamp-crimson { color: rgb(var(--crimson)); border-color: rgb(var(--crimson)); background: transparent; }
+  :where([data-skin="terminal"]) .stamp-crimson:hover { background: rgb(var(--crimson)); color: rgb(var(--paper)); }
+  :where([data-skin="terminal"]) .textlink { text-decoration-style: dotted; }
+  :where([data-skin="terminal"]) .field-line { caret-color: rgb(var(--forest)); }
+  :where([data-skin="terminal"]) .dateline > * + *::before { content: "|"; }
+
+  /* Swiss: no boxes. A rule under a record, and nothing around it. */
+  :where([data-skin="swiss"]) .textlink {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  :where([data-skin="swiss"]) .textlink:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+  :where([data-skin="swiss"]) .stamp:hover { background: rgb(var(--crimson)); color: rgb(255 255 255); }
+  :where([data-skin="swiss"]) .stamp-hollow { border-width: 1px; border-color: rgb(var(--ink)); }
+  :where([data-skin="swiss"]) .columned > * + * { border-left-color: rgb(var(--ink)); }
+  :where([data-skin="swiss"]) .dateline > * + *::before { content: "/"; }
+
+  /* Cockpit: a list, not a deck of cards. Anything that was a box keeps only
+     its lower rule, which is what turns a grid of tiles into a readout. */
+  :where([data-skin="cockpit"]) .textlink:hover { text-decoration: none; }
+  :where([data-skin="cockpit"]) .stamp:hover { background: rgb(var(--ink-2)); color: rgb(var(--paper)); }
+  :where([data-skin="cockpit"]) .stamp-hollow { background: transparent; border-color: rgb(var(--rule-strong)); }
+  :where([data-skin="cockpit"]) .record { border-bottom-color: rgb(var(--rule)); }
+
+  /* Quiet: nothing is outlined and nothing is loud. The stamp is a soft
+     lozenge in the page's own ink rather than a block stamped onto it. */
+  :where([data-skin="quiet"]) .stamp { background: rgb(var(--ink) / 0.9); }
+  :where([data-skin="quiet"]) .stamp:hover { background: rgb(var(--ink)); color: rgb(var(--paper)); }
+  :where([data-skin="quiet"]) .stamp-hollow {
+    background: transparent; color: rgb(var(--ink-2)); border-color: rgb(var(--rule-strong));
+  }
+  :where([data-skin="quiet"]) .stamp-hollow:hover { background: rgb(var(--paper-2)); color: rgb(var(--ink)); border-color: rgb(var(--rule-strong)); }
+  :where([data-skin="quiet"]) .textlink:hover { text-decoration: underline; text-decoration-color: rgb(var(--rule-strong)); }
+  :where([data-skin="quiet"]) .dateline > * + *::before { content: "\2022"; }
+
+  /* Blueprint: drawn, not printed. Controls are outlined in the drawing ink,
+     and a figure is boxed the way a dimension is called out on a drawing. */
+  :where([data-skin="blueprint"]) .stamp {
+    background: transparent; color: rgb(var(--indigo)); border-color: rgb(var(--indigo));
+  }
+  :where([data-skin="blueprint"]) .stamp:hover { background: rgb(var(--indigo)); color: rgb(var(--paper)); }
+  :where([data-skin="blueprint"]) .stamp:disabled { background: transparent; color: rgb(var(--ink-4)); }
+  :where([data-skin="blueprint"]) .stamp-hollow { color: rgb(var(--ink)); border-color: rgb(var(--rule-strong)); }
+  :where([data-skin="blueprint"]) .stamp-crimson { color: rgb(var(--crimson)); border-color: rgb(var(--crimson)); background: transparent; }
+  :where([data-skin="blueprint"]) .stamp-crimson:hover { background: rgb(var(--crimson)); color: rgb(var(--paper)); }
+  :where([data-skin="blueprint"]) .textlink { text-decoration-color: rgb(var(--indigo) / 0.55); }
+  :where([data-skin="blueprint"]) .dateline > * + *::before { content: "\2500"; }
+
+  /* Risograph: everything is overprinted, so the boxes carry the offset. */
+  :where([data-skin="riso"]) .stamp:hover {
+    background: rgb(var(--paper)); color: rgb(var(--ink));
+    box-shadow: 2px 2px 0 0 rgb(var(--ink)); transform: translate(2px, 2px);
+  }
+  :where([data-skin="riso"]) .stamp:active { box-shadow: 0 0 0 0 rgb(var(--ink)); transform: translate(4px, 4px); }
+  :where([data-skin="riso"]) .stamp-hollow { background: rgb(var(--paper)); border-color: rgb(var(--ink)); }
+  :where([data-skin="riso"]) .record { border-bottom-color: rgb(var(--ink) / 0.25); }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ── Where a theme has to reach a utility ────────────────────────────────
+   Most of the app's boxes and section rules are literal utilities in the
+   markup — `border border-rule`, `border-t-2 border-ink` — which are fixed
+   widths no variable can reach. Three themes have an identity that genuinely
+   depends on the weight or colour of exactly those lines, so each is allowed
+   to take those utilities over: deliberately, listed, and nowhere else.
+
+   Each rule names the side it changes. Setting `border-width` outright would
+   reopen all four edges of anything carrying a single-sided `border-l`, which
+   draws a box around every column rule on the page. */
+
+/* Risograph overprints, so every box is a 2px black one. */
+[data-skin="riso"] .border-rule { border-color: rgb(var(--ink)); }
+[data-skin="riso"] .border { border-width: 2px; }
+[data-skin="riso"] .border-t-2 { border-top-width: 3px; }
+[data-skin="riso"] .border-b-2 { border-bottom-width: 3px; }
+
+/* Control divides with a light hairline rather than an inked rule. */
+[data-skin="control"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--rule)); }
+[data-skin="control"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--rule)); }
+
+/* Swiss spends colour on fills and rules, never on an outline, so the tinted
+   card edges go grey and the state rule along the top is left to carry it. */
+[data-skin="swiss"] .border { border-color: rgb(var(--rule)); }
+
+/* Cockpit turns every box into its own lower rule: a deck of cards becomes a
+   readout, which is the difference between a page you browse and one you
+   monitor. */
+[data-skin="cockpit"] .border { border-width: 0 0 1px 0; border-color: rgb(var(--rule)); }
+[data-skin="cockpit"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--rule-strong)); }
+[data-skin="cockpit"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--rule-strong)); }
+
+/* Quiet has no boxes at all. Single-sided rules survive as the only division
+   on the page, and even those are the faintest line the stock will hold. */
+[data-skin="quiet"] .border { border-width: 0; }
+
+/* And Quiet is one column, which a viewport breakpoint cannot know.
+   `md:grid-cols-2` asks about the *window*; inside a 52rem measure that is the
+   wrong question, and three cards in 52rem truncated their own titles to a
+   single letter. Collapsing every column count is not a workaround here — one
+   column is the theme. The picker is exempt: it is a chooser, not a page. */
+[data-skin="quiet"] [class*="grid-cols-"]:not(.theme-grid) {
+  grid-template-columns: minmax(0, 1fr);
+}
+[data-skin="quiet"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--rule)); }
+[data-skin="quiet"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--rule)); }
+
+/* Blueprint outlines everything, in the drawing ink rather than in a grey. */
+[data-skin="blueprint"] .border-rule { border-color: rgb(var(--rule-strong)); }
+[data-skin="blueprint"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--indigo) / 0.7); }
+[data-skin="blueprint"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--indigo) / 0.7); }
+[data-skin="swiss"] .border-t-2.border-ink { border-top-width: 3px; }
+[data-skin="swiss"] .border-b-2.border-ink { border-bottom-width: 3px; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+table { border-collapse: collapse; width: 100%; }
+
+thead th {
+  font-family: var(--caps-family);
+  font-size: var(--caps-size);
+  font-weight: var(--caps-weight);
+  letter-spacing: var(--caps-tracking);
+  text-transform: var(--caps-transform);
+  color: rgb(var(--ink-3));
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: var(--rule-w) solid rgb(var(--ink) / 0.45);
+  white-space: nowrap;
 }
 
-@keyframes slideIn {
-  from { transform: translateX(16px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+tbody td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: var(--rule-w) solid rgb(var(--rule));
+  vertical-align: top;
 }
 
-/* A panel that flies in is decoration, and decoration is exactly what somebody
-   asking for reduced motion has asked not to receive. It still appears. */
-@media (prefers-reduced-motion: reduce) {
-  .drawer-panel, .drawer-scrim { animation: none !important; }
-}
+tbody tr:nth-child(even) td { background-color: var(--row-zebra); }
+tbody tr:hover td { background-color: rgb(var(--ink) / 0.028); }
 
-@keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
+.table-row-hover:hover td { background-color: rgb(var(--ink) / 0.028); }
+.dark .table-row-hover:hover td { background-color: rgb(var(--ink) / 0.05); }
+
+/* ── Legacy class names, re-pointed ─────────────────────────────────────── */
+/* Referenced from markup across the app. Each is redefined as the current
+   equivalent — or as nothing at all, where the old answer was decoration. */
+
+.mesh-gradient { background: rgb(var(--paper-2)); animation: none; }
+.noise-overlay { display: none; }
+.glass-card { background: rgb(var(--paper)); box-shadow: var(--card-shadow); border: var(--rule-w) solid rgb(var(--rule)); border-radius: var(--card-radius); }
+.github-btn-glow:hover { box-shadow: var(--shadow-md); }
+.hairline-border { border: var(--rule-w) solid rgb(var(--rule)); }
 
 .fade-in-up {
   opacity: 0;
-  transform: translateY(20px);
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform: translateY(0.5rem);
+  animation: rise 0.5s var(--ease) forwards;
 }
-
 .fade-in-delayed {
   opacity: 0;
-  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.2s;
+  animation: fadeIn 0.6s var(--ease) 0.15s forwards;
 }
 
-/* Glass / Card Refinements */
-.glass-card {
-  background: rgba(255, 255, 255, 1);
-  box-shadow: 
-      0 25px 50px -12px rgba(0, 0, 0, 0.25), 
-      0 0 0 1px rgba(255, 255, 255, 0.1); 
-}
-
-/* Button Glow Effect on Hover */
-.github-btn-glow:hover {
-  box-shadow: 0 10px 15px -3px rgba(36, 41, 47, 0.3);
-}
-
-/* Tooltip arrow */
 .tooltip-arrow::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 100%;
   left: 50%;
   margin-left: -4px;
   border-width: 4px;
   border-style: solid;
-  border-color: #24292f transparent transparent transparent;
+  border-color: rgb(var(--ink)) transparent transparent transparent;
 }
 
-/* Sub-pixel border rendering for high clarity */
-.hairline-border {
-  border: 1px solid #e1e4e8;
-}
+.toggle-checkbox:checked { right: 0; border-color: rgb(var(--ink)); }
+.toggle-checkbox:checked + .toggle-label { background-color: rgb(var(--ink)); }
 
-/* Table row hover micro-interaction */
-.table-row-hover:hover td {
-  background-color: #f3f4f6;
-}
-.dark .table-row-hover:hover td {
-  background-color: #1e293b;
-}
+body.modal-open { overflow: hidden; }
 
-/* Toggle Switch Logic */
-.toggle-checkbox:checked {
-  right: 0;
-  border-color: #0969da;
-}
-.toggle-checkbox:checked + .toggle-label {
-  background-color: #0969da;
-}
-
-/* Hide Scrollbar when modal open */
-body.modal-open {
-  overflow: hidden;
-}
-
-/* Compliance gauge */
+/**
+ * The compliance dial.
+ *
+ * A conic sweep drawn as a thin arc on the page's own stock: the unfilled
+ * remainder is the rule colour and the centre is the ground, so it reads as an
+ * engraving rather than a widget — in every theme, because both come from
+ * variables.
+ */
 .gauge-ring {
   position: relative;
   border-radius: 50%;
-  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #f1f5f9 0);
-  transition: background 0.8s ease-out;
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), rgb(var(--rule)) 0);
+  transition: background 0.8s var(--ease);
 }
 .gauge-ring::before {
-  content: '';
+  content: "";
   position: absolute;
-  inset: 5px;
-  background: white;
+  inset: 6px;
+  background: rgb(var(--paper));
   border-radius: 50%;
 }
-.gauge-ring-lg::before { inset: 10px; }
+.gauge-ring-lg::before { inset: 11px; }
+.dark .gauge-ring::before { background: rgb(var(--paper)); }
+.dark .gauge-ring { background: conic-gradient(var(--gauge-color) var(--gauge-pct), rgb(var(--rule)) 0); }
 
-.dark .gauge-ring::before {
-  background: #0f172a;
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+/* Type settling onto the page. Nothing scales, nothing bounces, nothing loops. */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: none; }
 }
-.dark .gauge-ring {
-  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #334155 0);
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(1rem); }
+  to   { opacity: 1; transform: none; }
+}
+/* Kept under the old names so any inline `animation:` string still resolves. */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: none; } }
+@keyframes slideUp  { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: none; } }
+@keyframes gradientBG { from { opacity: 1; } to { opacity: 1; } }
+
+/**
+ * Waiting, drawn as a rule inking across rather than a spinning ring.
+ * Defined here rather than in the Tailwind config because it is referenced
+ * from an inline `animation:` string, which the utility layer never sees.
+ */
+@keyframes ruleRun {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .drawer-panel, .drawer-scrim { animation: none !important; }
+}
+
+/* ── Print ──────────────────────────────────────────────────────────────── */
+@media print {
+  :root { --paper: 255 255 255; --paper-2: 255 255 255; --page-image: none; }
+  nav, .no-print { display: none !important; }
+  body { font-size: 11pt; }
 }

@@ -499,53 +499,50 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
 
   return (
     <div>
-      <div className="pb-3 flex items-center gap-2 flex-wrap">
-        {([["all", `All ${repos.length}`], ["off", `Not watched ${counts.off}`],
-           ["watched", `Watched ${counts.watched}`]] as const).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setFilter(id as Filter)}
-            aria-pressed={filter === id}
-            className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors ${
-              filter === id
-                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
-            {label}
-          </button>
-        ))}
+      <div className="pb-3 flex items-end gap-6 flex-wrap">
+        <div className="inline-flex items-stretch border-b border-rule-strong">
+          {([["all", `All ${repos.length}`], ["off", `Not watched ${counts.off}`],
+             ["watched", `Watched ${counts.watched}`]] as const).map(([id, label], i) => (
+            <button key={id} type="button" onClick={() => setFilter(id as Filter)}
+              aria-pressed={filter === id}
+              className={`caps px-3 py-1.5 -mb-px border-b-2 transition-colors ${
+                i > 0 ? "border-l border-l-rule" : ""} ${
+                filter === id ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Filter by name" className={`${SURFACE.input} max-w-[220px] ml-auto`} />
+          placeholder="Filter by name" className={`${SURFACE.input} max-w-[14rem] ml-auto`} />
       </div>
 
-      <div className="pb-2 flex items-center gap-2 flex-wrap border-b border-slate-200/70 dark:border-white/[0.07]">
-        <label className="inline-flex items-center gap-2 text-[12.5px] font-semibold
-                          text-slate-600 dark:text-slate-300 cursor-pointer">
+      <div className="pb-2 pt-1 flex items-center gap-4 flex-wrap border-b border-rule">
+        <label className="caps inline-flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown}
-            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600" />
+            className="w-4 h-4 rounded border-slate-300 dark:border-rule" />
           Select all {shown.length === repos.length ? "" : `${shown.length} shown`}
         </label>
-        <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-500">
-          {selected.size} selected
-        </span>
+        <span className="caps tabular-nums">{selected.size} selected</span>
         {selected.size > 0 && (
           <button type="button" onClick={() => setSelected(new Set())}
-            className="text-[12px] font-semibold text-slate-400 hover:text-slate-700
-                       dark:hover:text-slate-200 transition-colors">
+            className="textlink caps transition-colors">
             Clear
           </button>
         )}
       </div>
 
-      <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-white/[0.06]">
+      <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-ink/[0.06]">
         {shown.length === 0 ? (
-          <p className="py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
+          <p className="py-6 text-[0.7812rem] text-slate-400 dark:text-slate-500">
             Nothing matches.
           </p>
         ) : shown.map(r => (
           <label key={r.repo}
             className="flex items-center gap-3 px-2 -mx-2 rounded-lg py-2.5 cursor-pointer
-                       hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+                       hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors">
             <input type="checkbox" checked={selected.has(r.repo)} onChange={() => toggle(r.repo)}
-              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 shrink-0" />
-            <span className="text-[13px] font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
+              className="w-4 h-4 rounded border-slate-300 dark:border-rule shrink-0" />
+            <span className="text-[0.8125rem] font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
               {r.repo}
             </span>
             {/* Said before the button is pressed, not after it fails. GitHub
@@ -554,26 +551,26 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                 permission problem, which sent people looking for one. */}
             {r.archived && (
               <span title="GitHub refuses settings changes on an archived repository. Unarchive it to change this."
-                className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                           bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+                className="text-[0.6562rem] font-bold px-1.5 py-0.5 rounded shrink-0
+                           bg-slate-200/70 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">
                 archived
               </span>
             )}
             {r.off ? (
-              <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                               bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+              <span className="text-[0.6562rem] font-bold px-1.5 py-0.5 rounded shrink-0
+                               bg-slate-200/70 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">
                 not watched
               </span>
             ) : r.findings > 0 ? (
-              <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0 tabular-nums ${
+              <span className={`text-[0.6562rem] font-bold px-1.5 py-0.5 rounded shrink-0 tabular-nums ${
                 r.worst === "critical"
-                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-                  : "bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
+                  ? "bg-crimson-wash text-crimson border border-crimson-edge"
+                  : "bg-ochre-wash text-ochre border border-ochre-edge"}`}>
                 {r.findings} open
               </span>
             ) : (
-              <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                               bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+              <span className="text-[0.6562rem] font-bold px-1.5 py-0.5 rounded shrink-0
+                               bg-forest-wash text-forest border border-forest-edge">
                 clear
               </span>
             )}
@@ -581,7 +578,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         ))}
       </div>
 
-      <div className="pt-4 mt-1 grid gap-2.5 border-t border-slate-200/70 dark:border-white/[0.07]">
+      <div className="pt-4 mt-1 grid gap-2.5 border-t border-slate-200/70 dark:border-ink/[0.07]">
         <div className="flex flex-wrap gap-2">
           {ACTIONS.map(a => (
             <Button key={a.id}
@@ -606,16 +603,16 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         {/* The second kind of action, kept visually apart from the switches
             above, because this one writes a file into the repository and that
             is not something to press by accident. */}
-        <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-white/[0.06]">
-          <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">
+        <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-ink/[0.06]">
+          <p className="text-[0.75rem] font-bold text-slate-700 dark:text-slate-200">
             Findings with patches and no pull requests
           </p>
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1">
+          <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1">
             Where the switch is already on and nothing has arrived, GitHub never
             scheduled the work, and no API asks it to try again. Turning on
             grouped security updates is the one thing GitHub documents as
             immediately retrying every open alert that has a patch. That needs a
-            <span className="font-mono text-[11px]"> .github/dependabot.yml</span>,
+            <span className="font-mono text-[0.6875rem]"> .github/dependabot.yml</span>,
             built here from each repository's own alerts. Fixes arrive grouped
             into one pull request per ecosystem and manifest rather than one per
             alert. Repositories that already have that file are left alone.
@@ -623,7 +620,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           {/* The obvious wrong conclusion from everything above: that the file
               replaces the switches. GitHub lists them as prerequisites for it,
               not alternatives to it. */}
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1.5">
+          <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1.5">
             This does not replace the two switches. Dependabot alerts and security
             updates both still have to be on: the file decides how fixes are
             grouped, the switches decide whether there are any.
@@ -657,7 +654,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               {running === "retrigger" ? "Re-triggering…" : "Re-trigger fixes"}
             </Button>
           </div>
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-2">
+          <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-2">
             Try this one first: it writes nothing and needs no approval. Security
             updates go briefly off and back on, which asks GitHub to look at the
             backlog again. GitHub does not document this as a re-trigger, so it
@@ -667,7 +664,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             before you pressed anything.
           </p>
 
-          <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-300 mt-3.5">
+          <p className="text-[0.7188rem] font-bold text-slate-600 dark:text-slate-300 mt-3.5">
             If that changes nothing, write the config instead
           </p>
           <div className="flex flex-wrap gap-2 mt-2">
@@ -680,7 +677,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                 body: (
                   <p>
                     Opens one pull request per repository adding
-                    <span className="font-mono text-[12px]"> .github/dependabot.yml</span>, on
+                    <span className="font-mono text-[0.75rem]"> .github/dependabot.yml</span>, on
                     {" "}{plural(selected.size)}. Each still needs review and merge before any fix
                     arrives. Repositories that already have the file are left alone.
                   </p>
@@ -698,7 +695,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                 body: (
                   <>
                     <p>
-                      Commits <span className="font-mono text-[12px]">.github/dependabot.yml</span>
+                      Commits <span className="font-mono text-[0.75rem]">.github/dependabot.yml</span>
                       {" "}straight to the default branch of {plural(selected.size)}.
                     </p>
                     <p className="mt-2">
@@ -713,7 +710,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             </Button>
           </div>
           {rollingOut && (
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 mt-2">
               Four or five writes per repository, paced so GitHub does not refuse
               the burst. This takes a while.
             </p>
@@ -727,7 +724,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               {rollout.opened > 0 && (
                 <ul className="mt-1.5 grid gap-0.5">
                   {rollout.results.filter(r => r.url).slice(0, 10).map(r => (
-                    <li key={r.repo} className="text-[11.5px]">
+                    <li key={r.repo} className="text-[0.7188rem]">
                       <a href={r.url} target="_blank" rel="noreferrer"
                         className="font-mono underline underline-offset-2">{r.repo}</a>
                     </li>
@@ -737,7 +734,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               {rollout.failed > 0 && (
                 <ul className="mt-1.5 grid gap-0.5">
                   {rollout.results.filter(r => r.outcome === "failed").slice(0, 8).map(r => (
-                    <li key={r.repo} className="text-[11.5px]">
+                    <li key={r.repo} className="text-[0.7188rem]">
                       <span className="font-mono">{r.repo}</span>: {r.detail}
                     </li>
                   ))}
@@ -747,7 +744,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                   not a success, and it is the outcome somebody would otherwise
                   walk away from believing. */}
               {rollout.results.some(r => r.warning) && (
-                <p className="text-[11.5px] mt-2">
+                <p className="text-[0.7188rem] mt-2">
                   {rollout.results.filter(r => r.warning).length} of these have security
                   updates switched off, so the file will produce nothing there until it is
                   on. Select them above and press <strong>Auto-fix PRs</strong> first.
@@ -760,14 +757,14 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         {/* Said before it is pressed, not after. Somebody expecting a pull
             request per vulnerability should know GitHub raises them on its own
             schedule rather than while they watch. */}
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 leading-relaxed max-w-[80ch]">
+        <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 leading-relaxed max-w-[80ch]">
           {ACTIONS.find(a => a.id === (running ?? "fixes-on"))?.hint}
           {" "}GitHub opens the pull requests itself once security updates are on,
           usually within a few minutes, rather than at the moment you press this.
         </p>
 
         {running && (
-          <p className="text-[12px] text-slate-500 dark:text-slate-400">
+          <p className="text-[0.75rem] text-slate-500 dark:text-slate-400">
             Working through {selected.size} repositor{selected.size === 1 ? "y" : "ies"}, a few at
             a time. This is deliberately unhurried.
           </p>
@@ -792,14 +789,14 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             {summary.failed > 0 && (
               <ul className="mt-1.5 grid gap-0.5">
                 {summary.results.filter(r => !r.ok).slice(0, 8).map(r => (
-                  <li key={r.repo} className="text-[11.5px]">
+                  <li key={r.repo} className="text-[0.7188rem]">
                     <span className="font-mono">{r.repo}</span>: {r.error}
                   </li>
                 ))}
               </ul>
             )}
             {summary.failed > 0 && (
-              <p className="text-[11.5px] mt-1.5">
+              <p className="text-[0.7188rem] mt-1.5">
                 Those are still selected, so pressing again retries only them.
               </p>
             )}
@@ -816,12 +813,12 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         <div className="mt-2 pt-3.5 border-t border-rose-200/70 dark:border-rose-500/20">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <p className="text-[12px] font-bold text-rose-800 dark:text-rose-300">
+              <p className="text-[0.75rem] font-bold text-rose-800 dark:text-rose-300">
                 Close open Dependabot pull requests
               </p>
-              <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[70ch] mt-1">
+              <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[70ch] mt-1">
                 Closes every open Dependabot pull request on the selected repositories.
-                GitHub reads a close as <span className="font-mono text-[11px]">@dependabot close</span>,
+                GitHub reads a close as <span className="font-mono text-[0.6875rem]">@dependabot close</span>,
                 so it stops raising those fixes again until the dependency moves on.
                 Reopening is one comment per pull request, so this is not a way to
                 clear the list for now.
@@ -843,14 +840,14 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           {armed && (
             <div className="mt-2.5 rounded-xl border border-rose-300 dark:border-rose-500/40
                             bg-rose-50/70 dark:bg-rose-950/20 p-3.5">
-              <p className="text-[12.5px] font-bold text-rose-900 dark:text-rose-200">
+              <p className="text-[0.7812rem] font-bold text-rose-900 dark:text-rose-200">
                 {closeCount === null
                   ? `Close every open Dependabot pull request on ${selected.size} `
                     + `repositor${selected.size === 1 ? "y" : "ies"}?`
                   : `Close ${closeCount} open Dependabot pull request${closeCount === 1 ? "" : "s"} `
                     + `across ${selected.size} repositor${selected.size === 1 ? "y" : "ies"}?`}
               </p>
-              <p className="text-[11.5px] text-rose-800/80 dark:text-rose-300/70 leading-relaxed mt-1">
+              <p className="text-[0.7188rem] text-rose-800/80 dark:text-rose-300/70 leading-relaxed mt-1">
                 GitHub reads a close as telling Dependabot not to raise that pull request again,
                 so these fixes stop coming back on their own. Reopening is one comment per pull
                 request.
@@ -861,16 +858,13 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                   onKeyDown={e => { if (e.key === "Enter" && typed === "CLOSE") startClose(); }}
                   placeholder="Type CLOSE"
                   autoFocus
-                  className="w-36 px-2.5 py-1.5 text-[12.5px] rounded-lg bg-white dark:bg-white/[0.06]
-                             border border-rose-300 dark:border-rose-500/40
-                             text-slate-800 dark:text-slate-100 placeholder:text-slate-400
-                             focus:outline-none focus:ring-2 focus:ring-rose-500/30" />
+                  className="field-line text-[0.8438rem]" />
                 <Button variant="caution" disabled={typed !== "CLOSE" || closing}
                   onClick={startClose}>
                   {closing ? "Closing…" : "Close them"}
                 </Button>
                 <button onClick={() => { setArmed(false); setTyped(""); }}
-                  className="text-[12px] text-slate-500 dark:text-slate-400 px-2">
+                  className="text-[0.75rem] text-slate-500 dark:text-slate-400 px-2">
                   Cancel
                 </button>
               </div>
@@ -878,7 +872,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           )}
 
           {closing && (
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 mt-2">
               One at a time with a pause between, so GitHub does not refuse the burst.
             </p>
           )}
@@ -894,14 +888,14 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                 {closeResult.failed > 0 && (
                   <ul className="mt-1.5 grid gap-0.5">
                     {closeResult.failures.slice(0, 8).map(f => (
-                      <li key={`${f.repo}#${f.number}`} className="text-[11.5px]">
+                      <li key={`${f.repo}#${f.number}`} className="text-[0.7188rem]">
                         <span className="font-mono">{f.repo}#{f.number}</span>: {f.error}
                       </li>
                     ))}
                   </ul>
                 )}
                 {closeResult.closed > 0 && (
-                  <p className="text-[11.5px] mt-1.5">
+                  <p className="text-[0.7188rem] mt-1.5">
                     To bring any of them back, comment{" "}
                     <span className="font-mono">@dependabot reopen</span> on it.
                   </p>

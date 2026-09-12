@@ -50,11 +50,10 @@ export default function TeamsWording({
   };
 
   const label = "block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1";
-  const input = "w-full rounded-md border border-gh-border dark:border-slate-600 "
-    + "bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gh-textBase dark:text-slate-100";
+  const input = "field-line text-[0.8438rem]";
 
   return (
-    <div className="mt-4 pt-4 border-t border-gh-border dark:border-slate-700">
+    <div className="mt-4 pt-4 border-t border-rule dark:border-rule">
       <label className="flex items-start gap-2 cursor-pointer">
         <input
           type="checkbox" checked={on} className="mt-0.5"
@@ -66,7 +65,7 @@ export default function TeamsWording({
             : { subject: "", body: "" })}
         />
         <span>
-          <span className="block text-sm font-semibold text-gh-textBase dark:text-slate-200">
+          <span className="display block text-[1rem] text-ink dark:text-slate-200">
             Word it differently on Teams
           </span>
           <span className="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">

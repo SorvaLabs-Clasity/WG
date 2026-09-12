@@ -57,7 +57,7 @@ export default function UserAvatar({ login, avatarUrl, size = 24, className = ""
   if (placeholder && !avatarUrl) {
     return (
       <div
-        className={`rounded-full flex items-center justify-center shrink-0 bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ${className}`}
+        className={`rounded-full flex items-center justify-center shrink-0 bg-slate-200 dark:bg-paper-3 text-slate-500 dark:text-slate-400 ${className}`}
         style={{ ...sizeStyle, fontSize: Math.max(9, Math.round(size * 0.55)) }}
         title="No individual account is recorded for this event"
       >
@@ -69,7 +69,7 @@ export default function UserAvatar({ login, avatarUrl, size = 24, className = ""
   if (failed) {
     return (
       <div
-        className={`rounded-full flex items-center justify-center text-white font-bold select-none shrink-0 ${bgColor} ${className}`}
+        className={`rounded-full flex items-center justify-center text-reverse font-bold select-none shrink-0 ${bgColor} ${className}`}
         style={{ ...sizeStyle, fontSize }}
         title={login}
       >

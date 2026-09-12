@@ -186,6 +186,22 @@ class GitHubTokenManager {
     this.refreshTimer.unref?.(); // never hold the process open
   }
 
+  /**
+   * A JWT signed as the App itself, rather than as its installation.
+   *
+   * Almost everything here uses an installation token, which is scoped to what
+   * the App may do *inside* the organization. A few questions are about the App
+   * rather than about the org — chief among them which webhook events it is
+   * subscribed to — and GitHub only answers those to the App's own JWT.
+   *
+   * Not cached: these are short-lived by design, the library mints one in
+   * microseconds from a key already in memory, and the callers ask rarely.
+   */
+  async getAppJwt(): Promise<string> {
+    const result = await this.auth({ type: "app" });
+    return result.token as string;
+  }
+
   private async _refresh(): Promise<string> {
     const result = await this.auth({ type: "installation" });
     this.cachedToken = result.token;
@@ -229,6 +245,20 @@ export async function initTokenManager(
  * with them would be attributed to an organization this account is not supposed
  * to touch.
  */
+/**
+ * A JWT signed as the App, for the handful of questions that are about the App
+ * itself rather than about the organization. Null when it is not initialized,
+ * so a caller can say "cannot tell" instead of failing.
+ */
+export async function getAppJwt(): Promise<string | null> {
+  if (!tokenManager) return null;
+  try {
+    return await tokenManager.getAppJwt();
+  } catch {
+    return null;
+  }
+}
+
 export function disposeTokenManager(): void {
   tokenManager?.dispose();
   tokenManager = null;
@@ -279,7 +309,20 @@ export async function getSystemTokenAsync(): Promise<string> {
  * page, which is the worst combination: the page keeps adding up and quietly
  * omits whatever that call site spends. `repro-githubusage.ts` fails on one.
  */
-export function createOctokit(token: string, feature?: string): Octokit {
+export function createOctokit(
+  token: string,
+  feature?: string,
+  /**
+   * Which allowance this client draws on, where the token cannot say.
+   *
+   * Normally inferred: a token equal to the installation token is the App's,
+   * anything else is a signed-in person's own grant. A JWT signed as the App is
+   * neither — it is not the installation token, but filing it as "user" would
+   * report somebody's personal allowance being spent by a request they never
+   * made. Callers holding one say so.
+   */
+  via?: "app" | "user",
+): Octokit {
   const octokit = new Octokit({
     auth: token,
     retry: { enabled: true, retries: 1 },
@@ -314,11 +357,11 @@ export function createOctokit(token: string, feature?: string): Octokit {
       // request sent with a signed-in person's own grant spends theirs, not the
       // App's — so the two are counted apart and only the App's half is
       // comparable with the headroom this app can read.
-      const via = token && token === getSystemToken() ? "app" : "user";
+      const drawnOn = via ?? (token && token === getSystemToken() ? "app" : "user");
       recordRequest(
         scoped !== UNATTRIBUTED ? scoped : (feature ?? UNATTRIBUTED),
         bucketFor(String(options.url ?? ""), options.method),
-        via);
+        drawnOn);
     } catch { /* never let bookkeeping break a request */ }
   });
 

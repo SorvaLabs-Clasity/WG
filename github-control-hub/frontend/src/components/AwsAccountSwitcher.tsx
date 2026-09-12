@@ -81,29 +81,29 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
   };
 
   return (
-    <div className="border-t border-slate-100 dark:border-white/[0.07]">
+    <div className="border-t border-slate-100 dark:border-ink/[0.07]">
       {/* Region is named here because it is half of what a row identifies.
           One installation per region means two profiles can be the same
           account and hold entirely different rules, findings and alarms, and
           a heading saying only "AWS account" invites reading them as
           duplicates. */}
-      <p className="px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-white/35">
+      <p className="caps px-4 pt-3 pb-1.5">
         AWS account and region
       </p>
 
       {isLoading && (
-        <p className="px-4 pb-3 text-[12px] text-slate-400 dark:text-white/40">Reading your profiles…</p>
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-400 dark:text-ink/40">Reading your profiles…</p>
       )}
 
       {error && (
-        <p className="px-4 pb-3 text-[12px] text-slate-500 dark:text-white/50">
-          Could not read <code className="text-[11px]">~/.aws/config</code>. Switch from the sign-in screen instead.
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-500 dark:text-ink/50">
+          Could not read <code className="text-[0.6875rem]">~/.aws/config</code>. Switch from the sign-in screen instead.
         </p>
       )}
 
       {profiles?.length === 0 && !isLoading && (
-        <p className="px-4 pb-3 text-[12px] text-slate-500 dark:text-white/50">
-          No named profiles found in <code className="text-[11px]">~/.aws/config</code>.
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-500 dark:text-ink/50">
+          No named profiles found in <code className="text-[0.6875rem]">~/.aws/config</code>.
         </p>
       )}
 
@@ -120,14 +120,14 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
               onClick={() => switchTo(profile)}
               className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left transition-colors ${
                 on
-                  ? "bg-slate-50 dark:bg-white/[0.04] cursor-default"
-                  : "hover:bg-slate-50 dark:hover:bg-white/[0.05] disabled:opacity-50"}`}>
+                  ? "bg-slate-50 dark:bg-ink/[0.04] cursor-default"
+                  : "hover:bg-slate-50 dark:hover:bg-ink/[0.05] disabled:opacity-50"}`}>
               <i className={`ph-bold ${
                 busy === profile.name ? "ph-spinner animate-spin"
                   : on ? "ph-check-circle text-emerald-500"
-                  : "ph-cloud text-slate-400 dark:text-white/40"} text-base shrink-0`}></i>
+                  : "ph-cloud text-slate-400 dark:text-ink/40"} text-base shrink-0`}></i>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-bold text-slate-900 dark:text-white truncate">
+                <span className="block text-[0.8125rem] font-bold text-slate-900 dark:text-ink truncate">
                   {profile.name}
                 </span>
                 {/* The account id is what people recognise; the region is what
@@ -144,7 +144,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
                     that tells two profiles into the same account apart, off the
                     end as "· in…". The check icon to the left already says
                     which profile is in use, so the words did not need to. */}
-                <span className="block text-[11px] text-slate-400 dark:text-white/40 truncate">
+                <span className="block text-[0.6875rem] text-slate-400 dark:text-ink/40 truncate">
                   {profile.accountId || profile.type.toUpperCase()}
                   {profile.region
                     ? ` · ${profile.region}`
@@ -157,17 +157,17 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
       </div>
 
       {problem && (
-        <div className="px-4 py-3 border-t border-slate-100 dark:border-white/[0.07] bg-amber-50/60 dark:bg-amber-500/[0.07]">
-          <p className="text-[12px] font-bold text-amber-800 dark:text-amber-300">
+        <div className="px-4 py-3 border-t border-rule bg-ochre-wash">
+          <p className="text-[0.75rem] font-bold text-amber-800 dark:text-amber-300">
             {problem.profile} could not be reached
           </p>
-          <p className="text-[11px] text-amber-700/80 dark:text-amber-200/70 mt-0.5 break-words">
+          <p className="text-[0.6875rem] text-amber-700/80 dark:text-amber-200/70 mt-0.5 break-words">
             {problem.message}
           </p>
           {problem.sso && (
             <button
               onClick={() => { void triggerAwsSsoLogin(problem.profile); }}
-              className="mt-2 text-[12px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">
+              className="textlink caps !text-ochre mt-2">
               Sign in to SSO for this profile
             </button>
           )}

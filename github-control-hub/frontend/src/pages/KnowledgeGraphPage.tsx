@@ -36,19 +36,34 @@ function formatSize(kb: number | undefined): string {
   return `${(kb / 1024 / 1024).toFixed(1)} GB`;
 }
 
-/** Stable colour per language so the same language reads the same everywhere. */
-const LANGUAGE_HUES: Record<string, string> = {
-  TypeScript: "#3178c6", JavaScript: "#f1e05a", Python: "#3572A5", Go: "#00ADD8",
-  Java: "#b07219", Ruby: "#701516", Rust: "#dea584", "C#": "#178600", C: "#555555",
-  "C++": "#f34b7d", PHP: "#4F5D95", Swift: "#F05138", Kotlin: "#A97BFF",
-  Shell: "#89e051", HTML: "#e34c26", CSS: "#563d7c", Vue: "#41b883", Dart: "#00B4AB",
-};
+/**
+ * A language's monogram, not its colour.
+ *
+ * The old version painted GitHub's language palette onto every row, eighteen
+ * saturated hues on one page, none of which meant anything a reader could act
+ * on. The printed page spends colour only on state, so a language is set as
+ * two letters in a ruled box instead, which is just as recognisable down a
+ * column and does not compete with the one crimson finding beside it.
+ */
+const LANGUAGE_HUES: Record<string, string> = {};
+
+/**
+ * Where a language sits on the ink ramp.
+ *
+ * A stacked language bar genuinely needs its segments told apart, so this keeps
+ * a stable per-name value — but as a *tint of the page's own ink* rather than
+ * as a hue. Printed charts have been set this way for a century, it survives
+ * both editions without a second palette, and it leaves the four coloured inks
+ * free to go on meaning something.
+ */
 function languageHue(name: string | null | undefined): string {
-  if (!name) return "#94a3b8";
+  if (!name) return "rgb(var(--ink-4))";
   if (LANGUAGE_HUES[name]) return LANGUAGE_HUES[name];
   let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
-  return `hsl(${h} 55% 55%)`;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 1000;
+  // Five steps, evenly spaced, so neighbouring segments never read as one.
+  const step = h % 5;
+  return `color-mix(in oklab, rgb(var(--ink)) ${88 - step * 17}%, rgb(var(--paper)))`;
 }
 
 type SortKey = "pushed" | "name" | "size";
@@ -102,7 +117,7 @@ export default function KnowledgeGraphPage() {
     });
   }, [repos, search, language, visibility, showArchived, sortKey]);
 
-  const selectCls = "text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const selectCls = "field-line text-[0.7812rem] !w-auto min-w-[9rem] flex-1 pr-4";
 
   return (
     <Page user={user}>
@@ -123,20 +138,20 @@ export default function KnowledgeGraphPage() {
         footer={<>{orgStats.private} private · {orgStats.total - orgStats.private} public</>}
       />
 
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-8 items-start">
           {/* Browser */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 space-y-3">
-              <div className="relative">
-                <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm"></i>
+          <div className="bg-paper border-t-2 border-ink">
+            <div className="px-5 py-4 border-b border-rule space-y-4">
+              <div className="flex items-baseline gap-2.5 border-b border-rule-strong focus-within:border-ink transition-colors">
+                <i className="ph-bold ph-magnifying-glass text-ink-3 text-sm" aria-hidden="true"></i>
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search repositories…"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="field-line text-[0.8438rem] w-full"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-baseline gap-5">
                 <select value={language} onChange={e => setLanguage(e.target.value)} className={selectCls}>
                   <option value="all">All languages</option>
                   {languages.map(l => <option key={l} value={l}>{l}</option>)}
@@ -151,24 +166,21 @@ export default function KnowledgeGraphPage() {
                   <option value="name">Name</option>
                   <option value="size">Size</option>
                 </select>
-                <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                  <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
+                <label className="caps flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="accent-ink w-3.5 h-3.5" />
                   Show archived
                 </label>
-                <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 font-mono">{filtered.length} shown</span>
+                <span className="ml-auto figure text-[0.8125rem] text-ink-3">{filtered.length} shown</span>
               </div>
             </div>
 
-            <div className="max-h-[calc(100vh-300px)] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="max-h-[calc(100vh-300px)] overflow-y-auto divide-y divide-rule">
               {isLoading ? (
-                <div className="p-10 flex justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600 dark:border-t-slate-300"></div>
-                </div>
+                <Spinner label="Reading the repositories" />
               ) : filtered.length === 0 ? (
-                <div className="p-10 text-center text-slate-400 dark:text-slate-500">
-                  <i className="ph-fill ph-magnifying-glass text-3xl mb-2 block"></i>
-                  <p className="text-sm">No repositories match those filters.</p>
-                </div>
+                <p className="standfirst p-12 text-center text-[0.875rem]">
+                  No repositories match those filters.
+                </p>
               ) : filtered.map(r => (
                 <RepoRow key={r.name} repo={r} selected={selectedRepo === r.name} onSelect={() => setSelectedRepo(r.name)} />
               ))}
@@ -179,7 +191,7 @@ export default function KnowledgeGraphPage() {
           {selectedRepo ? (
             <RepoPanel repo={selectedRepo} onClose={() => setSelectedRepo(null)} />
           ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-10 text-center sticky top-20">
+            <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-10 text-center sticky top-20">
               <i className="ph-fill ph-cards-three text-4xl text-slate-300 dark:text-slate-600 mb-3 block"></i>
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Select a repository</p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
@@ -199,38 +211,35 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
     <button
       onClick={onSelect}
       className={`w-full text-left px-5 py-4 transition-colors border-l-[3px] ${
-        selected
-          ? "bg-blue-50 dark:bg-blue-950/30 border-blue-500"
-          : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}
+        selected ? "bg-ink/[0.05] border-ink" : "border-transparent hover:bg-ink/[0.035]"}`}
     >
       <div className="flex items-start gap-3.5">
         {/* Language swatch, sized to anchor the row rather than punctuate it. */}
-        <span className="w-9 h-9 rounded-xl shrink-0 grid place-items-center text-white font-black text-[13px] mt-0.5"
-          style={{ backgroundColor: languageHue(repo.language) }}
+        <span className="w-9 h-9 shrink-0 grid place-items-center border border-rule-strong caps caps-tight text-ink mt-0.5"
           title={repo.language ?? "No language"}>
           {(repo.language ?? repo.name).slice(0, 2).toUpperCase()}
         </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-bold text-slate-900 dark:text-white truncate tracking-tight">{repo.name}</span>
+            <span className="display text-[1.125rem] text-ink truncate">{repo.name}</span>
             {repo.private && <i className="ph-fill ph-lock-simple text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Private"></i>}
             {repo.fork && <i className="ph-bold ph-git-fork text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Fork"></i>}
             {repo.archived && (
-              <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+              <span className="caps px-1.5 py-0.5 bg-slate-200 shrink-0">
                 archived
               </span>
             )}
           </div>
 
           {repo.description && (
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-snug">{repo.description}</p>
+            <p className="standfirst text-[0.8125rem] line-clamp-2 mt-1.5">{repo.description}</p>
           )}
 
-          <div className="flex items-center gap-2.5 mt-2 text-[12px] text-slate-400 dark:text-slate-500">
-            {repo.language && <span className="font-semibold text-slate-500 dark:text-slate-400">{repo.language}</span>}
+          <div className="dateline mt-2">
+            {repo.language && <span>{repo.language}</span>}
             <span>{formatSize(repo.size)}</span>
-            <span className="ml-auto shrink-0">{relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
+            <span className="ml-auto shrink-0 before:content-none">{relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
           </div>
         </div>
       </div>
@@ -285,18 +294,18 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-10 flex justify-center sticky top-20">
-        <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600 dark:border-t-slate-300"></div>
+      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-10 flex justify-center sticky top-20">
+        <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-rule border-t-slate-600 dark:border-t-slate-300"></div>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-8 text-center sticky top-20">
+      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-8 text-center sticky top-20">
         <i className="ph-fill ph-warning-circle text-3xl text-slate-300 dark:text-slate-600 mb-2 block"></i>
         <p className="text-sm text-slate-600 dark:text-slate-300">Couldn't load details for {repo}</p>
-        <button onClick={onClose} className="mt-3 text-xs text-blue-600 dark:text-blue-400 font-medium">Close</button>
+        <button onClick={onClose} className="textlink caps !text-indigo mt-3">Close</button>
       </div>
     );
   }
@@ -312,16 +321,19 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden animate-scale-in flex flex-col max-h-[calc(100vh-160px)] sticky top-20">
+    <div className="bg-paper border border-rule animate-scale-in flex flex-col max-h-[calc(100vh-160px)] sticky top-[7rem]">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
+      <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+      <div className="px-5 py-4 border-b border-rule">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white" style={{ backgroundColor: languageHue(data.languages?.[0]?.name) }}>
-              <i className="ph-fill ph-git-repository text-lg"></i>
+            {/* The same monogram the list rows carry, so the panel and the row
+                it was opened from are recognisably the same thing. */}
+            <div className="w-10 h-10 flex items-center justify-center shrink-0 border border-rule-strong caps caps-tight text-ink">
+              {(data.languages?.[0]?.name ?? data.name).slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 dark:text-white truncate" title={data.name}>{data.name}</h3>
+              <h3 className="display text-[1.1875rem] text-ink truncate" title={data.name}>{data.name}</h3>
               <div className="flex items-center flex-wrap gap-1.5 mt-1">
                 <Pill>{data.visibility}</Pill>
                 {data.languages?.[0] && <Pill>{data.languages[0].name}</Pill>}
@@ -333,36 +345,36 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors p-1 -mr-1 shrink-0">
-            <i className="ph-bold ph-x text-lg"></i>
-          </button>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
 
-        {data.description && <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{data.description}</p>}
+        {data.description && <p className="standfirst text-[0.7812rem] mb-3">{data.description}</p>}
         {data.topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {data.topics.map(t => (
-              <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">#{t}</span>
+              <span key={t} className="font-mono text-[0.6875rem] px-1.5 py-0.5 bg-paper-2 text-ink-2 border border-rule">#{t}</span>
             ))}
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
-          {tiles.map(t => (
-            <div key={t.label} className="bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700 px-2 py-2 text-center">
-              <div className="text-base font-bold text-slate-900 dark:text-white font-mono leading-none">{t.value}</div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">{t.label}</div>
+        {/* Readings side by side, divided by column rules, the way a results
+            table is set — not five boxed tiles pretending to be five cards. */}
+        <div className="grid grid-cols-3 border-t border-rule pt-3">
+          {tiles.map((t, i) => (
+            <div key={t.label} className={`py-1 ${i % 3 === 0 ? "" : "pl-3 border-l border-rule"}`}>
+              <div className="figure text-[1.375rem] text-ink">{t.value}</div>
+              <div className="caps caps-tight mt-1.5">{t.label}</div>
             </div>
           ))}
         </div>
 
-        <a href={data.html_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
-          <i className="ph-bold ph-arrow-square-out"></i> Open on GitHub
+        <a href={data.html_url} target="_blank" rel="noreferrer" className="textlink caps mt-4 inline-block">
+          Open on GitHub →
         </a>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-rule">
         <Section label="Overview" icon="ph-info" color="slate" count={0} defaultOpen>
           <Facts rows={[
             ["Default branch", data.default_branch],
@@ -375,18 +387,18 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
 
         {data.languages && data.languages.length > 0 && (
           <Section label="Languages" icon="ph-code" color="blue" count={data.languages.length} defaultOpen>
-            <div className="flex h-2 rounded-full overflow-hidden mb-3">
+            <div className="flex h-[6px] overflow-hidden mb-4 border border-rule">
               {data.languages.map(l => (
                 <div key={l.name} style={{ width: `${l.percent}%`, backgroundColor: languageHue(l.name) }} title={`${l.name} ${l.percent}%`} />
               ))}
             </div>
             {data.languages.map(l => (
               <div key={l.name} className="flex items-center justify-between py-1">
-                <span className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: languageHue(l.name) }}></span>
+                <span className="flex items-center gap-2.5 text-[0.8438rem] text-ink">
+                  <span className="w-2.5 h-2.5 shrink-0" style={{ backgroundColor: languageHue(l.name) }}></span>
                   {l.name}
                 </span>
-                <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{l.percent}%</span>
+                <span className="figure text-[0.8125rem] text-ink-2">{l.percent}%</span>
               </div>
             ))}
           </Section>
@@ -482,7 +494,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
               <div key={w.path} className="flex items-center justify-between py-1.5 gap-2">
                 <span className="min-w-0">
                   <span className="text-sm text-slate-700 dark:text-slate-300 block truncate">{w.name}</span>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono block truncate">{w.path}</span>
+                  <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500 font-mono block truncate">{w.path}</span>
                 </span>
                 <Pill tone={w.state === "active" ? "good" : "muted"}>{w.state}</Pill>
               </div>
@@ -537,20 +549,20 @@ function yesNo(v: boolean | null): string {
 
 function Pill({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "muted" | "good" }) {
   const cls = tone === "good"
-    ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+    ? "bg-forest-wash text-forest border-forest-edge"
     : tone === "muted"
-      ? "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700";
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${cls}`}>{children}</span>;
+      ? "bg-paper-2 text-ink-3 border-rule"
+      : "bg-paper-2 text-ink-2 border-rule";
+  return <span className={`caps caps-tight px-1.5 py-0.5 border shrink-0 ${cls}`}>{children}</span>;
 }
 
 function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
-    <dl className="divide-y divide-slate-50 dark:divide-slate-800">
+    <dl className="divide-y divide-rule border-t border-rule">
       {rows.map(([k, v]) => (
-        <div key={k} className="flex items-start justify-between gap-3 py-1.5">
-          <dt className="text-sm text-slate-500 dark:text-slate-400 shrink-0">{k}</dt>
-          <dd className="text-sm text-slate-700 dark:text-slate-300 text-right font-mono break-all">{v}</dd>
+        <div key={k} className="flex items-baseline justify-between gap-4 py-2">
+          <dt className="caps shrink-0">{k}</dt>
+          <dd className="text-[0.8125rem] text-ink text-right font-mono break-all">{v}</dd>
         </div>
       ))}
     </dl>
@@ -585,28 +597,28 @@ function WhoKnows({ repo }: { repo: string }) {
   });
 
   return (
-    <div className="border-t border-slate-100 dark:border-slate-800">
+    <div className="border-t border-slate-100 dark:border-rule">
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center gap-2 py-2.5 text-left"
       >
         <i className={`ph-fill ph-users-three text-violet-500 text-base`}></i>
-        <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">Who knows this</span>
-        <i className={`ph-bold ph-caret-down ml-auto text-[11px] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
+        <span className="text-[0.8125rem] font-bold text-slate-700 dark:text-slate-200">Who knows this</span>
+        <i className={`ph-bold ph-caret-down ml-auto text-[0.6875rem] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
       </button>
 
       {open && (
         <div className="pb-3">
-          {isFetching && <div className="py-3 text-[12.5px] text-slate-400">Reading commits and reviews…</div>}
+          {isFetching && <div className="py-3 text-[0.7812rem] text-slate-400">Reading commits and reviews…</div>}
 
           {!!error && (
-            <p className="py-2 text-[12.5px] text-amber-700 dark:text-amber-500">
+            <p className="py-2 text-[0.7812rem] text-amber-700 dark:text-amber-500">
               {(error as Error)?.message ?? "Could not work out who knows this."}
             </p>
           )}
 
           {data && !isFetching && data.experts.length === 0 && (
-            <p className="py-2 text-[12.5px] text-slate-500 dark:text-slate-400">
+            <p className="py-2 text-[0.7812rem] text-slate-500 dark:text-slate-400">
               Nobody has committed, reviewed or commented here recently enough to rank.
             </p>
           )}
@@ -620,11 +632,11 @@ function WhoKnows({ repo }: { repo: string }) {
                     Somebody who owned this two years ago is a worse answer than
                     somebody with four commits last week. */}
                 {e.daysSinceActive !== null && (
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500">
                     {e.daysSinceActive === 0 ? "today" : `${e.daysSinceActive}d ago`}
                   </span>
                 )}
-                <span className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <span className="w-10 h-1.5  bg-slate-200 dark:bg-paper-3 overflow-hidden">
                   <span className="block h-full bg-violet-500" style={{ width: `${e.score}%` }} />
                 </span>
               </span>
@@ -633,12 +645,12 @@ function WhoKnows({ repo }: { repo: string }) {
 
           {/* One page from GitHub, so a hundred means "at least a hundred". */}
           {data?.sampled && (
-            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-[0.6875rem] text-slate-400 dark:text-slate-500">
               Based on the most recent page of activity, so this is a sample rather than a full count.
             </p>
           )}
           {(data?.degraded?.length ?? 0) > 0 && (
-            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-500">
+            <p className="mt-1 text-[0.6875rem] text-amber-600 dark:text-amber-500">
               Could not read: {data!.degraded.join(", ")}. The ranking is from what was readable.
             </p>
           )}
@@ -663,18 +675,16 @@ function Section({ label, icon, color, count, defaultOpen, children }: {
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full px-5 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        className="w-full px-5 py-3 flex items-baseline justify-between gap-4 border-t border-rule hover:bg-ink/[0.035] transition-colors"
       >
-        <div className="flex items-center gap-2">
-          <i className={`ph-fill ${icon} text-${color}-500`}></i>
-          <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{label}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {count > 0 && (
-            <span className="text-xs font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{count}</span>
-          )}
-          <i className={`ph-bold ph-caret-${open ? "up" : "down"} text-xs text-slate-400 dark:text-slate-500`}></i>
-        </div>
+        <span className="flex items-baseline gap-2.5">
+          <i className={`ph-bold ${icon} text-[0.8125rem] text-ink-3`} aria-hidden="true"></i>
+          <span className="caps text-ink">{label}</span>
+        </span>
+        <span className="flex items-baseline gap-3">
+          {count > 0 && <span className="figure text-[0.875rem] text-ink-3">{count}</span>}
+          <span aria-hidden="true" className="text-[0.5rem] text-ink-3">{open ? "▲" : "▼"}</span>
+        </span>
       </button>
       {open && (
         <div className="px-5 pb-3">
@@ -682,7 +692,7 @@ function Section({ label, icon, color, count, defaultOpen, children }: {
           {collapsible && (
             <button
               onClick={() => setShowAll(!showAll)}
-              className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+              className="textlink caps !text-indigo mt-2"
             >
               {showAll ? "Show less" : `Show all ${count} (${count - MAX_VISIBLE} more)`}
             </button>

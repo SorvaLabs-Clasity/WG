@@ -52,15 +52,15 @@ interface Answer {
  * separates "waiting on people" from "waiting on work".
  */
 const BLOCK: Record<BlockReason, { label: string; chip: string; dot: string }> = {
-  "ready":             { label: "Ready to merge",   chip: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-400/20", dot: "bg-emerald-500" },
-  "needs-approval":    { label: "Needs review",     chip: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-400/20", dot: "bg-amber-500" },
-  "changes-requested": { label: "Changes requested", chip: "bg-orange-50 text-orange-800 ring-orange-600/20 dark:bg-orange-950/50 dark:text-orange-300 dark:ring-orange-400/20", dot: "bg-orange-500" },
-  "conflict":          { label: "Conflicts",        chip: "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-400/20", dot: "bg-rose-500" },
-  "checks-failing":    { label: "Checks failing",   chip: "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-400/20", dot: "bg-rose-500" },
-  "behind":            { label: "Behind base",      chip: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-400/20", dot: "bg-sky-500" },
-  "checks-pending":    { label: "Checks running",   chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
-  "draft":             { label: "Draft",            chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
-  "blocked":           { label: "Blocked",          chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
+  "ready":             { label: "Ready to merge",    chip: "bg-forest-wash text-forest border-forest-edge",   dot: "bg-forest" },
+  "needs-approval":    { label: "Needs review",      chip: "bg-ochre-wash text-ochre border-ochre-edge",      dot: "bg-ochre" },
+  "changes-requested": { label: "Changes requested", chip: "bg-ochre-wash text-ochre border-ochre-edge",      dot: "bg-ochre" },
+  "conflict":          { label: "Conflicts",         chip: "bg-crimson-wash text-crimson border-crimson-edge", dot: "bg-crimson" },
+  "checks-failing":    { label: "Checks failing",    chip: "bg-crimson-wash text-crimson border-crimson-edge", dot: "bg-crimson" },
+  "behind":            { label: "Behind base",       chip: "bg-indigo-wash text-indigo border-indigo-edge",   dot: "bg-indigo" },
+  "checks-pending":    { label: "Checks running",    chip: "bg-paper-2 text-ink-2 border-rule",               dot: "bg-rule-strong" },
+  "draft":             { label: "Draft",             chip: "bg-paper-2 text-ink-2 border-rule",               dot: "bg-rule-strong" },
+  "blocked":           { label: "Blocked",           chip: "bg-paper-2 text-ink-2 border-rule",               dot: "bg-rule-strong" },
 };
 
 function thresholdLabel(secs: number): string {
@@ -75,19 +75,19 @@ function Switch({ on, onChange, disabled }: {
 }) {
   return (
     <button onClick={() => onChange(!on)} disabled={disabled} role="switch" aria-checked={on}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        on ? "bg-gh-blue" : "bg-slate-300 dark:bg-slate-600"}`}>
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-        on ? "translate-x-[1.15rem]" : "translate-x-[0.2rem]"}`} />
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center border border-rule-strong transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        on ? "bg-ink" : "bg-paper-2"}`}>
+      <span className={`inline-block h-3 w-3 transform transition-transform ${
+        on ? "translate-x-[1.15rem] bg-paper" : "translate-x-[0.2rem] bg-ink-3"}`} />
     </button>
   );
 }
 
 function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
   return (
-    <div className="flex items-baseline gap-1.5">
-      <span className={`text-xl font-black tabular-nums ${tone ?? "text-slate-900 dark:text-white"}`}>{n}</span>
-      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+    <div className="text-right">
+      <p className={`figure text-[2rem] ${tone ?? "text-ink"}`}>{n}</p>
+      <p className="caps mt-1.5">{label}</p>
     </div>
   );
 }
@@ -200,7 +200,7 @@ export default function PullRequestsPage() {
     onError: (e: any) => setError(e?.message || "Could not send reminders."),
   });
 
-  if (isLoading) return <Page user={user}><Spinner /></Page>;
+  if (isLoading) return <Page user={user}><Spinner label="Reading the pull requests" /></Page>;
   if (loadError) {
     return <Page user={user}>
       <Empty title="Could not read pull requests" body={(loadError as Error).message} />
@@ -244,34 +244,30 @@ export default function PullRequestsPage() {
     const silent = p.stale && reminders && !p.paused && p.wouldNudge.length === 0;
 
     return (
-      <li className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-        <div className="p-4">
-          <div className="flex items-start gap-3">
-            <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${b.dot}`} aria-hidden="true" />
+      <li className="relative border border-rule bg-paper hover:bg-ink/[0.035] transition-colors">
+        <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${b.dot}`} aria-hidden="true" />
+        <div className="pl-6 pr-4 py-4">
+          <div className="flex items-start gap-4">
             <div className="min-w-0 flex-1">
               <a href={p.url} target="_blank" rel="noopener noreferrer"
-                className="font-semibold text-[15px] leading-snug text-slate-900 dark:text-white hover:text-gh-blue block">
+                className="display text-[1.125rem] leading-snug text-ink block no-underline hover:underline underline-offset-4 decoration-rule-strong">
                 {p.title}
               </a>
-              <div className="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+              <div className="dateline mt-2">
                 <span className="inline-flex items-center gap-1.5">
-                  <UserAvatar login={p.author} size={16} />{p.author}
+                  <UserAvatar login={p.author} size={15} />{p.author}
                 </span>
-                <span aria-hidden="true">·</span>
-                <span className="font-mono">{p.repo}<span className="text-slate-400">#{p.number}</span></span>
-                <span aria-hidden="true">·</span>
+                <span className="font-mono">{p.repo}<span className="text-ink-3">#{p.number}</span></span>
                 {/* Direction spelled out: two bare branch names get read the
                     wrong way round about half the time. */}
-                <span className="font-mono text-slate-400 dark:text-slate-500">
+                <span className="font-mono text-ink-3">
                   {p.headRef} <span aria-hidden="true">→</span> {p.baseRef}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ring-1 ring-inset ${b.chip}`}>
-                {b.label}
-              </span>
-              <span className="text-sm font-bold tabular-nums text-slate-700 dark:text-slate-300 w-9 text-right"
+            <div className="flex items-baseline gap-4 shrink-0">
+              <span className={`caps caps-tight px-1.5 py-1 border ${b.chip}`}>{b.label}</span>
+              <span className="figure text-[1.125rem] text-ink w-10 text-right"
                 title="Since the last commit. The clock reminders run on">
                 {idleLabel(p.idleDays)}
               </span>
@@ -285,8 +281,8 @@ export default function PullRequestsPage() {
               be set once the first reminder has already gone out. Anything not
               yet stale reads as what *will* happen rather than what has. */}
           {(p.stale || (isAdmin && reminders)) && (
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
+            <div className="mt-4 pt-3 border-t border-rule flex items-center justify-between gap-4 flex-wrap">
+              <div className="text-[0.75rem] text-ink-2 min-w-0">
                 {!reminders ? (
                   <span className="text-slate-400 dark:text-slate-500">Reminders are off</span>
                 ) : p.paused ? (
@@ -316,7 +312,7 @@ export default function PullRequestsPage() {
                       {p.stale ? "Reminds" : "Would remind"}
                     </span>
                     {p.wouldNudge.map(l => (
-                      <span key={l} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/70">
+                      <span key={l} className="inline-flex items-center gap-1.5 px-1.5 py-0.5 bg-paper-2 border border-rule">
                         <UserAvatar login={l} size={14} />
                         <span className="font-medium text-slate-700 dark:text-slate-200">{l}</span>
                       </span>
@@ -335,7 +331,7 @@ export default function PullRequestsPage() {
 
               {isAdmin && reminders && (
                 <button onClick={() => setExpanded(open ? null : key)}
-                  className="text-xs font-semibold text-gh-blue hover:underline shrink-0">
+                  className="textlink caps shrink-0">
                   {open ? "Done" : "Manage"}
                 </button>
               )}
@@ -343,11 +339,11 @@ export default function PullRequestsPage() {
           )}
 
           {open && isAdmin && reminders && (
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Pause this pull request</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[0.6875rem] text-slate-500 dark:text-slate-400">
                     Nobody is reminded about it, the author included.
                   </p>
                 </div>
@@ -363,7 +359,7 @@ export default function PullRequestsPage() {
                       <div key={l} className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200">
                           <UserAvatar login={l} size={16} />{l}
-                          {l === p.author && <span className="text-[10px] text-slate-400">author</span>}
+                          {l === p.author && <span className="text-[0.625rem] text-slate-400">author</span>}
                         </span>
                         {/* Three scopes, because the question is asked at three
                             sizes and offering only the narrowest sends people
@@ -371,17 +367,17 @@ export default function PullRequestsPage() {
                         <span className="flex items-center gap-1.5">
                           <button disabled={busy}
                             onClick={() => pause.mutate({ repo: p.repo, number: p.number, pausedLogins: [...p.pausedLogins, l] })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this PR
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "repo", repo: p.repo, target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this repo
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "global", target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             everywhere
                           </button>
                         </span>
@@ -389,12 +385,12 @@ export default function PullRequestsPage() {
                     ))}
 
                     {p.muted.length > 0 && (
-                      <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                      <div className="pt-2 mt-2 border-t border-slate-100 dark:border-rule space-y-1">
                         {p.muted.map(m => (
                           <div key={m.login} className="flex items-center justify-between gap-2 text-xs">
                             <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                               <UserAvatar login={m.login} size={16} />{m.login}
-                              <span className="text-[10px]">muted {m.scope}</span>
+                              <span className="text-[0.625rem]">muted {m.scope}</span>
                             </span>
                             <button disabled={busy}
                               onClick={() => {
@@ -402,7 +398,7 @@ export default function PullRequestsPage() {
                                 else if (m.scope === "repository") mute.mutate({ scope: "repo", repo: p.repo, target: m.login, muted: false });
                                 else pause.mutate({ repo: p.repo, number: p.number, pausedLogins: p.pausedLogins.filter(x => x.toLowerCase() !== m.login.toLowerCase()) });
                               }}
-                              className="text-[11px] font-semibold text-gh-blue hover:underline disabled:opacity-40">
+                              className="textlink caps">
                               unmute
                             </button>
                           </div>
@@ -425,16 +421,17 @@ export default function PullRequestsPage() {
     onPage: (n: number) => void; total: number;
   }) => (
     <section>
-      <div className="flex items-baseline gap-2 mb-1">
-        <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
-        <span className="text-xs tabular-nums text-slate-400 dark:text-slate-500">{rows.length}</span>
+      <div className="flex items-baseline gap-3 pb-2">
+        <h2 className="caps text-ink">{title}</h2>
+        <span className="figure text-[0.9375rem] text-ink-3">{rows.length}</span>
       </div>
-      {hint && <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{hint}</p>}
+      <div className="border-t-2 border-ink" />
+      {hint && <p className="standfirst text-[0.8125rem] mt-3 mb-4 max-w-[76ch]">{hint}</p>}
       {rows.length === 0 ? (
-        <p className="text-sm text-slate-400 dark:text-slate-500 py-2">Nothing here.</p>
+        <p className="standfirst text-[0.8438rem] py-6">Nothing here.</p>
       ) : (
         <>
-          <ul className="grid gap-2">
+          <ul className="grid gap-3 mt-4">
             {view.slice.map(p => card(p))}
           </ul>
           {view.totalPages > 1 && (
@@ -450,32 +447,34 @@ export default function PullRequestsPage() {
 
   return (
     <Page user={user}>
-      <header className="mb-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
+      <header className="mb-7 pb-3 border-b-2 border-ink">
+        <div className="flex items-end justify-between gap-8 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Open pull requests</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+            <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Open pull requests</h1>
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[62ch]">
               Every open pull request in the organization, most idle first, closed ones never
               appear. Idle counts from the last <strong className="font-semibold">commit</strong>,
               not from when it was opened.
             </p>
           </div>
           {monitoring && (
-            <div className="flex items-center gap-5">
+            <div className="flex items-start gap-8 columned">
               <Stat n={data?.open ?? 0} label="open" />
-              <Stat n={data?.stale ?? 0} label="stale"
-                tone={(data?.stale ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : undefined} />
+              <div className="pl-8">
+                <Stat n={data?.stale ?? 0} label="stale"
+                  tone={(data?.stale ?? 0) > 0 ? "text-ochre" : undefined} />
+              </div>
             </div>
           )}
         </div>
       </header>
 
       {isAdmin && (
-        <div className="mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="mb-7 border border-rule bg-paper divide-y divide-rule">
           <div className="px-5 py-3 flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">Monitor pull requests</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="display text-[1.0625rem] text-ink">Monitor pull requests</p>
+              <p className="standfirst text-[0.7812rem] mt-1">
                 Off means nothing is fetched, listed or posted, and nothing runs on the schedule.
               </p>
             </div>
@@ -485,8 +484,8 @@ export default function PullRequestsPage() {
 
           <div className={`px-5 py-3 flex items-center justify-between gap-4 ${monitoring ? "" : "opacity-50"}`}>
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">Post reminders</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="display text-[1.0625rem] text-ink">Post reminders</p>
+              <p className="standfirst text-[0.7812rem] mt-1">
                 One comment on anything idle for {thresholdLabel(data?.staleSeconds ?? 604_800)}, replacing
                 itself each time rather than adding another.
               </p>
@@ -498,18 +497,17 @@ export default function PullRequestsPage() {
           {monitoring && reminders && (
             <div className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
               <button onClick={() => setShowSettings(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-                <i className="ph-bold ph-bell-slash"></i>
+                className="stamp stamp-hollow stamp-sm">
                 Reminder mutes
                 {(mutes.global.length + Object.values(mutes.byRepo).flat().length) > 0 && (
-                  <span className="text-[11px] tabular-nums px-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900">
+                  <span className="figure text-[0.875rem]">
                     {mutes.global.length + Object.values(mutes.byRepo).flat().length}
                   </span>
                 )}
               </button>
               <button onClick={() => runNow.mutate()} disabled={runNow.isPending}
                 title="Run the reminder pass now instead of waiting for the next scheduled one"
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gh-blue text-white hover:opacity-90 disabled:opacity-40">
+                className="stamp stamp-sm">
                 {runNow.isPending ? "Sending…" : "Send reminders now"}
               </button>
             </div>
@@ -527,21 +525,21 @@ export default function PullRequestsPage() {
           left on would otherwise remind everyone every few minutes with nothing
           on screen explaining why. */}
       {(data?.staleSeconds ?? 604_800) < 86_400 && (
-        <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+        <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[0.8438rem] text-ochre">
           <strong>Test threshold active.</strong> Pull requests count as stale after{" "}
           {thresholdLabel(data?.staleSeconds ?? 0)} instead of 7 days.{" "}
-          <code className="px-1 rounded bg-black/10 dark:bg-white/10">STALE_SECONDS</code> in{" "}
-          <code className="px-1 rounded bg-black/10 dark:bg-white/10">prNudgeService.ts</code> controls it.
+          <code className="px-1 rounded bg-black/10 dark:bg-ink/10">STALE_SECONDS</code> in{" "}
+          <code className="px-1 rounded bg-black/10 dark:bg-ink/10">prNudgeService.ts</code> controls it.
         </div>
       )}
 
       {notice && (
-        <div className="mb-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-4 py-2.5 text-sm text-emerald-800 dark:text-emerald-300">
+        <div className="mb-5 bg-forest-wash border-l-2 border-forest pl-4 pr-3 py-2.5 text-[0.8438rem] text-forest">
           {notice}
         </div>
       )}
       {error && (
-        <div className="mb-4 rounded-lg bg-rose-50 dark:bg-rose-950/40 px-4 py-2.5 text-sm text-rose-700 dark:text-rose-300">
+        <div className="mb-5 bg-crimson-wash border-l-2 border-crimson pl-4 pr-3 py-2.5 text-[0.8438rem] text-crimson">
           {error}
         </div>
       )}
@@ -553,7 +551,7 @@ export default function PullRequestsPage() {
             : "An organization admin has switched this off."} />
       ) : (
         <>
-          <div className="mb-4 flex items-center gap-2">
+          <div className="mb-6 flex items-end gap-6">
             <div className="flex-1 min-w-0">
               <SearchInput value={search}
                 onChange={(v: string) => { setSearch(v); setStalePage(1); setFreshPage(1); }}
@@ -565,8 +563,8 @@ export default function PullRequestsPage() {
                 people that refreshing does not work. */}
             <button onClick={() => refreshNow.mutate()} disabled={isFetching || refreshNow.isPending}
               title="Reads GitHub now. The list refreshes on its own every few minutes."
-              className="shrink-0 px-3 py-2 text-sm rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
-              <i className={`ph ph-arrows-clockwise ${isFetching || refreshNow.isPending ? "animate-spin" : ""}`}></i>
+              className="textlink caps shrink-0">
+              {isFetching || refreshNow.isPending ? "Reading GitHub…" : "Read GitHub now"}
             </button>
           </div>
 
@@ -575,14 +573,14 @@ export default function PullRequestsPage() {
               organization, so the tab opens on the last stored answer and
               refreshes behind it. Which is only honest if the age is visible. */}
           {data?.cachedAt && (
-            <div className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+            <div className="caps mb-5">
               As of {ago(data.cachedAt)}
               {isFetching ? " · refreshing…" : " · refreshes every few minutes"}
             </div>
           )}
 
           {data?.truncated && (
-            <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+            <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[0.8438rem] text-ochre">
               More open pull requests exist than shown. The counts are a floor.
             </div>
           )}

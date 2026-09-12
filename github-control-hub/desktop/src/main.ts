@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, session, Menu } from "electron";
+import { app, BrowserWindow, shell, dialog, ipcMain, session, Menu, nativeTheme } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
@@ -78,6 +78,21 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     title: "GitHub Control Hub",
+    /**
+     * The stock the window is printed on, for the frame before React draws.
+     *
+     * Without this Electron paints white until the renderer's first frame, so
+     * launching flashed a white rectangle before the ground arrived — and, on a
+     * night edition, a white rectangle before a dark one, which is the worst
+     * version of it.
+     *
+     * Deliberately a neutral rather than any one theme's exact stock: the app
+     * has five, the chosen one lives in the renderer's localStorage, and it is
+     * not readable from here before the window exists. Every light theme is
+     * near-white and every dark one is near-black, so the system's preference
+     * gets the frame close enough that nothing flashes.
+     */
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#121212" : "#F4F3F0",
     // macOS reads the window icon from the app bundle; Windows and Linux need
     // it named here, including when running unpackaged in dev.
     icon: path.join(__dirname, "..", "assets", "icon.png"),

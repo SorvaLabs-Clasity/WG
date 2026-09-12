@@ -23,13 +23,9 @@ const TIMEZONES = [...new Set([browserZone, "UTC",
   "Asia/Singapore", "Asia/Shanghai", "Asia/Tokyo", "Australia/Sydney",
   "Pacific/Auckland"])];
 
-const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
-  "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200";
-const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
-const cardClass =
-  "bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5";
+const inputClass = "field-line text-[0.8438rem]";
+const labelClass = "caps block mb-1.5";
+const cardClass = "bg-paper border border-rule p-5";
 
 /**
  * The important-events toggle: chooses among existing groups, never makes one.
@@ -115,7 +111,7 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
       <div className={cardClass}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Email me about important events</h3>
+            <h3 className="display text-[1.0625rem] text-ink">Email me about important events</h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-slate-400 max-w-2xl">
               Sends within seconds of the event. A repository going public, branch protection being
               removed, a team's permissions changing. Driven by the webhook, not by a schedule, so
@@ -134,10 +130,9 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
               onClick={() => { const next = !enabled; setEnabled(next); save({ enabled: next }); }}
               disabled={!enabled && !groupId}
               title={!enabled && !groupId ? "Choose an email group first" : ""}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 ${
-                enabled ? "bg-gh-blue" : "bg-gray-300 dark:bg-slate-600"}`}>
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                enabled ? "translate-x-6" : "translate-x-1"}`} />
+              className={`relative inline-flex h-6 w-11 items-center border border-rule-strong transition-colors disabled:opacity-40 ${
+                enabled ? "bg-ink" : "bg-paper-2"}`}>
+              <span className={`inline-block h-3.5 w-3.5 transform transition-colors transition-transform ${enabled ? "translate-x-6 bg-paper" : "translate-x-1 bg-ink-3"}`} />
             </button>
           </div>
         </div>
@@ -212,7 +207,7 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
         </div>
 
         <button type="button" onClick={() => setShowTemplates(v => !v)}
-          className="mt-4 text-sm font-semibold text-gh-blue hover:underline">
+          className="textlink caps mt-4">
           <i className={`ph ph-caret-${showTemplates ? "down" : "right"} mr-1`}></i>
           Customise the email
         </button>
@@ -237,7 +232,7 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
               * forty repositories says "40 repositories", because naming
               * whichever arrived first would be a sample presented as a fact.
               */}
-            <p className="text-xs rounded-md px-2.5 py-2 bg-black/5 dark:bg-white/5 text-gray-600 dark:text-slate-300">
+            <p className="text-xs rounded-md px-2.5 py-2 bg-black/5 dark:bg-ink/5 text-gray-600 dark:text-slate-300">
               Alerts arriving together are sent as one email, so a template
               renders against the whole group. Anything the group disagrees on,
               like <code className="font-mono">{"{{repo}}"}</code>, is counted

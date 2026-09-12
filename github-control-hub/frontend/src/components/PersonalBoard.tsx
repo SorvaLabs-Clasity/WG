@@ -116,13 +116,13 @@ export default function PersonalBoard() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-4">
-        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[70ch]">
+        <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 max-w-[70ch]">
           Only you see these. They run the same checks as the Overview tab, and
           each card can be narrowed to the repositories, owners and values you
           care about.
         </p>
         <Button variant="primary" onClick={() => setAdding(true)}>
-          <i className="ph-bold ph-plus mr-1.5 text-[12px]"></i>Add a card
+          <i className="ph-bold ph-plus mr-1.5 text-[0.75rem]"></i>Add a card
         </Button>
       </div>
 

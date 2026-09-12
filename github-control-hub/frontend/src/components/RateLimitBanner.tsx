@@ -71,15 +71,17 @@ export default function RateLimitBanner() {
   const tone = INTENT.warn;
 
   return (
-    <div className="fixed top-16 left-0 right-0 z-[90] flex justify-center px-4 pt-3 pointer-events-none">
+    <div className="fixed top-[5.75rem] left-0 right-0 z-[90] flex justify-center px-4 pt-3 pointer-events-none">
       <div
         role="status"
-        className={`pointer-events-auto max-w-[640px] w-full rounded-2xl border shadow-lg p-4 flex items-start gap-3 ${tone.soft} ${tone.border}`}
-        style={{ animation: "slideUp 0.3s cubic-bezier(0.16,1,0.3,1) both" }}
+        className={`pointer-events-auto max-w-[640px] w-full border border-ochre-edge ${tone.soft}`}
+        style={{ animation: "rise 0.3s cubic-bezier(0.22,1,0.36,1) both" }}
       >
-        <i className={`ph-fill ph-hourglass-high text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
+        <span className={`block h-[3px] w-full ${tone.mark}`} aria-hidden="true" />
+        <div className="p-4 flex items-start gap-3.5">
+        <i className={`ph-bold ph-hourglass-high text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-bold ${tone.text}`}>
+          <p className={`display text-[1.0625rem] ${tone.text}`}>
             {limit.error.kind === "secondary"
               ? "GitHub is asking us to slow down"
               /* Named, because the three budgets are different sizes in
@@ -91,18 +93,16 @@ export default function RateLimitBanner() {
               : limit.error.resource === "graphql" ? "GitHub GraphQL budget spent"
               : "GitHub request budget spent"}
           </p>
-          <p className={`text-[13px] mt-1 leading-relaxed ${tone.text} opacity-90`}>{limit.error.message}</p>
-          <p className={`text-[13px] mt-2 font-bold tabular-nums ${tone.text}`}>
+          <p className={`text-[0.8125rem] mt-1.5 leading-relaxed ${tone.text}`}>{limit.error.message}</p>
+          <p className={`caps mt-2.5 tabular-nums ${tone.text}`}>
             {left > 0 ? <>Retrying in {formatLeft(left)}</> : <>Retrying now…</>}
           </p>
         </div>
-        <button
-          onClick={() => setLimit(null)}
-          className={`shrink-0 opacity-50 hover:opacity-100 transition-opacity ${tone.text}`}
-          aria-label="Dismiss"
-        >
-          <i className="ph-bold ph-x text-sm"></i>
+        <button onClick={() => setLimit(null)} className={`textlink caps shrink-0 !${tone.text}`}
+          aria-label="Dismiss">
+          Dismiss
         </button>
+        </div>
       </div>
     </div>
   );

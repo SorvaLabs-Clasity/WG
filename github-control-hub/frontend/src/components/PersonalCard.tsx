@@ -68,23 +68,19 @@ export default function PersonalCard({
   const nameOf = (item: any) => String(valueFor(item, "entity") ?? "—");
 
   return (
-    <div className={`group relative rounded-2xl border overflow-hidden transition-colors
-                     bg-white dark:bg-slate-900
-                     ${error || count === 0 || verdict.level === "clear"
-                        ? "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20"
-                        : `${tone.edge} ${tone.lift}`}`}>
-      {/* The rail carries the verdict, so the state is readable before the
-          number is. Clear is deliberately the quiet one: a board where every
-          card shouts is a board nobody reads. */}
+    <div className={`group relative border bg-paper transition-colors hover:bg-ink/[0.035]
+                     ${error || count === 0 || verdict.level === "clear" ? "border-rule" : tone.edge}`}>
+      {/* The marginal rule carries the verdict, so the state is readable before
+          the number is. Clear is deliberately the quiet one: a board where
+          every card shouts is a board nobody reads. */}
       <div aria-hidden="true"
         className={`absolute left-0 top-0 bottom-0 w-[3px] ${
-          error ? "bg-rose-400" : count === 0 ? "bg-emerald-400/70" : tone.bar}`} />
+          error ? "bg-crimson" : count === 0 ? "bg-forest/70" : tone.bar}`} />
 
       <div className="pl-5 pr-3 pt-3.5 pb-1 flex items-start gap-2">
         <button type="button" onClick={onOpen}
           className="min-w-0 flex-1 text-left group/title">
-          <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-400
-                         dark:text-slate-500 truncate group-hover/title:text-gh-blue transition-colors">
+          <h3 className="caps truncate group-hover/title:text-ink transition-colors">
             {config.title}
           </h3>
 
@@ -93,20 +89,15 @@ export default function PersonalCard({
               identical across a grid. */}
           <div className="flex items-baseline gap-2 mt-1">
             {isLoading ? (
-              <span className="inline-block h-8 w-16 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+              <span className="inline-block h-8 w-16 bg-paper-3 animate-pulse" />
             ) : error ? (
-              <span className="text-[15px] font-bold text-rose-600 dark:text-rose-400">
-                Could not be read
-              </span>
+              <span className="display text-[1.0625rem] text-crimson">Could not be read</span>
             ) : (
               <>
-                <span className={`text-[34px] font-black tabular-nums leading-none tracking-[-0.03em]
-                                  ${count === 0 ? "text-slate-300 dark:text-slate-600" : tone.figure}`}>
+                <span className={`figure text-[2.25rem] ${count === 0 ? "text-ink-4" : tone.figure}`}>
                   {count.toLocaleString()}
                 </span>
-                <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-                  {nounFor(entity, count)}
-                </span>
+                <span className="caps">{nounFor(entity, count)}</span>
               </>
             )}
           </div>
@@ -115,7 +106,7 @@ export default function PersonalCard({
               this card and the Overview show two different numbers for the
               same check and neither says why. */}
           {filtered && !isLoading && !error && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
+            <p className="caps mt-1.5 tabular-nums">
               narrowed from {unfiltered.toLocaleString()}
             </p>
           )}
@@ -124,10 +115,9 @@ export default function PersonalCard({
         {alarmCount > 0 && (
           <button type="button" onClick={onAlarm}
             title={`${alarmCount} alarm${alarmCount > 1 ? "s" : ""} on this card`}
-            className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md
-                       text-[10.5px] font-bold bg-amber-500/10 text-amber-700
-                       dark:text-amber-400 hover:bg-amber-500/20 transition-colors">
-            <i className="ph-fill ph-bell text-[10px]" aria-hidden="true" />
+            className="shrink-0 inline-flex items-center gap-1.5 px-1.5 py-1 caps caps-tight
+                       bg-ochre-wash text-ochre border border-ochre-edge transition-colors">
+            <i className="ph-bold ph-bell text-[0.625rem]" aria-hidden="true" />
             {alarmCount}
           </button>
         )}
@@ -142,10 +132,9 @@ export default function PersonalCard({
           ].map(([icon, label, fn]) => (
             <button key={label as string} type="button" onClick={fn as () => void}
               title={label as string} aria-label={`${label} ${config.title}`}
-              className="w-7 h-7 rounded-lg grid place-items-center text-slate-400
-                         hover:text-slate-900 dark:hover:text-white
-                         hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors">
-              <i className={`ph-bold ${icon} text-[12.5px]`} aria-hidden="true" />
+              className="w-7 h-7 grid place-items-center text-ink-3 hover:text-ink
+                         hover:bg-ink/[0.06] transition-colors">
+              <i className={`ph-bold ${icon} text-[0.7812rem]`} aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -155,9 +144,8 @@ export default function PersonalCard({
         <div className="px-5 pb-2 flex flex-wrap gap-1">
           {chips.map(f => (
             <button key={f.column} type="button" onClick={onFilters}
-              className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold
-                         bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300
-                         hover:bg-gh-blue/20 transition-colors max-w-full truncate">
+              className="px-1.5 py-1 caps caps-tight bg-indigo-wash text-indigo border border-indigo-edge
+                         hover:bg-indigo hover:text-reverse transition-colors max-w-full truncate">
               {describeFilter(f, labels.get(f.column) ?? f.column)}
             </button>
           ))}
@@ -168,18 +156,18 @@ export default function PersonalCard({
         {isLoading ? (
           <div className="grid gap-1.5">
             {[0, 1, 2].map(i => (
-              <div key={i} className="h-4 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse"
+              <div key={i} className="h-4 bg-paper-3 animate-pulse"
                 style={{ width: `${80 - i * 14}%` }} />
             ))}
           </div>
         ) : error ? (
-          <p className="text-[12px] text-rose-600 dark:text-rose-400 leading-relaxed">
+          <p className="text-[0.7812rem] text-crimson leading-relaxed">
             {error.message}
           </p>
         ) : items.length === 0 ? (
           /* Two different nothings, and the difference is the whole point of
              having put a filter on. */
-          <p className="text-[12px] text-slate-400 dark:text-slate-500">
+          <p className="standfirst text-[0.7812rem]">
             {filtered && unfiltered > 0
               ? `Nothing matches your filters. The check found ${unfiltered.toLocaleString()}.`
               : "Nothing found."}
@@ -188,18 +176,17 @@ export default function PersonalCard({
           <>
             <ul className="grid gap-1">
               {preview.map((item: any, i: number) => (
-                <li key={i} className="flex items-center gap-2 text-[12px] min-w-0">
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    item.status === "pass" ? "bg-emerald-500"
-                      : item.status === "fail" ? "bg-rose-500"
-                      : "bg-slate-300 dark:bg-slate-600"}`} />
-                  <span className="font-medium text-slate-700 dark:text-slate-200 truncate"
-                    title={nameOf(item)}>
+                <li key={i} className="flex items-baseline gap-2.5 text-[0.7812rem] min-w-0 py-1 border-b border-rule last:border-0">
+                  <span className={`w-1.5 h-1.5 shrink-0 translate-y-[-1px] ${
+                    item.status === "pass" ? "bg-forest"
+                      : item.status === "fail" ? "bg-crimson"
+                      : "bg-rule-strong"}`} />
+                  <span className="font-mono text-ink truncate" title={nameOf(item)}>
                     {nameOf(item)}
                   </span>
                   {item.owner && (
-                    <span className="ml-auto shrink-0 text-[10.5px] font-mono text-slate-400
-                                     dark:text-slate-500 truncate max-w-[38%]" title={item.owner}>
+                    <span className="ml-auto shrink-0 text-[0.6562rem] font-mono text-ink-3
+                                     truncate max-w-[38%]" title={item.owner}>
                       {item.owner}
                     </span>
                   )}
@@ -208,8 +195,7 @@ export default function PersonalCard({
             </ul>
             {more > 0 && (
               <button type="button" onClick={onOpen}
-                className="mt-2 text-[11.5px] font-semibold text-slate-400 dark:text-slate-500
-                           hover:text-gh-blue transition-colors">
+                className="textlink caps mt-2 transition-colors">
                 and {more.toLocaleString()} more →
               </button>
             )}

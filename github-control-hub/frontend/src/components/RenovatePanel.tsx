@@ -229,7 +229,7 @@ function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: nu
   });
 
   if (isLoading) {
-    return <p className="text-[13px] text-slate-400 dark:text-slate-500 px-1 py-2">Reading the dashboard…</p>;
+    return <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 px-1 py-2">Reading the dashboard…</p>;
   }
 
   const manifests = (data?.detected ?? [])
@@ -238,7 +238,7 @@ function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: nu
 
   if (manifests.length === 0) {
     return (
-      <p className="text-[13px] text-slate-400 dark:text-slate-500 px-1 py-2">
+      <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 px-1 py-2">
         {query ? "Nothing here matches that." : "This dashboard lists no dependencies."}
       </p>
     );
@@ -253,7 +253,7 @@ function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: nu
           </p>
           <ul className="mt-2 space-y-1">
             {m.packages.map(pkg => (
-              <li key={pkg} className="font-mono text-[12.5px] text-slate-600 dark:text-slate-300 truncate">
+              <li key={pkg} className="font-mono text-[0.7812rem] text-slate-600 dark:text-slate-300 truncate">
                 {pkg}
               </li>
             ))}
@@ -363,11 +363,11 @@ export default function RenovatePanel() {
   if (prs.data && !prs.data.configured) {
     return (
       <div className={`${SURFACE.card} p-6`} style={enter(0)}>
-        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>Renovate is not set up yet</h3>
+        <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>Renovate is not set up yet</h3>
         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
           A self-hosted Renovate raises its pull requests and keeps its dashboard as a GitHub App,
           and its authorship is the only way to find them. Type the name shown beside one of its
-          pull requests. The <span className="font-mono text-[12.5px]">[bot]</span> suffix an App's
+          pull requests. The <span className="font-mono text-[0.7812rem]">[bot]</span> suffix an App's
           login carries is added for you.
         </p>
         <div className="mt-4">
@@ -385,13 +385,13 @@ export default function RenovatePanel() {
     return (
       <div className={`${SURFACE.card} p-6`} style={enter(0)}>
         <div className="flex items-center gap-2.5">
-          <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>That bot was not found</h3>
+          <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>That bot was not found</h3>
           <Pill intent="warn">check the name</Pill>
         </div>
         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
           GitHub does not recognise <span className="font-mono text-slate-700 dark:text-slate-200">{bot}</span>.
           A self-hosted Renovate raises its work as a GitHub App, whose login carries a{" "}
-          <span className="font-mono text-[12.5px]">[bot]</span> suffix that GitHub's own pages hide,
+          <span className="font-mono text-[0.7812rem]">[bot]</span> suffix that GitHub's own pages hide,
           so the name shown beside a pull request is not the name search wants.
         </p>
         {isAdmin && <div className="mt-4">{botField}</div>}
@@ -520,7 +520,7 @@ export default function RenovatePanel() {
           <div className="flex items-center gap-2.5">
             {bot && <Chip>{bot}</Chip>}
             {stamp && (
-              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums">
+              <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 tabular-nums">
                 read {new Date(stamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 {refreshing && <span className="ml-1 opacity-70">· refreshing</span>}
               </span>
@@ -558,13 +558,13 @@ export default function RenovatePanel() {
                     className={`inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border
                                 transition-all ${on
                                   ? `${t.soft} ${t.border} shadow-sm`
-                                  : "border-transparent hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
+                                  : "border-transparent hover:bg-slate-100 dark:hover:bg-ink/[0.06]"}`}>
                     <span className={`w-2 h-2 rounded-full ${t.mark}`} />
-                    <span className={`text-[13px] font-bold tabular-nums
+                    <span className={`text-[0.8125rem] font-bold tabular-nums
                                       ${on ? t.text : "text-slate-700 dark:text-slate-200"}`}>
                       {counts[l.id].toLocaleString()}
                     </span>
-                    <span className={`text-[12.5px] ${on ? t.text : "text-slate-500 dark:text-slate-400"}`}>
+                    <span className={`text-[0.7812rem] ${on ? t.text : "text-slate-500 dark:text-slate-400"}`}>
                       {l.label}
                     </span>
                   </button>
@@ -572,7 +572,7 @@ export default function RenovatePanel() {
               })}
               {lens && (
                 <button onClick={() => setLens(null)}
-                  className="px-3 py-1.5 text-[12.5px] font-bold text-slate-400 dark:text-slate-500
+                  className="px-3 py-1.5 text-[0.7812rem] font-bold text-slate-400 dark:text-slate-500
                              hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
                   Clear
                 </button>
@@ -623,15 +623,15 @@ export default function RenovatePanel() {
                 aria-label={`${open ? "Collapse" : "Expand"} ${repo}`}
                 className="shrink-0 w-6 h-6 -ml-1 grid place-items-center rounded-lg
                            text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                           hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
-                <i className={`ph-bold ph-caret-right text-[13px] transition-transform duration-200
+                           hover:bg-slate-100 dark:hover:bg-ink/[0.06] transition-colors">
+                <i className={`ph-bold ph-caret-right text-[0.8125rem] transition-transform duration-200
                                ${open ? "rotate-90" : ""}`} aria-hidden="true" />
               </button>
 
               <a href={org ? `https://github.com/${org}/${repo}` : undefined}
                 target="_blank" rel="noreferrer noopener"
                 title={`Open ${repo} on GitHub`}
-                className={`${TYPE.heading} font-mono text-slate-900 dark:text-white truncate
+                className={`${TYPE.heading} font-mono text-slate-900 dark:text-ink truncate
                             hover:underline underline-offset-4 decoration-slate-300
                             dark:decoration-slate-600 transition-colors`}>
                 {repo}
@@ -668,7 +668,7 @@ export default function RenovatePanel() {
                   return (
                     <div key={`${r.repo}|${r.branch}|${r.title}`} style={enter(i, 14, 200)}
                       className={`relative overflow-hidden rounded-xl ${SURFACE.inset}
-                                  hover:border-slate-300 dark:hover:border-white/20 transition-colors`}>
+                                  hover:border-slate-300 dark:hover:border-ink/20 transition-colors`}>
                       <span className={`absolute left-0 top-0 bottom-0 w-1 ${t.mark}`} aria-hidden="true" />
 
                       <div className="relative pl-4 pr-3.5 py-2.5 grid items-center gap-x-4 gap-y-1
@@ -696,7 +696,7 @@ export default function RenovatePanel() {
                         {/* The transition, which is what the row is about. The
                             target carries the state colour, so the eye lands on
                             what it is moving to. */}
-                        <span className="font-mono text-[12.5px] tabular-nums truncate
+                        <span className="font-mono text-[0.7812rem] tabular-nums truncate
                                          order-3 lg:order-none col-span-2 lg:col-span-1">
                           {r.from && (
                             <>
@@ -707,7 +707,7 @@ export default function RenovatePanel() {
                           {r.to && <span className={`font-semibold ${t.text}`}>{r.to}</span>}
                         </span>
 
-                        <span className={`text-[12.5px] font-semibold ${t.text} truncate
+                        <span className={`text-[0.7812rem] font-semibold ${t.text} truncate
                                           order-2 lg:order-none justify-self-end lg:justify-self-start`}>
                           {stateOf(r)}
                         </span>
@@ -716,22 +716,21 @@ export default function RenovatePanel() {
                                          order-4 lg:order-none col-span-2 lg:col-span-1">
                           {r.pr && (
                             <a href={r.pr.url} target="_blank" rel="noreferrer noopener"
-                              className="font-mono text-[12px] tabular-nums text-slate-400 dark:text-slate-500
-                                         hover:text-slate-900 dark:hover:text-white transition-colors">
+                              className="font-mono text-[0.75rem] tabular-nums text-slate-400 dark:text-slate-500
+                                         hover:text-slate-900 dark:hover:text-ink transition-colors">
                               #{r.pr.number}
                             </a>
                           )}
                           {r.marker && r.issueNumber !== undefined && (
                             r.requested
-                              ? <span className="text-[11px] uppercase tracking-[0.14em] font-bold
-                                                 text-slate-400 dark:text-slate-500">sent</span>
+                              ? <span className="caps">sent</span>
                               : <button disabled={busy !== null || !writable}
                                   title={writable ? undefined : NO_WRITE(repo)}
                                   onClick={() => setPending({
                                     repo: r.repo, issueNumber: r.issueNumber!, marker: r.marker!,
                                     verb: r.verb!, subject: r.name, intent: LENS[r.lens].intent,
                                   })}
-                                  className={`px-2.5 py-1 rounded-lg text-[12px] font-bold transition-all
+                                  className={`px-2.5 py-1 rounded-lg text-[0.75rem] font-bold transition-all
                                               ${t.soft} ${t.text} hover:shadow-sm
                                               disabled:opacity-40 disabled:cursor-not-allowed`}>
                                   {running ? "…" : r.verb}
@@ -752,10 +751,10 @@ export default function RenovatePanel() {
                           repo, issueNumber: dashboard.issueNumber, marker: b.marker,
                           verb: BULK_LABEL[b.marker], intent: "warn",
                         })}
-                        className="px-2.5 py-1 rounded-lg text-[12px] font-bold
+                        className="px-2.5 py-1 rounded-lg text-[0.75rem] font-bold
                                    text-slate-500 dark:text-slate-400
-                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
-                                   hover:text-slate-900 dark:hover:text-white
+                                   hover:bg-slate-100 dark:hover:bg-ink/[0.06]
+                                   hover:text-slate-900 dark:hover:text-ink
                                    disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                         {BULK_LABEL[b.marker]}
                       </button>
@@ -763,10 +762,10 @@ export default function RenovatePanel() {
                     {dashboard.detectedPackages > 0 && (
                       <button onClick={() => toggle(invOpen, repo, setInvOpen)}
                         aria-expanded={invOpen.has(repo)}
-                        className="ml-auto px-2.5 py-1 rounded-lg text-[12px] font-bold
+                        className="ml-auto px-2.5 py-1 rounded-lg text-[0.75rem] font-bold
                                    text-slate-500 dark:text-slate-400
-                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
-                                   hover:text-slate-900 dark:hover:text-white transition-all">
+                                   hover:bg-slate-100 dark:hover:bg-ink/[0.06]
+                                   hover:text-slate-900 dark:hover:text-ink transition-all">
                         {invOpen.has(repo) ? "Hide" : "Show"} {dashboard.detectedPackages} dependencies
                       </button>
                     )}
@@ -791,10 +790,10 @@ export default function RenovatePanel() {
           <div className={`${SURFACE.card} overflow-hidden`} style={enter(groups.length, 35, 300)}>
             <button onClick={() => toggle(shut, QUIET_KEY, setShut)} aria-expanded={open}
               className="w-full flex items-center gap-3 px-6 py-4 text-left
-                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-              <i className={`ph-bold ph-caret-right text-slate-400 text-[13px] transition-transform
+                         hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors">
+              <i className={`ph-bold ph-caret-right text-slate-400 text-[0.8125rem] transition-transform
                              duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
-              <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>
+              <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>
                 No Renovate activity
               </h3>
               <span className="ml-auto shrink-0"><Pill intent="neutral">{quiet.length}</Pill></span>
@@ -806,7 +805,7 @@ export default function RenovatePanel() {
                   Renovate has written no dashboard and has no update open on{" "}
                   {quiet.length === 1 ? "this repository" : "these repositories"}. That usually means
                   it has not been onboarded, but it is not proof: a repository configured with{" "}
-                  <span className="font-mono text-[12.5px]">dependencyDashboard</span> turned off and
+                  <span className="font-mono text-[0.7812rem]">dependencyDashboard</span> turned off and
                   nothing currently outstanding looks the same from here.
                 </p>
 
@@ -818,7 +817,7 @@ export default function RenovatePanel() {
                   <ul className="mt-4 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                     {quietVisible.map(repo => (
                       <li key={repo}
-                        className={`${SURFACE.inset} rounded-xl px-3.5 py-2 font-mono text-[12.5px]
+                        className={`${SURFACE.inset} rounded-xl px-3.5 py-2 font-mono text-[0.7812rem]
                                     text-slate-600 dark:text-slate-300 truncate`}
                         title={repo}>
                         {repo}

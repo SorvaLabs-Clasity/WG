@@ -49,8 +49,8 @@ export default function ZonePicker({
       // The chosen zone shows as its code alone, because a row has no width for
       // three parts and the code is the half somebody is checking.
       title={value ? zoneLabel(value) : `Default${inheritZone ? `, currently ${zoneLabel(inheritZone)}` : ""}`}
-      className={`text-[11.5px] py-0.5 pl-1.5 pr-5 rounded-md bg-transparent
-                  border border-slate-200 dark:border-white/10
+      className={`text-[0.7188rem] py-0.5 pl-1.5 pr-5 rounded-md bg-transparent
+                  border border-slate-200 dark:border-ink/10
                   text-slate-500 dark:text-slate-400 max-w-[11rem] truncate
                   disabled:opacity-40 ${className}`}
     >

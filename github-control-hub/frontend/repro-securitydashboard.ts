@@ -228,9 +228,24 @@ const allResolved: AlertLike[] = [
     // with critical the darker. Four unrelated hues would read as four
     // unrelated categories rather than one ramp.
     check("the severity ramp is one ramp",
-      /critical: "bg-rose-600/.test(charts) && /high: "bg-rose-400/.test(charts));
-    check("  and every step has a dark value",
-      (charts.match(/dark:bg-/g) ?? []).length >= 8);
+      /critical: "bg-(rose-600|crimson)"/.test(charts)
+      && /high: "bg-(rose-400|crimson\/\d+)"/.test(charts),
+      "four unrelated hues read as four unrelated categories");
+
+    /**
+     * Both editions, which is now a property of the token rather than of a
+     * second class.
+     *
+     * This used to count `dark:bg-` pairs. Colour resolves through CSS
+     * variables that flip between the day and night editions, so a `dark:`
+     * half is not merely unnecessary — writing one would pin the dark edition
+     * to a value the theme cannot change. The assertion is therefore that
+     * every step is a theme token and none is a raw literal.
+     */
+    check("  and every step is a theme token, so both editions are covered",
+      (charts.match(/bg-(crimson|ochre|forest|indigo|rule-strong)(\/\d+)?"/g) ?? []).length >= 8
+      && !/#[0-9a-fA-F]{6}/.test(charts),
+      "a literal colour cannot follow the edition");
 
     // A bar drawn at its true proportion disappears when the week has one
     // alert and the peak has forty.

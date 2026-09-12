@@ -27,12 +27,9 @@ interface Answer {
   sampled?: boolean;
 }
 
-const labelClass = "block text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1.5";
+const labelClass = "caps block mb-1.5";
 
-const inputClass =
-  "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 " +
-  "rounded-xl text-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 " +
-  "focus:outline-none focus:ring-2 focus:ring-gh-blue/40 focus:border-gh-blue transition-shadow";
+const inputClass = "field-line text-[0.8438rem]";
 
 /**
  * What each mode asks and what it costs, said where it is chosen.
@@ -83,10 +80,10 @@ function ago(days: number | null): string {
  * answer. Reading that off the ranking alone takes a second look.
  */
 function freshness(days: number | null): string {
-  if (days === null) return "bg-slate-300 dark:bg-slate-600";
+  if (days === null) return "bg-rule-strong";
   if (days <= 30) return "bg-emerald-500";
   if (days <= 180) return "bg-amber-500";
-  return "bg-slate-300 dark:bg-slate-600";
+  return "bg-rule-strong";
 }
 
 function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; sampled?: boolean }) {
@@ -100,8 +97,8 @@ function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; s
     <span className="inline-flex items-center gap-1.5 flex-wrap">
       {items.map(i => (
         <span key={i.icon} title={`${i.n} ${i.n === 1 ? i.one : i.many}`}
-          className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-white/[0.07] text-slate-600 dark:text-slate-300 ${
-            size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[11px]"}`}>
+          className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-ink/[0.07] text-slate-600 dark:text-slate-300 ${
+            size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[0.6875rem]"}`}>
           <i className={`ph ${i.icon}`}></i>
           {/* A floor, not a total. GitHub returns one page of a hundred, so
               a repository with four thousand commits and one with a hundred and
@@ -173,9 +170,9 @@ export default function ExpertisePage() {
 
   return (
     <Page user={user}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Who knows this?</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
+      <header className="mb-7 pb-3 border-b-2 border-ink">
+        <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Who knows this?</h1>
+        <p className="standfirst text-[0.875rem] mt-2 max-w-[68ch]">
           Ranks people by what they have actually touched, commits, reviews and discussion -
           weighted so recent work counts for more. For when something is broken and you need to
           know who to ask first.
@@ -186,18 +183,14 @@ export default function ExpertisePage() {
         {/* The tabs sit on the card's edge rather than inside it, so the card
             reads as belonging to the mode rather than the mode being one more
             field in a form. */}
-        <div className="flex border-b border-slate-200 dark:border-white/[0.09] overflow-x-auto">
-          {(Object.keys(MODES) as Kind[]).map(k => (
+        <div className="flex border-b border-rule overflow-x-auto">
+          {(Object.keys(MODES) as Kind[]).map((k, i) => (
             <button key={k} onClick={() => setKind(k)}
-              className={`relative px-5 py-3 text-[13px] font-bold whitespace-nowrap inline-flex items-center gap-2 transition-colors ${
-                kind === k
-                  ? "text-slate-900 dark:text-white"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
-              <i className={`ph-bold ${MODES[k].icon} text-base`}></i>
+              className={`caps px-5 py-3 -mb-px whitespace-nowrap inline-flex items-center gap-2 border-b-2 transition-colors ${
+                i > 0 ? "border-l border-l-rule" : ""} ${
+                kind === k ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+              <i className={`ph-bold ${MODES[k].icon} text-[0.8125rem]`}></i>
               {MODES[k].label}
-              {kind === k && (
-                <span className="absolute left-3 right-3 -bottom-px h-0.5 rounded-full bg-gh-blue" />
-              )}
             </button>
           ))}
         </div>
@@ -229,16 +222,12 @@ export default function ExpertisePage() {
               title={canAsk ? "" : kind === "path"
                 ? "Both a repository and a path are needed. A path only means something inside one repository"
                 : "Fill this in first"}
-              className="h-fit px-6 py-2.5 text-sm font-bold rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 disabled:opacity-30 transition-opacity inline-flex items-center gap-2">
-              {isFetching
-                ? <><i className="ph ph-circle-notch animate-spin"></i>Looking…</>
-                : <><i className="ph-bold ph-magnifying-glass"></i>Ask</>}
+              className="stamp h-fit">
+              {isFetching ? "Looking…" : "Ask"}
             </button>
           </form>
 
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
-            {MODES[kind].hint}
-          </p>
+          <p className="standfirst text-[0.7812rem] mt-4 max-w-[76ch]">{MODES[kind].hint}</p>
         </div>
       </div>
 
@@ -275,11 +264,11 @@ export default function ExpertisePage() {
           ) : (
             <>
               <div className="flex items-center gap-2.5 flex-wrap mb-4">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07] text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span className="caps inline-flex items-center gap-1.5 px-2 py-1 bg-slate-100">
                   <i className={`ph-bold ${MODES[data.subject.kind].icon}`}></i>
                   {MODES[data.subject.kind].label}
                 </span>
-                <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white break-all">
+                <h2 className="display text-[1.1875rem] text-ink break-all">
                   {data.subject.name}
                 </h2>
                 {data.repos && data.repos.length > 0 && (
@@ -301,20 +290,20 @@ export default function ExpertisePage() {
                   it is given the room to be read as one rather than being row
                   one of a table. */}
               <div className={`${SURFACE.sheet} relative overflow-hidden mb-3`}>
-                <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.07] dark:bg-gh-blue/[0.12]"
+                <span className="absolute inset-y-0 left-0 bg-ink/[0.07] dark:bg-ink/[0.12]"
                   style={{ width: "100%" }} aria-hidden="true" />
                 <div className="relative p-5 flex items-center gap-4 flex-wrap">
                   <div className="relative shrink-0">
                     <UserAvatar login={top.login} size={52} />
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-[#151a23] ${freshness(top.daysSinceActive)}`}
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-rule ${freshness(top.daysSinceActive)}`}
                       title={`Last active ${ago(top.daysSinceActive)}`} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gh-blue mb-0.5">
+                    <p className="caps mb-0.5">
                       Ask first
                     </p>
                     <a href={`https://github.com/${top.login}`} target="_blank" rel="noopener noreferrer"
-                      className="text-xl font-black tracking-tight text-slate-900 dark:text-white hover:text-gh-blue break-all">
+                      className="text-xl font-semibold tracking-tight text-slate-900 dark:text-ink hover:text-gh-blue break-all">
                       {top.login}
                     </a>
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -325,10 +314,10 @@ export default function ExpertisePage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-3xl font-black tabular-nums text-slate-900 dark:text-white leading-none">
+                    <p className="text-3xl font-semibold tabular-nums text-slate-900 dark:text-ink leading-none">
                       {top.score}
                     </p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">score</p>
+                    <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">score</p>
                   </div>
                 </div>
               </div>
@@ -340,15 +329,15 @@ export default function ExpertisePage() {
                       className={`${SURFACE.inset} relative overflow-hidden rounded-xl`}>
                       {/* The bar is the score. A number alone makes 91 and 34
                           look like neighbours in a list; a width does not. */}
-                      <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.10] dark:bg-gh-blue/[0.16] transition-[width] duration-500"
+                      <span className="absolute inset-y-0 left-0 bg-ink/[0.10] dark:bg-ink/[0.16] transition-[width] duration-500"
                         style={{ width: `${Math.max(2, e.score)}%` }} aria-hidden="true" />
                       <div className="relative px-4 py-2.5 flex items-center gap-3 flex-wrap">
-                        <span className="text-xs font-black tabular-nums text-slate-400 dark:text-slate-500 w-4 shrink-0">
+                        <span className="text-xs font-semibold tabular-nums text-slate-400 dark:text-slate-500 w-4 shrink-0">
                           {i + 2}
                         </span>
                         <div className="relative shrink-0">
                           <UserAvatar login={e.login} size={26} />
-                          <span className={`absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full ring-2 ring-slate-50 dark:ring-[#191e28] ${freshness(e.daysSinceActive)}`}
+                          <span className={`absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full ring-2 ring-slate-50 dark:ring-rule ${freshness(e.daysSinceActive)}`}
                             title={`Last active ${ago(e.daysSinceActive)}`} />
                         </div>
                         <a href={`https://github.com/${e.login}`} target="_blank" rel="noopener noreferrer"
@@ -360,7 +349,7 @@ export default function ExpertisePage() {
                           <span className="text-xs text-slate-400 dark:text-slate-500">
                             {ago(e.daysSinceActive)}
                           </span>
-                          <span className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200 w-8 text-right">
+                          <span className="text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200 w-8 text-right">
                             {e.score}
                           </span>
                         </span>
@@ -381,10 +370,10 @@ export default function ExpertisePage() {
                   Scores are relative to the top person, not absolute. Contributions halve in weight
                   every 90 days, so this ranks who is likely to remember rather than who has done
                   the most over all time. The dot is recency -{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" /> within a
+                  <span className="inline-block w-2 h-2 bg-forest align-middle" /> within a
                   month,{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> within six,{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 align-middle" /> longer
+                  <span className="inline-block w-2 h-2 bg-ochre align-middle" /> within six,{" "}
+                  <span className="inline-block w-2 h-2 rounded-full bg-rule-strong align-middle" /> longer
                   ago. Bot accounts are excluded.
                 </p>
               </div>

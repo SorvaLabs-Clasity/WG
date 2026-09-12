@@ -52,18 +52,21 @@ export default function MutationErrors() {
         <div
           key={e.id}
           role="alert"
-          className={`pointer-events-auto rounded-2xl border shadow-lg backdrop-blur p-4 flex items-start gap-3 ${tone.soft} ${tone.border}`}
-          style={{ animation: "slideUp 0.3s cubic-bezier(0.16,1,0.3,1) both" }}
+          className={`pointer-events-auto border border-crimson-edge ${tone.soft}`}
+          style={{ animation: "rise 0.3s cubic-bezier(0.22,1,0.36,1) both" }}
         >
-          <i className={`ph-fill ph-warning-circle text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
-          <p className={`flex-1 text-[13px] leading-relaxed ${tone.text}`}>{e.message}</p>
-          <button
-            onClick={() => setErrors(prev => prev.filter(x => x.id !== e.id))}
-            className={`shrink-0 opacity-50 hover:opacity-100 transition-opacity ${tone.text}`}
-            aria-label="Dismiss"
-          >
-            <i className="ph-bold ph-x text-sm"></i>
-          </button>
+          <span className={`block h-[3px] w-full ${tone.mark}`} aria-hidden="true" />
+          <div className="p-4 flex items-start gap-3.5">
+            <i className={`ph-bold ph-warning-circle text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
+            <p className={`flex-1 text-[0.8125rem] leading-relaxed ${tone.text}`}>{e.message}</p>
+            <button
+              onClick={() => setErrors(prev => prev.filter(x => x.id !== e.id))}
+              className={`textlink caps shrink-0 !${tone.text}`}
+              aria-label="Dismiss"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       ))}
     </div>

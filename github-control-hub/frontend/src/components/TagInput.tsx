@@ -40,19 +40,19 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
 
   const spanClass = isBlue
     ? "inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 px-2 py-1 rounded-md font-mono"
-    : "inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2 py-1 rounded-md font-mono";
+    : "inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-paper-3 border border-gray-200 dark:border-rule text-gray-800 dark:text-slate-200 px-2 py-1 rounded-md font-mono";
 
   const btnClass = isBlue
     ? "text-blue-300 dark:text-blue-500 hover:text-red-500 dark:hover:text-red-400 ml-0.5"
     : "text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 ml-0.5";
 
   const iconClass = isBlue
-    ? `ph-bold ${icon} text-[10px] text-blue-400 dark:text-blue-300`
-    : `ph-bold ${icon} text-[10px] text-gray-400 dark:text-slate-500`;
+    ? `ph-bold ${icon} text-[0.625rem] text-blue-400 dark:text-blue-300`
+    : `ph-bold ${icon} text-[0.625rem] text-gray-400 dark:text-slate-500`;
 
   return (
     <div
-      className="border border-gray-300 dark:border-slate-600 rounded-md p-2 focus-within:ring-2 focus-within:ring-gh-blue focus-within:border-transparent bg-white dark:bg-slate-800 min-h-[40px] cursor-text"
+      className="border border-gray-300 dark:border-rule rounded-md p-2 focus-within:ring-2 focus-within:ring-gh-blue focus-within:border-transparent bg-white dark:bg-paper-2 min-h-[40px] cursor-text"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           const inputEl = e.currentTarget.querySelector("input");
@@ -66,7 +66,7 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
             {icon && <i className={iconClass}></i>}
             {tag}
             <button type="button" onClick={() => onChange(tags.filter(t => t !== tag))} className={btnClass}>
-              <i className="ph-bold ph-x text-[10px]"></i>
+              <i className="ph-bold ph-x text-[0.625rem]"></i>
             </button>
           </span>
         ))}
