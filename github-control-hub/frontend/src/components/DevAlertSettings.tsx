@@ -187,21 +187,6 @@ function Row({ label, hint, checked, onChange, disabled }: {
  * prose, and "pull_request_review" appears nowhere on the screen somebody has
  * to go and tick.
  */
-const EVENT_BOX: Record<string, string> = {
-  pull_request: "Pull requests",
-  pull_request_review: "Pull request reviews",
-};
-
-function missingLabel(missing: string[]): string {
-  if (missing.length === 0) return "";
-  const named = missing.map(e => `\u201c${EVENT_BOX[e] ?? e}\u201d (${e})`);
-  const list = named.length === 1
-    ? named[0]
-    : `${named.slice(0, -1).join(", ")} and ${named[named.length - 1]}`;
-  return `The GitHub App is not subscribed to ${list}. Tick ${
-    missing.length === 1 ? "that box" : "those boxes"} on the App's settings page; nothing here can fire until then.`;
-}
-
 /**
  * One precondition, and what it means when it is not met.
  *
@@ -536,16 +521,15 @@ export default function DevAlertSettings() {
               <Check ok={events.reviewRequested || events.approved || events.changesRequested}
                 good="At least one of the switches above is on."
                 bad="All three switches above are off." />
-              {/* The one precondition nobody could check from here, and the one
-                  that fails in complete silence: GitHub never delivers an event
-                  the App is not subscribed to, so there is no error and no
-                  record anywhere to find. Read from the App's own subscription
-                  list rather than inferred. */}
-              <Check
-                ok={data.missingEvents == null ? null : data.missingEvents.length === 0}
-                good="The GitHub App is subscribed to both events these need."
-                bad={missingLabel(data.missingEvents ?? [])}
-                unknown="Whether the GitHub App is subscribed to these events could not be read, so this cannot say either way. It needs the App's own credentials, which this deployment may not have." />
+              {/* There was a check here claiming to know whether the GitHub App
+                  was subscribed to these events. It read `GET /app`, which is
+                  the wrong list: this app is fed by the *organization* webhook,
+                  and the App subscribes to nothing — so it reported both events
+                  missing on every healthy install and sent people to a settings
+                  page where the boxes it named do not decide anything. Removed
+                  rather than corrected: the App has no permission to read the
+                  org webhook, so there is no version of this that can be right,
+                  and the row below measures the same thing honestly. */}
               {/* The decisive one, and org-wide rather than yours: it is written
                   the moment the worker handles one of these events, before any
                   decision about who to tell. A recent value proves GitHub is
@@ -561,7 +545,7 @@ export default function DevAlertSettings() {
                 good={data.lastWebhookSeen
                   ? `A ${data.lastWebhookSeen.event} event reached the app ${ago(data.lastWebhookSeen.at) ?? "recently"}, so the delivery path is working.`
                   : ""}
-                bad="No pull request or review event has reached the app at all. Either GitHub is not sending them, or the webhook worker is running a build from before this was recorded — in both cases nothing here can fire, whatever is set above."
+                bad="No pull request or review event has reached the app at all. Either the organization webhook is not sending them, or the webhook worker is running a build from before this was recorded — in both cases nothing here can fire, whatever is set above."
                 unknown="Whether any event has reached the app could not be read, so this cannot say either way. This deployment's API is older than the record." />
             </ul>
 
@@ -581,20 +565,6 @@ export default function DevAlertSettings() {
                     {data.lastEvent.outcome}
                   </span>
                   {data.lastEvent.detail && <>. {data.lastEvent.detail}</>}
-                </p>
-              ) : (
-                (data.missingEvents && data.missingEvents.length > 0) ? (
-                /* Decided, so say it rather than offering a list of suspects.
-                   Nothing else below can be the explanation while this is true:
-                   GitHub is not sending the event at all. */
-                <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  No event naming you has reached the app, and the reason is above:{" "}
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">
-                    {missingLabel(data.missingEvents)}
-                  </span>{" "}
-                  Until that is ticked GitHub sends nothing, so none of these can fire however
-                  they are set here. The daily summary does not go through the webhook and is
-                  unaffected.
                 </p>
               ) : (
                 <>
@@ -631,14 +601,25 @@ export default function DevAlertSettings() {
                       <span className="font-mono text-[0.6875rem]">infra/</span>. Until then this line
                       says nothing either way, because the worker is what writes it.
                     </li>
+                    {/* Named exactly, because the obvious guess is wrong. These
+                        are not GitHub App settings and not repository or
+                        organization *permissions* — they are event checkboxes on
+                        the organization's own webhook, a different page under a
+                        different menu, and only an org owner can see it. */}
                     <li>
                       <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        Or the webhook is not subscribed to the event.
+                        Or the organization webhook is not subscribed to the event.
                       </span>{" "}
                       <span className="font-mono text-[0.6875rem]">pull_request</span> carries review
                       requests; <span className="font-mono text-[0.6875rem]">pull_request_review</span>{" "}
-                      carries approvals and change requests. Both are ticked where the app's
-                      webhook is configured, not here.
+                      carries approvals and change requests. An org owner ticks{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">Pull requests</span>{" "}
+                      and{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">Pull request reviews</span>{" "}
+                      under Organization → Settings → Webhooks, on the hook that already exists —{" "}
+                      <em>editing</em> it, never adding a second, because two hooks means two
+                      deliveries of every event and the deduplication cannot tell them apart. Not on
+                      the GitHub App, and not a permission.
                     </li>
                   </ul>
                   )}
@@ -647,7 +628,7 @@ export default function DevAlertSettings() {
                     arriving while these are not.
                   </p>
                 </>
-              ))}
+              )}
             </div>
           </div>
         </div>
