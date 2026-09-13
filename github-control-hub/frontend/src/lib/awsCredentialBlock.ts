@@ -20,6 +20,7 @@ export function parseExportBlock(block: string): Record<string, string> {
     aws_secret_access_key: "AWS_SECRET_ACCESS_KEY",
     aws_session_token: "AWS_SESSION_TOKEN",
     aws_default_region: "AWS_DEFAULT_REGION",
+    aws_region: "AWS_DEFAULT_REGION",
     region: "AWS_DEFAULT_REGION",
   };
   const unquote = (v: string) => v.replace(/^["']|["']$/g, "");
@@ -43,4 +44,25 @@ export function parseExportBlock(block: string): Record<string, string> {
     if (name) vals[name] = value;
   }
   return vals;
+}
+
+/**
+ * The region a pasted block names, if it names one.
+ *
+ * Most do not. The access portal's "Command line or programmatic access" dialog
+ * gives the key id, the secret and the session token and stops — which is why
+ * the paste form needs a region field of its own rather than hoping to find one
+ * here. A block copied out of a credentials file does carry `region`, and that
+ * is worth not making somebody retype.
+ *
+ * Every spelling folds onto AWS_DEFAULT_REGION in `parseExportBlock`, so this
+ * is one lookup rather than three.
+ */
+export function regionFromBlock(block: string): string {
+  return parseExportBlock(block).AWS_DEFAULT_REGION ?? "";
+}
+
+/** The shape AWS regions have, for saying so before a round trip. */
+export function looksLikeRegion(region: string): boolean {
+  return /^[a-z]{2}(-gov)?-[a-z]+-\d$/.test(region.trim());
 }

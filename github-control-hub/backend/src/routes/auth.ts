@@ -979,10 +979,47 @@ router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMidd
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
 
-  const { accessKeyId, secretAccessKey, sessionToken, region } = req.body || {};
+  const { accessKeyId, secretAccessKey, sessionToken } = req.body || {};
+  const region = String(req.body?.region ?? "").trim();
   if (!accessKeyId || !secretAccessKey) {
     res.status(400).json({ error: "accessKeyId and secretAccessKey are required" });
     return;
+  }
+
+  /**
+   * A key pair carries no region, so one has to come from somewhere.
+   *
+   * This used to accept a blank region and fall back to `BOOT_REGION`, which is
+   * undefined on every desktop launch — the normal case. The SDK then had no
+   * region at all and the first call failed with "Region is missing", a message
+   * about the SDK rather than about the form the person had just filled in. It
+   * was worse from the paste-block form, which had no region field at all: the
+   * AWS access portal's blocks do not carry one, so that path could not succeed
+   * on a desktop machine however correct the keys were.
+   *
+   * Required unless this process was launched with one, which is a choice the
+   * operator made for this machine and is the same answer they would have got
+   * without switching anything.
+   */
+  const { BOOT_REGION } = await import("../utils/region");
+  if (!region && !BOOT_REGION) {
+    res.status(400).json({
+      error: "A region is required. Access keys do not carry one, and this app was not "
+        + "started with a default, so there is nothing to fall back to. Enter the region "
+        + "the install you want to open lives in, such as us-east-1.",
+      code: "AWS_REGION_REQUIRED",
+    });
+    return;
+  }
+  if (region) {
+    const { isValidRegion } = await import("../services/ssoSetupService");
+    if (!isValidRegion(region)) {
+      res.status(400).json({
+        error: `"${region}" is not an AWS region. They look like us-east-1 or eu-west-2.`,
+        code: "AWS_REGION_INVALID",
+      });
+      return;
+    }
   }
 
   const carried = captureSession(req.headers.authorization);

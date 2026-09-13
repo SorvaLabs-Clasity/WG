@@ -11,7 +11,7 @@ Three ways in, offered on the sign-in page:
 |---|---|
 | **SSO** | Runs `aws sso login --profile <name>` and waits for the browser |
 | **Profile** | Uses an existing profile from `~/.aws/config` |
-| **Access keys** | Pasted directly, held in memory for the session |
+| **Access keys** | Pasted directly, held in memory for the session. A **region is required** |
 
 The chosen profile is remembered in `~/.github-control-hub/desktop.json` and
 restored at startup, so a still-valid SSO session simply connects.
@@ -39,6 +39,32 @@ from the Lambda runtime, scoped to exactly what that function needs. See
 Reading DynamoDB (the app's own tables) and Secrets Manager (GitHub secrets).
 It is *not* how the AWS guardrails reach other accounts. Those assume a role.
 See [AWS guardrails](../aws-guardrails/).
+
+## Access keys need a region
+
+A key pair carries no region, and the block the AWS access portal puts on your
+clipboard does not include one either — its "Command line or programmatic
+access" dialog gives the key id, the secret and the session token and stops.
+
+Underneath the field there is only `BOOT_REGION`, the region the process was
+launched with, and that is undefined on every desktop launch. So a blank region
+meant the SDK had none at all and the first call failed with
+
+```
+Region is missing
+```
+
+which names the SDK rather than the empty box on the form. Both forms require
+it now, and the paste form has the field at all, which it did not.
+
+It is filled in rather than merely demanded: a block copied out of a
+credentials file carries `region` and that is read, and a process that has
+already connected offers the region it connected to. Neither overwrites
+something typed.
+
+A process *launched* with `AWS_REGION` may still omit it — that is a choice the
+operator made for the machine, and it is the same answer they would have got
+without switching accounts.
 
 ## Which config file
 

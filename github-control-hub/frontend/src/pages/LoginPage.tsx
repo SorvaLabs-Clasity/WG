@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { parseExportBlock } from "../lib/awsCredentialBlock";
+import { parseExportBlock, regionFromBlock, looksLikeRegion } from "../lib/awsCredentialBlock";
 import { useNavigate } from "react-router-dom";
 import {
   getLoginUrl,
@@ -122,6 +122,14 @@ export default function LoginPage() {
   const touchedMethod = useRef(false);
   const [akPasteMode, setAkPasteMode] = useState(true);
   const [akPasteBlock, setAkPasteBlock] = useState("");
+  /**
+   * Whether the region was typed rather than lifted out of a pasted block.
+   *
+   * Without this, pasting a block that names no region would clear a region
+   * somebody had already typed, and pasting a second block could not correct
+   * the first one's. Typing wins; pasting fills a field nobody has touched.
+   */
+  const regionTyped = useRef(false);
   const [akId, setAkId] = useState("");
   const [akSecret, setAkSecret] = useState("");
   const [akSession, setAkSession] = useState("");
@@ -187,6 +195,28 @@ export default function LoginPage() {
     setLoading(false);
     setRefreshing(null);
   }, []);
+
+  /**
+   * Fill the region in from whatever already knows it.
+   *
+   * A block copied out of a credentials file carries `region`; the access
+   * portal's export blocks do not. And once this process has connected to
+   * anything, it knows the region it connected to, which is almost always the
+   * one wanted again.
+   *
+   * Only into a field nobody has typed in. Overwriting a typed region when a
+   * second block is pasted, or when a status poll lands, would take the answer
+   * away mid-sentence.
+   */
+  useEffect(() => {
+    if (regionTyped.current) return;
+    const fromBlock = regionFromBlock(akPasteBlock);
+    const next = fromBlock || status?.aws.region || "";
+    if (next && next !== akRegion) setAkRegion(next);
+    // akRegion is deliberately absent: this reacts to new information, not to
+    // its own writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [akPasteBlock, status?.aws.region]);
 
   /**
    * Read the profiles from ~/.aws/config.
@@ -468,13 +498,27 @@ export default function LoginPage() {
         : `That block is missing ${!id ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"}.`);
       return;
     }
+    // A key pair carries no region and the access portal's blocks do not
+    // include one, so this is the only thing that can name it. Blank used to
+    // reach the backend and come back as "Region is missing", a message about
+    // the SDK rather than about the form.
+    const region = akRegion.trim();
+    if (!region) {
+      setNewError("Enter the region below. Access keys carry no region, and the block from "
+        + "the AWS access portal does not include one.");
+      return;
+    }
+    if (!looksLikeRegion(region)) {
+      setNewError(`"${region}" is not an AWS region. They look like us-east-1 or eu-west-2.`);
+      return;
+    }
     setNewError("");
     setRefreshing("aws");
     const result = await setAwsAccessKeys({
       accessKeyId: id,
       secretAccessKey: secret,
       sessionToken: parsed.AWS_SESSION_TOKEN || undefined,
-      region: parsed.AWS_DEFAULT_REGION || parsed.AWS_REGION || undefined,
+      region,
     });
     if (!result.reachable) {
       setNewError(result.error
@@ -491,13 +535,25 @@ export default function LoginPage() {
 
   const handleAccessKeys = async () => {
     if (!akId || !akSecret) return;
+    // Same rule as the paste form, for the same reason: the field was labelled
+    // optional, leaving it blank was the obvious thing to do, and on a desktop
+    // launch there is no default underneath it.
+    const region = akRegion.trim();
+    if (!region) {
+      setNewError("Enter a region. Access keys carry no region, and there is no default to fall back to.");
+      return;
+    }
+    if (!looksLikeRegion(region)) {
+      setNewError(`"${region}" is not an AWS region. They look like us-east-1 or eu-west-2.`);
+      return;
+    }
     setNewError("");
     setRefreshing("aws");
     const result = await setAwsAccessKeys({
       accessKeyId: akId,
       secretAccessKey: akSecret,
       sessionToken: akSession || undefined,
-      region: akRegion || undefined,
+      region,
     });
     // Same silence as the paste block had: expired keys looked like a dead button.
     if (!result.reachable) {
@@ -965,8 +1021,16 @@ export default function LoginPage() {
                           export block.
                         </Hint>
                       )}
+                      {/* Here as well as on the other tab, and for a sharper
+                          reason: the access portal's blocks carry no region at
+                          all, so without this field the paste form could not
+                          succeed on a desktop machine however correct the keys
+                          were. It failed with "Region is missing", which names
+                          the SDK rather than the thing to fill in. */}
+                      <RegionField value={akRegion} onChange={v => { regionTyped.current = true; setAkRegion(v); }} />
                       <div className="flex justify-end">
-                        <Button variant="primary" onClick={handlePasteBlockConnect} disabled={refreshing === "aws" || !pasteBlockValid}>
+                        <Button variant="primary" onClick={handlePasteBlockConnect}
+                          disabled={refreshing === "aws" || !pasteBlockValid || !akRegion.trim()}>
                           <i className="ph-bold ph-key mr-2"></i>Connect
                         </Button>
                       </div>
@@ -985,22 +1049,10 @@ export default function LoginPage() {
                         <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
                           placeholder="••••••••" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
-                      {/* Optional, but worth naming: a key pair carries no
-                          region, so this is the only thing here that can say
-                          which one. Left blank the app falls back to the
-                          region it was started with, which is right on a
-                          machine that sets one and nothing at all on a
-                          machine that does not. */}
-                      <Field label="Region" optional>
-                        <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
-                        <Aside>
-                          Which region's install to open. Access keys do not carry one, and with
-                          one install per region this is what picks between them.
-                        </Aside>
-                      </Field>
+                      <RegionField value={akRegion} onChange={v => { regionTyped.current = true; setAkRegion(v); }} />
                       <div className="flex justify-end">
-                        <Button variant="primary" onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}>
+                        <Button variant="primary" onClick={handleAccessKeys}
+                          disabled={refreshing === "aws" || !akId || !akSecret || !akRegion.trim()}>
                           <i className="ph-bold ph-key mr-2"></i>Connect
                         </Button>
                       </div>
@@ -1292,6 +1344,35 @@ function Hint({ intent, children }: { intent: Intent; children: React.ReactNode 
     <div className={`pl-3.5 pr-3 py-2.5 border-l-2 text-[0.7812rem] leading-relaxed ${tone.soft} ${tone.text} ${tone.border}`}>
       {children}
     </div>
+  );
+}
+
+/**
+ * The region, which is required and used to say it was optional.
+ *
+ * It was never really optional. A key pair carries no region, and the only
+ * thing underneath it is the region this process was launched with — undefined
+ * on every desktop launch, which is the ordinary case. Leaving it blank was
+ * therefore the obvious thing to do and the thing that could not work, and the
+ * failure arrived as "Region is missing", which names the SDK rather than the
+ * empty box.
+ */
+function RegionField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const bad = !!value.trim() && !looksLikeRegion(value);
+  return (
+    <Field label="Region">
+      <input type="text" value={value} onChange={e => onChange(e.target.value)}
+        placeholder="us-east-2" spellCheck={false}
+        aria-invalid={bad || undefined}
+        className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
+      <Aside>
+        Which region's install to open. Access keys do not carry one, and with one install
+        per region this is what picks between them.
+        {bad && <> <span className="text-crimson font-semibold">
+          Regions look like us-east-1 or eu-west-2.
+        </span></>}
+      </Aside>
+    </Field>
   );
 }
 

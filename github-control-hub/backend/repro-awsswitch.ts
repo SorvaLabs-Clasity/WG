@@ -52,6 +52,23 @@ function verifies(token: string): boolean {
   try { verifyToken(token); return true; } catch { return false; }
 }
 
+/**
+ * One route handler's source, from its path to wherever the next route begins.
+ *
+ * Was a fixed slice of 2600 characters, which is a guess about how long a
+ * handler is rather than a fact about where it ends. Adding a dozen lines of
+ * validation to `/aws-access-keys` pushed `completeAwsSwitch` past the window
+ * and the check failed with nothing about the behaviour having changed; the
+ * window on `/aws-use-profile` meanwhile ran *into* the next route and found a
+ * `req.body?.region` that belongs to it. Both directions are the same mistake.
+ */
+function routeBody(source: string, route: string): string {
+  const start = source.indexOf(`"/${route}"`);
+  if (start < 0) return "";
+  const next = source.indexOf("\nrouter.", start + 1);
+  return source.slice(start, next < 0 ? undefined : next);
+}
+
 (async () => {
   // ── the signing key changes underneath a live session ────────────────
   {
@@ -211,8 +228,7 @@ function verifies(token: string): boolean {
     // Every endpoint that moves credentials must go through that step. Doing it
     // inline in three places is how two of them end up doing two of the three.
     for (const route of ["reconnect-aws", "aws-use-profile", "aws-access-keys"]) {
-      const start = auth.indexOf(`"/${route}"`);
-      const body = auth.slice(start, start + 2600);
+      const body = routeBody(auth, route);
       check(`  /${route} goes through it rather than reloading on its own`,
         /completeAwsSwitch\(carried\)/.test(body) && !/reloadSecretsIfNeeded\(\)/.test(body),
         route);
@@ -227,8 +243,7 @@ function verifies(token: string): boolean {
     // inside the app, as a resource that is missing rather than an account that
     // is wrong. It cost an afternoon on a working audit-log stream.
     for (const route of ["reconnect-aws", "aws-use-profile"]) {
-      const start = auth.indexOf(`"/${route}"`);
-      const body = auth.slice(start, start + 2600);
+      const body = routeBody(auth, route);
       for (const v of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]) {
         check(`  /${route} clears ${v} when a profile is named`,
           new RegExp(`delete process\\.env\\.${v}`).test(body), route);
@@ -249,8 +264,7 @@ function verifies(token: string): boolean {
   {
     const fs = await import("fs");
     const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
-    const start = auth.indexOf('"/aws-use-profile"');
-    const body = auth.slice(start, start + 3000);
+    const body = routeBody(auth, "aws-use-profile");
 
     check("switching to a profile adopts that profile's region",
       /process\.env\.AWS_REGION = profileRegion/.test(body),
