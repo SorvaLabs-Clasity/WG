@@ -312,10 +312,18 @@ function verifies(token: string): boolean {
       /AWS account and region/.test(ui),
       '"AWS account" invites reading a per-region pair as duplicates');
 
-    // The backend has to actually send it, or the row above renders nothing.
-    const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
+    /**
+     * The backend has to actually send it, or the row above renders nothing.
+     *
+     * Asserted by parsing rather than by finding the line: this used to pin the
+     * exact statement in `routes/auth.ts`, and it broke the day the parser moved
+     * into `services/awsConfigFile.ts` without anything about the behaviour
+     * changing. The property is that a profile's region survives the read.
+     */
+    const { parseProfiles } = await import("./src/services/awsConfigFile");
+    const [parsed] = parseProfiles("[profile prod]\nregion = us-west-2\n");
     check("the profile listing carries the region",
-      /if \(k === "region"\) current\.region = v;/.test(auth));
+      parsed?.region === "us-west-2", parsed);
   }
 
   // ── access keys carry no region ─────────────────────────────────────

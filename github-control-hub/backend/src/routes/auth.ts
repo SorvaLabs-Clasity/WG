@@ -668,13 +668,39 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
     try {
       const fs = await import("fs");
       const path = await import("path");
-      const os = await import("os");
+      const {
+        configFilePath, readIniFile, findIniProblems, describeProblems,
+      } = await import("../services/awsConfigFile");
 
-      const dir = path.join(os.homedir(), ".aws");
-      const configPath = path.join(dir, "config");
-      fs.mkdirSync(dir, { recursive: true });
+      // The file the CLI reads, which is not always the one under the home
+      // directory. Writing a correct profile into a file nothing reads is how
+      // "the profile was created" and "no such profile" end up both being true.
+      const configPath = configFilePath();
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-      const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
+      const file = readIniFile(configPath);
+      const existing = file?.text ?? "";
+
+      /**
+       * Refuse to add to a file the CLI already cannot parse.
+       *
+       * Appending would succeed, the screen would say the profile was created,
+       * and `aws sso login --profile <it>` would answer "Unable to parse config
+       * file" — which reads as though this app wrote something invalid. What it
+       * wrote is fine; what was already there is not, and that is the thing
+       * worth saying before touching the file at all.
+       */
+      if (file) {
+        const problems = findIniProblems(existing);
+        if (problems.length > 0 || file.encoding.startsWith("utf16")) {
+          return res.status(409).json({
+            error: describeProblems(configPath, file.encoding, problems),
+            code: "AWS_CONFIG_UNPARSEABLE",
+            path: configPath,
+          });
+        }
+      }
+
       if (alreadyDefined(existing, `profile ${profileName}`)) {
         return res.status(409).json({
           error: `A profile called "${profileName}" already exists. Pick another name, `
@@ -697,9 +723,13 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
       // Appended, never rewritten. This file is the machine's, not ours: it may
       // hold profiles for work nothing to do with this app, and the only safe
       // edit is one that adds.
-      fs.appendFileSync(configPath, (existing.endsWith("\n") || !existing ? "" : "\n") + block, {
-        mode: 0o600,
-      });
+      //
+      // In the line ending the file already uses. A CRLF file that suddenly has
+      // LF in the middle still parses, but it renders as one long line in
+      // Notepad, which is where somebody on Windows goes to look at it.
+      const eol = file?.eol ?? (process.platform === "win32" ? "\r\n" : "\n");
+      const gap = existing && !/\n$/.test(existing) ? eol : "";
+      fs.appendFileSync(configPath, gap + block.replace(/\n/g, eol), { mode: 0o600 });
 
       // The file has changed under a process that already parsed it. Without
       // this the profile is real, correct, and invisible until the next launch.
@@ -712,88 +742,64 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
     }
   });
 
-/** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
+/**
+ * Every AWS profile this machine has, and why there are none when there are.
+ *
+ * This used to answer 200 with `{ profiles: [], error }` when the read failed,
+ * so the screen said "No SSO profiles on this machine yet" whether the machine
+ * had none or the file could not be read. Those are opposite messages: one
+ * invites you to create a profile, the other means creating one will not help.
+ * A read failure is now a failure, and the file it was reading is named either
+ * way so the answer can be checked rather than believed.
+ */
 router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
+  const {
+    configFilePath, credentialsFilePath, readIniFile, parseProfiles,
+    findIniProblems, describeProblems,
+  } = await import("../services/awsConfigFile");
+
+  const configPath = configFilePath();
+  const credsPath = credentialsFilePath();
+
   try {
-    const fs = await import("fs");
-    const path = await import("path");
-    const os = await import("os");
+    const config = readIniFile(configPath);
+    const profiles = config ? parseProfiles(config.text) : [];
+    const seen = new Set(profiles.map(p => p.name));
 
-    interface ProfileInfo {
-      name: string;
-      type: "sso" | "iam" | "static";
-      accountId?: string;
-      roleName?: string;
-      region?: string;
-      ssoStartUrl?: string;
-    }
-
-    const profiles: ProfileInfo[] = [];
-    const seen = new Set<string>();
-    const ssoSessions = new Map<string, { startUrl?: string }>();
-
-    const configPath = path.join(os.homedir(), ".aws", "config");
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, "utf-8");
-      const lines = content.split("\n");
-
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i].trim();
-        const sessionMatch = trimmed.match(/^\[sso-session\s+(.+)]$/);
-        if (sessionMatch) {
-          const sName = sessionMatch[1];
-          const entry: { startUrl?: string } = {};
-          for (let j = i + 1; j < lines.length; j++) {
-            const l = lines[j].trim();
-            if (l.startsWith("[")) break;
-            const [k, ...v] = l.split("=");
-            if (k?.trim() === "sso_start_url") entry.startUrl = v.join("=").trim();
-          }
-          ssoSessions.set(sName, entry);
-        }
-      }
-
-      let current: ProfileInfo | null = null;
-      for (const line of lines) {
-        const trimmed = line.trim();
-        const profileMatch = trimmed.match(/^\[profile\s+(.+)]$/) || trimmed.match(/^\[(default)]$/);
-        if (profileMatch) {
-          if (current && !seen.has(current.name)) { profiles.push(current); seen.add(current.name); }
-          current = { name: profileMatch[1], type: "iam" };
-          continue;
-        }
-        if (!current) continue;
-        const [key, ...val] = trimmed.split("=");
-        const k = key?.trim();
-        const v = val.join("=").trim();
-        if (k === "sso_account_id") { current.accountId = v; current.type = "sso"; }
-        if (k === "sso_role_name") current.roleName = v;
-        if (k === "region") current.region = v;
-        if (k === "sso_start_url") { current.ssoStartUrl = v; current.type = "sso"; }
-        if (k === "sso_session") {
-          current.type = "sso";
-          const session = ssoSessions.get(v);
-          if (session?.startUrl) current.ssoStartUrl = session.startUrl;
-        }
-      }
-      if (current && !seen.has(current.name)) { profiles.push(current); seen.add(current.name); }
-    }
-
-    const credsPath = path.join(os.homedir(), ".aws", "credentials");
-    if (fs.existsSync(credsPath)) {
-      const content = fs.readFileSync(credsPath, "utf-8");
-      for (const line of content.split("\n")) {
+    const creds = readIniFile(credsPath);
+    if (creds) {
+      for (const line of creds.text.split("\n")) {
         const match = line.trim().match(/^\[(.+)]$/);
-        if (match && !seen.has(match[1])) {
-          profiles.push({ name: match[1], type: "static" });
-          seen.add(match[1]);
+        const name = match?.[1]?.trim();
+        if (name && !seen.has(name)) {
+          profiles.push({ name, type: "static" });
+          seen.add(name);
         }
       }
     }
 
-    res.json({ profiles });
+    /**
+     * A file we could read but the CLI cannot.
+     *
+     * Reported alongside whatever we did manage to parse rather than instead
+     * of it: the profiles listed here are real, and the reason they will not
+     * work from a terminal is worth saying before somebody spends an afternoon
+     * on it.
+     */
+    const problems = config ? findIniProblems(config.text) : [];
+    const unusable = config && (problems.length > 0 || config.encoding.startsWith("utf16"))
+      ? describeProblems(configPath, config.encoding, problems)
+      : undefined;
+
+    res.json({ profiles, configPath, credentialsPath: credsPath, unusable });
   } catch (err: any) {
-    res.json({ profiles: [], error: err.message });
+    // Reading it threw: a permission problem, or a path that is not a file.
+    // Said as a failure, because an empty list here is a different claim.
+    res.status(500).json({
+      profiles: [],
+      configPath,
+      error: `Could not read ${configPath}: ${err?.message ?? err}`,
+    });
   }
 });
 
@@ -873,12 +879,14 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
  */
 async function regionOfProfile(profile: string): Promise<string | null> {
   try {
-    const fs = await import("node:fs");
-    const os = await import("node:os");
-    const path = await import("node:path");
-    const file = process.env.AWS_CONFIG_FILE
-      || path.join(os.homedir(), ".aws", "config");
-    const text = fs.readFileSync(file, "utf8");
+    // Through the same reader as everything else: it resolves the same file the
+    // CLI does, and decodes a UTF-16 config rather than returning the mojibake
+    // that a plain utf8 read produces, in which no section header matches and
+    // every profile silently has no region.
+    const { configFilePath, readIniFile } = await import("../services/awsConfigFile");
+    const file = readIniFile(configFilePath());
+    if (!file) return null;
+    const text = file.text;
 
     let inProfile = false;
     for (const raw of text.split("\n")) {

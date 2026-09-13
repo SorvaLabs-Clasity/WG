@@ -116,6 +116,9 @@ export default function LoginPage() {
   const [addingProfile, setAddingProfile] = useState(false);
   const [newBusy, setNewBusy] = useState(false);
   const [profilesError, setProfilesError] = useState<string | null>(null);
+  /** Which file the list came from, and why the CLI may still refuse it. */
+  const [configPath, setConfigPath] = useState<string | null>(null);
+  const [configUnusable, setConfigUnusable] = useState<string | null>(null);
   const touchedMethod = useRef(false);
   const [akPasteMode, setAkPasteMode] = useState(true);
   const [akPasteBlock, setAkPasteBlock] = useState("");
@@ -193,9 +196,14 @@ export default function LoginPage() {
    */
   const loadProfiles = useCallback(async (pickMethod: boolean, preferred?: string) => {
     try {
-      const list = await fetchAwsProfiles();
+      const { profiles: list, configPath, unusable } = await fetchAwsProfiles();
       setAwsProfiles(list);
       setProfilesError(null);
+      setConfigPath(configPath ?? null);
+      // Readable here, refused by the CLI. The profiles above are real; this is
+      // why none of them will work from a terminal, said before somebody spends
+      // an afternoon on "Unable to parse config file".
+      setConfigUnusable(unusable ?? null);
       // The profile you last signed in with, then whatever happens to be first
       // in ~/.aws/config. Falling straight to the first one is why this asked
       // every launch: the preselected answer was almost never the right one.
@@ -211,6 +219,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       setAwsProfiles([]);
+      setConfigUnusable(null);
       setProfilesError((err as Error).message);
       if (pickMethod) setAwsMethod("keys");
     }
@@ -656,6 +665,17 @@ export default function LoginPage() {
                   Could not read your AWS profiles: {profilesError}. Access keys still work.
                 </Hint>
               )}
+              {/* The file was readable here and the CLI will refuse it. Said
+                  first and in full, because every other explanation on this
+                  screen is wrong while it is true — including the empty state
+                  below, which would otherwise invite somebody to create a
+                  profile into a file that cannot be parsed. */}
+              {configUnusable && (
+                <Hint intent="danger">
+                  <span className="font-semibold">Your AWS config file cannot be parsed.</span>{" "}
+                  {configUnusable}
+                </Hint>
+              )}
               {/* Shown above the tabs rather than inside one, because a
                   sign-in can be started from more than one of them and an
                   error rendered in the panel you have since left is an error
@@ -691,6 +711,16 @@ export default function LoginPage() {
                     No SSO profiles on this machine yet. Creating one asks AWS which
                     accounts and roles you have, so you pick from a list instead of
                     hunting for an account number.
+                    {/* Named, because "no profiles on this machine" is a claim
+                        about one specific file and people do have more than
+                        one. AWS_CONFIG_FILE moves it, and on Windows the
+                        profiles somebody is thinking of are often in the other
+                        user directory they sign in to. */}
+                    {configPath && (
+                      <>
+                        {" "}Read from <span className="font-mono text-[0.75em]">{configPath}</span>.
+                      </>
+                    )}
                   </Hint>
                   <div className="flex justify-end">
                     <Button variant="primary"

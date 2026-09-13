@@ -118,13 +118,27 @@ export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
   }
 }
 
-export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
+export interface AwsProfiles {
+  profiles: AwsProfile[];
+  /** Which file was read, so a surprising answer can be checked. */
+  configPath?: string;
+  /**
+   * Set when the file was readable here but the AWS CLI will refuse it.
+   *
+   * Distinct from a thrown error: the profiles listed alongside this are real.
+   * What it says is that they will not work from a terminal, and why — which is
+   * the half nobody can guess from "Unable to parse config file".
+   */
+  unusable?: string;
+}
+
+export async function fetchAwsProfiles(): Promise<AwsProfiles> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-profiles`, { headers: authHeaders() });
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({})) as AwsProfiles & { error?: string };
   if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? `Could not read AWS profiles (${res.status})`);
+    throw new Error(data.error ?? `Could not read AWS profiles (${res.status})`);
   }
-  return (data as { profiles?: AwsProfile[] }).profiles ?? [];
+  return { profiles: data.profiles ?? [], configPath: data.configPath, unusable: data.unusable };
 }
 
 /**

@@ -28,12 +28,13 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
   // Read when the menu opens rather than on every render of the navbar: this
   // shells out to read ~/.aws/config, and nobody switches accounts often
   // enough to justify holding it.
-  const { data: profiles, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["aws", "profiles"],
     queryFn: fetchAwsProfiles,
     staleTime: 30_000,
     retry: false,
   });
+  const profiles = data?.profiles;
 
   const switchTo = async (profile: AwsProfile) => {
     setBusy(profile.name);
