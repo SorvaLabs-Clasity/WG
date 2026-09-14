@@ -37,7 +37,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   configFilePath, credentialsFilePath, readIniFile, parseProfiles,
-  findIniProblems, describeProblems,
+  findIniProblems, describeProblems, cliCanRead, stripByteOrderMark,
 } from "./src/services/awsConfigFile";
 
 let failures = 0;
@@ -210,8 +210,24 @@ console.log("\nand the message names the file, the line and the fix");
 {
   const utf16 = describeProblems("C:\\Users\\x\\.aws\\config", "utf16le", []);
   check("a UTF-16 file is explained, since nothing about it looks wrong",
-    /UTF-16/.test(utf16) && /PowerShell/.test(utf16) && /Set-Content -Encoding utf8/.test(utf16),
+    /UTF-16/.test(utf16) && /PowerShell/.test(utf16) && /re-saved as plain UTF-8/.test(utf16),
     utf16);
+
+  /**
+   * The report this section exists for. A UTF-8 config with a byte-order mark
+   * looks perfect in every editor, and the AWS CLI refuses the whole file:
+   *
+   *     aws sso login --profile n8n
+   *     aws: [ERROR]: Unable to parse config file: C:\Users\roni_/.aws/config
+   *
+   * Somebody told only that will read those lines over and over and find
+   * nothing wrong with them, because there is nothing wrong with them.
+   */
+  const bom = describeProblems("C:\\Users\\x\\.aws\\config", "utf8-bom", []);
+  check("  and so is a byte-order mark, which is invisible in every editor",
+    /byte-order mark/.test(bom) && /invisible/.test(bom)
+    && /Unable to parse config file/.test(bom),
+    bom);
 
   const problems = findIniProblems("region = us-east-1\n" + CONFIG);
   const msg = describeProblems("/home/x/.aws/config", "utf8", problems);
@@ -219,6 +235,76 @@ console.log("\nand the message names the file, the line and the fix");
     /line 1/.test(msg) && /region = us-east-1/.test(msg), msg);
   check("    and says the whole file is refused for it",
     /whole file/.test(msg), msg);
+}
+
+console.log("\nan encoding the CLI cannot read is named, and then repaired");
+{
+  /**
+   * The whole of the second report. `readIniFile` strips a byte-order mark, so
+   * a BOM'd file read *here* is flawless: the profiles list, the sections
+   * parse, `findIniProblems` finds nothing. The old guard only refused UTF-16,
+   * so this file passed every check, got a correct profile appended to it, and
+   * the screen said so — while `aws sso login` went on refusing the entire file
+   * over three bytes that were there before this app ever touched it.
+   */
+  check("plain UTF-8 is the only thing the CLI can read",
+    cliCanRead("utf8")
+    && !cliCanRead("utf8-bom") && !cliCanRead("utf16le") && !cliCanRead("utf16be"),
+    "a BOM'd file parses perfectly here and is refused entirely there");
+
+  const bomBytes = Buffer.concat([
+    Buffer.from([0xef, 0xbb, 0xbf]),
+    Buffer.from(CONFIG.replace(/\n/g, "\r\n"), "utf8"),
+  ]);
+  const file = write("repair-bom", bomBytes);
+  const before = readIniFile(file);
+  check("  and it is not caught by the text checks, because the text is fine",
+    findIniProblems(before?.text ?? "").length === 0 && before?.encoding === "utf8-bom",
+    "which is why the encoding has to be asked about separately");
+
+  const repair = stripByteOrderMark(file);
+  const after = readIniFile(file);
+  check("repairing it leaves a file the CLI can read",
+    after?.encoding === "utf8" && cliCanRead(after!.encoding), after?.encoding);
+
+  /**
+   * The claim being made to the user is "nothing else changed", and a claim
+   * about somebody's own config file should be checked rather than asserted.
+   */
+  check("  with every character of it intact",
+    after?.text === before?.text, { before: before?.text?.length, after: after?.text?.length });
+  check("  and the CRLF line endings it had",
+    after?.eol === "\r\n" && (after?.text.match(/\r\n/g) ?? []).length
+      === (before?.text.match(/\r\n/g) ?? []).length);
+  check("  and its profiles still read the same",
+    parseProfiles(after?.text ?? "").map(p => p.name).join(",") === "eng,legacy",
+    parseProfiles(after?.text ?? ""));
+
+  check("the original is kept, because this is not our file",
+    !!repair?.backup && fs.existsSync(repair!.backup)
+    && fs.readFileSync(repair!.backup).equals(bomBytes),
+    repair?.backup);
+
+  // A second run must not consume the copy the first one took.
+  fs.writeFileSync(file, bomBytes);
+  const again = stripByteOrderMark(file);
+  check("  and a second repair does not overwrite the first copy",
+    !!again?.backup && again!.backup !== repair!.backup
+    && fs.existsSync(repair!.backup),
+    [repair?.backup, again?.backup]);
+
+  check("a file that is already plain UTF-8 is left entirely alone",
+    stripByteOrderMark(write("repair-none", CONFIG)) === null,
+    "no backup, no rewrite, no mtime change on a file with nothing wrong with it");
+
+  const utf16 = write("repair-utf16", Buffer.concat([
+    Buffer.from([0xff, 0xfe]), Buffer.from(CONFIG, "utf16le"),
+  ]));
+  stripByteOrderMark(utf16);
+  const converted = readIniFile(utf16);
+  check("the PowerShell case is the same repair",
+    converted?.encoding === "utf8" && parseProfiles(converted?.text ?? "").length === 2,
+    converted?.encoding);
 }
 
 console.log("\nthe routes go through it, all three of them");
@@ -260,6 +346,69 @@ console.log("\nthe routes go through it, all three of them");
   check("  and writes in the line ending the file already uses",
     /file\?\.eol/.test(writerBody),
     "LF spliced into a CRLF file renders as one line in Notepad");
+  check("  but repairs an encoding rather than refusing over it",
+    /stripByteOrderMark/.test(writerBody) && /cliCanRead/.test(writerBody),
+    "refusing left somebody with an exact diagnosis and no way to act on it");
+  check("    and says so, since it is an edit to a file we did not write",
+    /repaired/.test(writerBody) && /backup/.test(writerBody));
+
+  /**
+   * `aws sso login` on Windows, which is where the second half of the report
+   * lives: "A browser tab opened for AWS SSO" and nothing opened.
+   *
+   * Two separate causes, both of them silent.
+   */
+  const loginRoute = auth.slice(auth.indexOf('router.post("/aws-sso-login"'));
+  const loginBody = loginRoute.slice(0, loginRoute.indexOf("\nrouter."));
+
+  /**
+   * The installer ships `aws.exe`. There is no `aws.cmd` for AWS CLI v2 — and
+   * since the CVE-2024-27980 fix, Node refuses to spawn a `.cmd` at all without
+   * a shell, by throwing *synchronously*, which the `error` listener below it
+   * could never have caught. In an async Express 4 handler that is an unhandled
+   * rejection and a request that never answers, so the browser kept waiting and
+   * the screen kept claiming a tab had opened.
+   */
+  check("Windows is not asked to spawn a .cmd, which Node now refuses outright",
+    !/aws\.cmd"/.test(auth) || /aws\.exe/.test(auth),
+    "spawn('aws.cmd') without a shell throws EINVAL on Node 18.20.2 and later");
+  check("  and the executable is looked for where the installer puts it",
+    /AWSCLIV2/.test(auth) && /aws\.exe/.test(auth));
+  check("  with the spawn inside the try, since it throws before there is a child",
+    /try \{\s*child = spawn\(/.test(loginBody),
+    "Express 4 does not catch an async throw: the request simply never answers");
+
+  /**
+   * stdio: "ignore" was the other half. The CLI said exactly what was wrong —
+   * "Unable to parse config file" — into a closed pipe.
+   */
+  check("the CLI's stderr is kept rather than discarded",
+    /stdio: \["ignore", "ignore", "pipe"\]/.test(loginBody) && /stderr \+=/.test(loginBody),
+    'stdio: "ignore" is how the CLI\'s own diagnosis went missing');
+  check("  and an immediate exit is reported as the failure it is",
+    /child\.once\("exit"/.test(loginBody) && /stopped straight away/.test(loginBody),
+    "a process that is already dead was being reported as \"check your browser\"");
+  check("the config is checked here before the CLI is asked to read it",
+    /findIniProblems/.test(loginBody) && /AWS_PROFILE_NOT_FOUND/.test(loginBody),
+    "so the reason arrives in the app, attached to the button that caused it");
+
+  /**
+   * And the state the report actually came from: a profile that already exists
+   * in a file the CLI refuses. That person never goes near "create a profile",
+   * so the repair on the writer does not reach them, and a diagnosis they
+   * cannot act on is where they were already stuck.
+   */
+  const repairRoute = auth.slice(auth.indexOf('router.post("/aws-config-repair"'));
+  const repairBody = repairRoute.slice(0, repairRoute.indexOf("\n/**"));
+  check("an existing profile in a refused file can be rescued without the writer",
+    auth.includes('router.post("/aws-config-repair"') && /stripByteOrderMark/.test(repairBody),
+    "otherwise the only path to the repair is creating a profile you already have");
+  check("  and a file that is broken for two reasons does not report success",
+    /stillUnusable/.test(repairBody),
+    "fixing the encoding of a file with a stray line in it changes nothing");
+  check("  and the list says whether the app can act, not just what is wrong",
+    /fixable/.test(listerBody),
+    "a button offered for a stray line would be a button that cannot work");
 }
 
 console.log("\nand the screen says it rather than showing an empty list");
@@ -270,6 +419,57 @@ console.log("\nand the screen says it rather than showing an empty list");
   check("  and names the file behind \"no profiles on this machine\"",
     /Read from <span className="font-mono/.test(login),
     "that claim is about one specific file, and people have more than one");
+
+  /**
+   * "A browser tab opened for AWS SSO" was set before the request went out, so
+   * it was never a report of anything. It appeared on the click and stayed
+   * through a backend that answered with a reason, and through a backend that
+   * did not answer at all.
+   */
+  const handler = login.slice(login.indexOf("const handleAwsSsoLogin"));
+  const handlerBody = handler.slice(0, handler.indexOf("\n  };"));
+  check("the \"a browser tab opened\" claim waits until the sign-in has started",
+    handlerBody.indexOf("await triggerAwsSsoLogin") < handlerBody.indexOf("setAwsSsoStarted(true)"),
+    "set before the call, it was a promise about the future rather than a report");
+
+  const api = fs.readFileSync("../frontend/src/api/auth.ts", "utf8");
+  check("  and the request cannot hang there forever",
+    /AbortSignal\.timeout/.test(api) && /stopped waiting/.test(api),
+    "the observable bug was a button that did nothing, indefinitely");
+}
+
+console.log("\nand the window has the zoom keys every other window has");
+{
+  const zoom = fs.readFileSync("../desktop/src/zoom.ts", "utf8");
+  const main = fs.readFileSync("../desktop/src/main.ts", "utf8");
+
+  /**
+   * There was no zoom at all, and the cause is `Menu.setApplicationMenu(null)`:
+   * Ctrl/Cmd +/- are menu *roles* in Electron, so throwing the menu away to get
+   * a chrome-less frame throws the accelerators away with it.
+   */
+  check("zoom is wired to the window rather than to a menu",
+    /before-input-event/.test(zoom) && /Menu\.setApplicationMenu\(null\)/.test(main),
+    "a hidden menu would reappear on Windows every time Alt is pressed");
+  check("  and installed on the window before its first load",
+    main.indexOf("installZoom(mainWindow)") < main.indexOf("mainWindow.loadURL"),
+    "applied after, a remembered zoom level is a visible jump");
+  check("Cmd on macOS, Ctrl everywhere else",
+    /darwin" \? input\.meta : input\.control/.test(zoom));
+  check("  and \"=\" counts as zoom in, because \"+\" costs a Shift",
+    /case "\+": case "=":/.test(zoom),
+    "nobody presses Ctrl+Shift+= on purpose; they press control plus");
+  check("  and \"_\" counts as zoom out, for a Shift not yet let go of",
+    /case "-": case "_":/.test(zoom));
+  check("the keypress does not also reach the page",
+    /event\.preventDefault\(\)/.test(zoom),
+    'without it a "-" zooms out and gets typed into the field as well');
+  check("the level is clamped, since this layout has a 1024-wide minimum",
+    /MIN_LEVEL/.test(zoom) && /MAX_LEVEL/.test(zoom) && /clamp/.test(zoom));
+  const prefsFile = zoom.match(/const FILE = path\.join\(DIR, "([^"]+)"\)/)?.[1];
+  check("and it is remembered somewhere the backend does not also write",
+    prefsFile === "window.json",
+    prefsFile ?? "read-modify-write from two processes loses whichever key lost the race");
 }
 
   fs.rmSync(tmp, { recursive: true, force: true });

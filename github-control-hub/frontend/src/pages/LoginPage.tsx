@@ -12,6 +12,7 @@ import {
   startSsoSetup,
   pollSsoSetup,
   createSsoProfile,
+  repairAwsConfig,
   type SsoAccount,
   type SsoDeviceAuth,
   useAwsProfile,
@@ -119,6 +120,11 @@ export default function LoginPage() {
   /** Which file the list came from, and why the CLI may still refuse it. */
   const [configPath, setConfigPath] = useState<string | null>(null);
   const [configUnusable, setConfigUnusable] = useState<string | null>(null);
+  /** Whether that reason is one this app can fix, which is only ever encoding. */
+  const [configFixable, setConfigFixable] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  /** Set when creating a profile had to re-save the config file's encoding. */
+  const [repaired, setRepaired] = useState<{ from: string; backup?: string } | null>(null);
   const touchedMethod = useRef(false);
   const [akPasteMode, setAkPasteMode] = useState(true);
   const [akPasteBlock, setAkPasteBlock] = useState("");
@@ -226,10 +232,11 @@ export default function LoginPage() {
    */
   const loadProfiles = useCallback(async (pickMethod: boolean, preferred?: string) => {
     try {
-      const { profiles: list, configPath, unusable } = await fetchAwsProfiles();
+      const { profiles: list, configPath, unusable, fixable } = await fetchAwsProfiles();
       setAwsProfiles(list);
       setProfilesError(null);
       setConfigPath(configPath ?? null);
+      setConfigFixable(!!fixable);
       // Readable here, refused by the CLI. The profiles above are real; this is
       // why none of them will work from a terminal, said before somebody spends
       // an afternoon on "Unable to parse config file".
@@ -351,9 +358,20 @@ export default function LoginPage() {
     const target = named || selectedProfile || undefined;
     if (target) setSelectedProfile(target);
     setNewError("");
-    setAwsSsoStarted(true);
     try {
       await triggerAwsSsoLogin(target);
+      /**
+       * Only once the sign-in is actually running.
+       *
+       * This used to be set before the request, so "a browser tab opened for
+       * AWS SSO" appeared the instant the button was pressed and stayed there
+       * whatever happened next. When the backend answered with a reason, the
+       * catch below replaced it; when the backend did not answer at all — which
+       * is what a Windows machine did, every time, because spawning the CLI
+       * threw synchronously and Express 4 leaves an async throw unanswered —
+       * the claim just sat there in front of a browser that never opened.
+       */
+      setAwsSsoStarted(true);
     } catch (e: any) {
       // Back to a state somebody can act from. Leaving `awsSsoStarted` set
       // shows "reopen browser / verify" for a sign-in that never began, which
@@ -446,10 +464,37 @@ export default function LoginPage() {
     }
   };
 
+  /**
+   * Re-save the config file as plain UTF-8, once somebody has said yes.
+   *
+   * Reloads the profile list afterwards rather than assuming: the point of the
+   * repair is that the AWS CLI can read the file now, and the honest way to
+   * show that is to read it again and let the banner disappear on its own.
+   */
+  const handleRepairConfig = async () => {
+    setRepairing(true);
+    setNewError("");
+    try {
+      const result = await repairAwsConfig();
+      if (result.stillUnusable) {
+        // Two things were wrong with it. Reporting the encoding fix as success
+        // would send somebody straight back to the same CLI error.
+        setNewError(result.stillUnusable);
+      } else if (result.repaired) {
+        setRepaired(result.repaired);
+      }
+    } catch (e: any) {
+      setNewError(e?.message || "Could not re-save the AWS config file.");
+    } finally {
+      setRepairing(false);
+      await loadProfiles(false, selectedProfile || undefined);
+    }
+  };
+
   const handleNewSsoCreate = async () => {
     setNewError(""); setNewBusy(true);
     try {
-      await createSsoProfile({
+      const created = await createSsoProfile({
         profileName: newProfileName.trim(),
         startUrl: newStartUrl.trim(),
         ssoRegion: newSsoRegion.trim(),
@@ -457,6 +502,7 @@ export default function LoginPage() {
         roleName: newRoleName,
         region: newRegion.trim(),
       });
+      setRepaired(created.repaired ?? null);
       setNewStep("done");
       // The new profile has to appear in the picker, or the obvious next step
       // is to use something that looks like it does not exist yet.
@@ -730,6 +776,36 @@ export default function LoginPage() {
                 <Hint intent="danger">
                   <span className="font-semibold">Your AWS config file cannot be parsed.</span>{" "}
                   {configUnusable}
+                  {/* An encoding is the one cause this app can put right on its
+                      own, and somebody whose profile already exists never
+                      passes through the writer that would otherwise repair it.
+                      Without this button they get an exact diagnosis and a
+                      PowerShell incantation to run in the terminal they are
+                      using this app to avoid. */}
+                  {configFixable && (
+                    <div className="mt-2.5 flex justify-end">
+                      <Button variant="primary" disabled={repairing}
+                        onClick={handleRepairConfig}>
+                        <i className="ph-bold ph-wrench mr-2"></i>
+                        {repairing ? "Re-saving…" : "Re-save it as UTF-8"}
+                      </Button>
+                    </div>
+                  )}
+                </Hint>
+              )}
+              {/* The receipt for an edit to somebody's own file. Shown here as
+                  well as on the new-profile screen, because the repair can now
+                  be reached from the banner above without going near it. */}
+              {repaired && !configUnusable && awsMethod !== "new" && (
+                <Hint intent="good">
+                  Your AWS config file was re-saved as plain UTF-8 — it had been{" "}
+                  {repaired.from === "utf8-bom"
+                    ? "saved with a byte-order mark"
+                    : "saved as UTF-16"}, which the AWS CLI refuses. Nothing else in it changed.
+                  {repaired.backup && (
+                    <> The original is at{" "}
+                      <span className="font-mono text-[0.75em]">{repaired.backup}</span>.</>
+                  )}
                 </Hint>
               )}
               {/* Shown above the tabs rather than inside one, because a
@@ -974,6 +1050,24 @@ export default function LoginPage() {
                       <Hint intent="good">
                         Saved <strong>{newProfileName}</strong> to your AWS config.
                       </Hint>
+                      {/* Said out loud, because it is an edit to a file this
+                          app did not write. Without it the AWS CLI would have
+                          gone on refusing every profile in that file, including
+                          the one just added. */}
+                      {repaired && (
+                        <Hint intent="info">
+                          Your AWS config file was saved as{" "}
+                          {repaired.from === "utf8-bom"
+                            ? "UTF-8 with a byte-order mark"
+                            : "UTF-16"}, which the AWS CLI cannot read — it refuses the whole
+                          file with &ldquo;Unable to parse config file&rdquo;. It has been re-saved
+                          as plain UTF-8 with nothing else changed.
+                          {repaired.backup && (
+                            <> The original is at{" "}
+                              <span className="font-mono text-[0.75em]">{repaired.backup}</span>.</>
+                          )}
+                        </Hint>
+                      )}
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         Now sign in with it. This is the same step you will take each time
                         the session expires.

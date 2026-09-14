@@ -28,6 +28,33 @@
  *
  * Decoding by BOM costs four bytes of inspection and turns that whole class of
  * report into a file that simply works.
+ *
+ * ## And a UTF-8 BOM is the same bug wearing a smaller hat
+ *
+ * Three bytes, `EF BB BF`, which every editor on Windows will happily put at
+ * the front of a file and no editor will show you. Node decodes the rest
+ * perfectly once they are skipped, so this app reads such a file, lists its
+ * profiles, and appends to it without complaint.
+ *
+ * The CLI does not. botocore hands the path to Python's `configparser.read()`
+ * with no encoding, so it opens with the locale one — cp1252 on Windows — and
+ * those three bytes arrive as the visible characters `ï»¿` sitting in front of
+ * the first section header. configparser sees a line that is not a header and
+ * not a `key = value`, before any section has been opened, and raises. The
+ * whole file is refused:
+ *
+ *     aws: [ERROR]: Unable to parse config file: C:\Users\<name>/.aws/config
+ *
+ * Identical message, identical outcome, and *unlike* the UTF-16 case this one
+ * used to pass every check here — `readIniFile` stripped the BOM, the file
+ * looked clean, and the app appended a correct profile to a file the CLI was
+ * already refusing. The screen then said the profile was created and the
+ * terminal said the config could not be parsed, which reads as this app having
+ * written something invalid.
+ *
+ * So both live in {@link cliCanRead}, and {@link stripByteOrderMark} exists to
+ * repair either one, because refusing to touch the file leaves somebody with a
+ * correct diagnosis and no way out of it.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -42,6 +69,23 @@ export interface IniFile {
   encoding: IniEncoding;
   /** What the file uses to end a line, so an appended block matches. */
   eol: "\n" | "\r\n";
+}
+
+/**
+ * Whether the AWS CLI can read a file stored this way at all.
+ *
+ * Plain UTF-8 is the only answer, and that includes plain ASCII, which is the
+ * same bytes. Everything else here carries a byte-order mark, and a byte-order
+ * mark is what the CLI chokes on: UTF-16 because it cannot decode it, UTF-8
+ * with a BOM because it decodes those three bytes as `ï»¿` and then refuses the
+ * line they landed on.
+ *
+ * A separate question from {@link findIniProblems}, which is about the *text*.
+ * A file can be flawless ini and still be unreadable for this reason alone,
+ * which is why the check has to happen before the text is ever looked at.
+ */
+export function cliCanRead(encoding: IniEncoding): boolean {
+  return encoding === "utf8";
 }
 
 /**
@@ -108,6 +152,47 @@ export function readIniFile(file: string): IniFile | null {
   }
 
   return { text, encoding, eol: text.includes("\r\n") ? "\r\n" : "\n" };
+}
+
+/**
+ * Re-save a config file as plain UTF-8, keeping every character of it.
+ *
+ * The one repair this app is willing to make to a file it did not write, and it
+ * is willing because it is not really an edit: a byte-order mark carries no
+ * information in an ini file. The same sections, the same keys, the same values
+ * and the same line endings come back out; three bytes at the front, or an
+ * interleaved NUL after every character, go away. Nothing a person put in the
+ * file changes.
+ *
+ * The alternative was what this code did before, which was to notice the
+ * encoding, refuse to append, and explain the problem — leaving somebody
+ * holding an exact diagnosis of a file they were told not to touch, and a
+ * PowerShell incantation to run in the terminal they are using this app to
+ * avoid. The diagnosis was right and the outcome was still "stuck".
+ *
+ * A copy is kept next to the original regardless, because "I only changed the
+ * encoding" is a claim, and the person whose config it is should not have to
+ * take it on trust. Numbered rather than overwritten: a second run must not
+ * consume the backup taken by the first.
+ *
+ * Returns where the copy went, or null when nothing needed changing.
+ */
+export function stripByteOrderMark(file: string): { backup: string } | null {
+  const existing = readIniFile(file);
+  if (!existing || cliCanRead(existing.encoding)) return null;
+
+  let backup = `${file}.bak`;
+  for (let n = 2; fs.existsSync(backup); n++) backup = `${file}.bak${n}`;
+  fs.copyFileSync(file, backup);
+
+  // `existing.text` already has the mark removed by the decode above, so this
+  // is the whole repair. Written to a temporary neighbour and renamed, so an
+  // interrupted write cannot leave somebody with half an AWS config.
+  const temp = `${file}.tmp`;
+  fs.writeFileSync(temp, Buffer.from(existing.text, "utf8"), { mode: 0o600 });
+  fs.renameSync(temp, file);
+
+  return { backup };
 }
 
 export interface AwsProfileInfo {
@@ -269,8 +354,22 @@ export function describeProblems(file: string, encoding: IniEncoding, problems: 
   if (encoding === "utf16le" || encoding === "utf16be") {
     return `${file} is saved as UTF-16, which the AWS CLI cannot read — it reports it as `
       + `"Unable to parse config file". PowerShell's ">" and Set-Content write UTF-16 by default. `
-      + `Re-save it as UTF-8: `
-      + `Get-Content "${file}" | Set-Content -Encoding utf8 "${file}.fixed", then replace the original.`;
+      + `It can be re-saved as plain UTF-8 here, keeping every profile in it.`;
+  }
+  /**
+   * Worth saying in full, because this file looks perfect.
+   *
+   * Three invisible bytes, and every editor that shows the file shows it as
+   * correct. Somebody told only "unable to parse config file" will read the
+   * lines over and over and find nothing wrong with them, because there is
+   * nothing wrong with them.
+   */
+  if (encoding === "utf8-bom") {
+    return `${file} begins with a byte-order mark — three invisible bytes that many Windows `
+      + `editors add when saving. The file looks correct because it is correct; the AWS CLI `
+      + `still refuses all of it with "Unable to parse config file", which is why no profile `
+      + `in it works. It can be re-saved here without those bytes, changing nothing else, `
+      + `keeping a copy of the original alongside it.`;
   }
   const first = problems[0];
   if (!first) return `${file} could not be parsed.`;

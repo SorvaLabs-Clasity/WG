@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import fsSync from "node:fs";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
 import { createOctokit, getOrg, initTokenManager } from "../github/client";
 import { signToken, verifyToken, captureSession, reissueSession, CarriedSession } from "../utils/jwt";
@@ -670,6 +671,7 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
       const path = await import("path");
       const {
         configFilePath, readIniFile, findIniProblems, describeProblems,
+        cliCanRead, stripByteOrderMark,
       } = await import("../services/awsConfigFile");
 
       // The file the CLI reads, which is not always the one under the home
@@ -678,21 +680,46 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
       const configPath = configFilePath();
       fs.mkdirSync(path.dirname(configPath), { recursive: true });
 
-      const file = readIniFile(configPath);
+      let file = readIniFile(configPath);
+
+      /**
+       * An encoding the CLI cannot read is repaired, not refused.
+       *
+       * This is the case that produced the report. The file was UTF-8 with a
+       * byte-order mark; this app skipped the mark, saw a clean file, appended
+       * a correct profile and said so; and `aws sso login --profile <it>`
+       * answered "Unable to parse config file" — because those three bytes
+       * make configparser refuse the whole thing, and always did, before the
+       * profile was ever added.
+       *
+       * Refusing to append was the previous answer and it was not enough: the
+       * file was already unusable, so declining to touch it changed nothing
+       * except that now nobody could create a profile either. Re-saving it as
+       * plain UTF-8 keeps every character and takes a copy first.
+       */
+      let repairedFrom: string | undefined;
+      let backupPath: string | undefined;
+      if (file && !cliCanRead(file.encoding)) {
+        repairedFrom = file.encoding;
+        backupPath = stripByteOrderMark(configPath)?.backup;
+        file = readIniFile(configPath);
+      }
+
       const existing = file?.text ?? "";
 
       /**
-       * Refuse to add to a file the CLI already cannot parse.
+       * Refuse to add to a file the CLI cannot parse for reasons in its text.
        *
-       * Appending would succeed, the screen would say the profile was created,
-       * and `aws sso login --profile <it>` would answer "Unable to parse config
-       * file" — which reads as though this app wrote something invalid. What it
-       * wrote is fine; what was already there is not, and that is the thing
-       * worth saying before touching the file at all.
+       * Unlike the encoding, this cannot be repaired without guessing at what
+       * somebody meant. Appending would succeed, the screen would say the
+       * profile was created, and the CLI would still refuse the file — which
+       * reads as though this app wrote something invalid. What it wrote is
+       * fine; what was already there is not, and that is the thing worth
+       * saying before touching the file at all.
        */
       if (file) {
         const problems = findIniProblems(existing);
-        if (problems.length > 0 || file.encoding.startsWith("utf16")) {
+        if (problems.length > 0) {
           return res.status(409).json({
             error: describeProblems(configPath, file.encoding, problems),
             code: "AWS_CONFIG_UNPARSEABLE",
@@ -736,7 +763,16 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
       const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
       await refreshAwsConfigCache();
 
-      res.json({ profile: profileName, path: configPath });
+      // The repair is reported rather than done quietly. It is somebody's own
+      // config file, and "we re-saved it and the old one is over there" is the
+      // kind of thing they should hear from the app rather than notice later.
+      res.json({
+        profile: profileName,
+        path: configPath,
+        repaired: repairedFrom
+          ? { from: repairedFrom, backup: backupPath }
+          : undefined,
+      });
     } catch (err: any) {
       res.status(500).json({ error: `Could not write ~/.aws/config: ${err?.message ?? err}` });
     }
@@ -755,7 +791,7 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
 router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
   const {
     configFilePath, credentialsFilePath, readIniFile, parseProfiles,
-    findIniProblems, describeProblems,
+    findIniProblems, describeProblems, cliCanRead,
   } = await import("../services/awsConfigFile");
 
   const configPath = configFilePath();
@@ -787,11 +823,22 @@ router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddlewa
      * on it.
      */
     const problems = config ? findIniProblems(config.text) : [];
-    const unusable = config && (problems.length > 0 || config.encoding.startsWith("utf16"))
+    const unusable = config && (problems.length > 0 || !cliCanRead(config.encoding))
       ? describeProblems(configPath, config.encoding, problems)
       : undefined;
 
-    res.json({ profiles, configPath, credentialsPath: credsPath, unusable });
+    /**
+     * Whether the app can do anything about it, which decides whether the
+     * screen offers a button or only an explanation.
+     *
+     * An encoding is repairable because removing a byte-order mark is not a
+     * judgement call — the same characters come back out. A stray line in the
+     * text is not: fixing it means deciding what somebody meant, and that
+     * belongs to them.
+     */
+    const fixable = !!config && problems.length === 0 && !cliCanRead(config.encoding);
+
+    res.json({ profiles, configPath, credentialsPath: credsPath, unusable, fixable });
   } catch (err: any) {
     // Reading it threw: a permission problem, or a path that is not a file.
     // Said as a failure, because an empty list here is a different claim.
@@ -803,6 +850,115 @@ router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddlewa
   }
 });
 
+/**
+ * Re-save `~/.aws/config` as plain UTF-8, on request.
+ *
+ * The half of the report that the profile writer does not reach. Somebody whose
+ * config already has the profile they want never goes near "create a profile",
+ * so repairing the encoding on that path alone leaves them with an exact
+ * description of their problem, on a screen with no way to act on it, and the
+ * terminal fix is the thing this app exists to avoid.
+ *
+ * Deliberately its own endpoint and its own button rather than something that
+ * happens quietly when sign-in is pressed. It is somebody's own config file;
+ * they should be the one who says yes.
+ */
+router.post("/aws-config-repair", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware,
+  async (_req: Request, res: Response) => {
+    const {
+      configFilePath, readIniFile, findIniProblems, describeProblems,
+      cliCanRead, stripByteOrderMark,
+    } = await import("../services/awsConfigFile");
+
+    const configPath = configFilePath();
+    try {
+      const file = readIniFile(configPath);
+      if (!file) {
+        return res.status(404).json({ error: `There is no file at ${configPath}.` });
+      }
+      if (cliCanRead(file.encoding)) {
+        // Nothing to do, and saying so is better than reporting a repair that
+        // did not happen. If the file is still unusable it is for a reason in
+        // its text, which this cannot fix and should not pretend to.
+        const problems = findIniProblems(file.text);
+        return res.json({
+          repaired: null,
+          path: configPath,
+          stillUnusable: problems.length
+            ? describeProblems(configPath, file.encoding, problems)
+            : undefined,
+        });
+      }
+
+      const result = stripByteOrderMark(configPath);
+      const after = readIniFile(configPath);
+      const problems = after ? findIniProblems(after.text) : [];
+
+      const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
+      await refreshAwsConfigCache();
+
+      res.json({
+        repaired: { from: file.encoding, backup: result?.backup },
+        path: configPath,
+        // A file can have been UTF-16 *and* have a stray line in it. Fixing one
+        // and reporting success would send somebody back to the same error.
+        stillUnusable: problems.length && after
+          ? describeProblems(configPath, after.encoding, problems)
+          : undefined,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: `Could not re-save ${configPath}: ${err?.message ?? err}` });
+    }
+  });
+
+/**
+ * Where the AWS CLI actually is, as something `spawn` can start.
+ *
+ * On Windows this used to be the literal string `"aws.cmd"`, and both halves of
+ * that were wrong.
+ *
+ * The installer does not ship an `aws.cmd`. AWS CLI v2 installs a real
+ * executable, `C:\Program Files\Amazon\AWSCLIV2\aws.exe`, and that is what is
+ * on PATH. (v1, installed through pip, did leave an `aws.cmd` shim, which is
+ * where the name comes from.)
+ *
+ * And since the fix for CVE-2024-27980 — Node 18.20.2 and everything after —
+ * `spawn` refuses to start a `.cmd` or `.bat` at all without `shell: true`. It
+ * does not report this through the `error` event that the code below waits on:
+ * it throws *synchronously*, out of the `spawn` call itself, before there is a
+ * child to attach a listener to. Inside an async Express 4 handler that becomes
+ * an unhandled rejection and the request simply never answers, so the browser's
+ * `fetch` hangs forever and the screen keeps showing whatever it said before
+ * the call. Which, here, was "a browser tab opened for AWS SSO".
+ *
+ * So: look for the real executable, by name, in the places it is installed, and
+ * fall back to the bare name for PATH resolution when it is nowhere expected.
+ * Nothing goes through a shell, so a profile name never reaches a command line.
+ */
+function resolveAwsCli(): { command: string; extraPathDirs: string[] } {
+  if (process.platform !== "win32") {
+    return { command: "aws", extraPathDirs: ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"] };
+  }
+
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  const dirs = [
+    `${programFiles}\\Amazon\\AWSCLIV2`,
+    `${programFilesX86}\\Amazon\\AWSCLIV2`,
+    // The per-user install, which needs no administrator and is therefore what
+    // somebody on a locked-down work machine ends up with.
+    `${process.env.LOCALAPPDATA}\\Programs\\Amazon\\AWSCLIV2`,
+  ];
+
+  for (const dir of dirs) {
+    const exe = `${dir}\\aws.exe`;
+    if (fsSync.existsSync(exe)) return { command: exe, extraPathDirs: dirs };
+  }
+  // Not where we expect it, so let the OS search PATH. `.exe` rather than the
+  // bare name: spawn without a shell does not apply PATHEXT.
+  return { command: "aws.exe", extraPathDirs: dirs };
+}
+
 router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
   const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
@@ -812,59 +968,178 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     return;
   }
 
+  /**
+   * Read the config the way the CLI will, before asking the CLI to read it.
+   *
+   * Everything this checks, the CLI checks too, and answers with one sentence
+   * that names none of it: "Unable to parse config file: <path>". Worse, it
+   * answers on stderr of a detached child nobody is listening to, so the
+   * observable behaviour is a button that reports success and opens nothing.
+   *
+   * Checked here so the failure arrives in the app, attached to the button that
+   * caused it, saying which file and which line.
+   */
+  {
+    const {
+      configFilePath, readIniFile, parseProfiles, findIniProblems, describeProblems, cliCanRead,
+    } = await import("../services/awsConfigFile");
+    const configPath = configFilePath();
+
+    let file: ReturnType<typeof readIniFile>;
+    try {
+      file = readIniFile(configPath);
+    } catch (err: any) {
+      res.status(500).json({
+        error: `Could not read ${configPath}: ${err?.message ?? err}`,
+        code: "AWS_CONFIG_UNREADABLE",
+      });
+      return;
+    }
+
+    if (!file) {
+      res.status(400).json({
+        error: `There is no AWS config file at ${configPath}, so there is no profile "${profile}" `
+          + `to sign in with. Create one from the "New profile" tab.`,
+        code: "AWS_CONFIG_MISSING",
+        path: configPath,
+      });
+      return;
+    }
+
+    const problems = findIniProblems(file.text);
+    if (problems.length > 0 || !cliCanRead(file.encoding)) {
+      res.status(409).json({
+        error: describeProblems(configPath, file.encoding, problems),
+        code: "AWS_CONFIG_UNPARSEABLE",
+        path: configPath,
+      });
+      return;
+    }
+
+    // A profile the file does not define. The CLI's own wording for this is
+    // fine, but it is on the stderr nobody sees, and by the time somebody runs
+    // the command by hand they are already debugging the wrong thing.
+    if (!parseProfiles(file.text).some(p => p.name === profile)) {
+      res.status(400).json({
+        error: `${configPath} does not define a profile called "${profile}".`,
+        code: "AWS_PROFILE_NOT_FOUND",
+        path: configPath,
+      });
+      return;
+    }
+  }
+
+  // Only now that the profile is known to exist. Set before the checks above,
+  // a refused sign-in still left the whole process pointed at a profile that
+  // could not be used, and every AWS call after it failed for that reason
+  // instead of the one the user was shown.
   process.env.AWS_PROFILE = profile;
 
+  const nodePath = await import("path");
+  const { command, extraPathDirs } = resolveAwsCli();
   // GUI-launched apps inherit a minimal PATH, so add the usual CLI install dirs.
   // Join with the platform separator, using ":" on Windows corrupts the last
   // real PATH entry and can leave "aws" unresolvable.
-  const nodePath = await import("path");
-  const extraPathDirs =
-    process.platform === "win32"
-      ? [`${process.env.ProgramFiles || "C:\\Program Files"}\\Amazon\\AWSCLIV2`]
-      : ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
   const env = {
     ...process.env,
     PATH: [process.env.PATH, ...extraPathDirs].filter(Boolean).join(nodePath.delimiter),
   };
-  // No shell. With shell:true the argument list is flattened into a command
-  // string, so the only thing standing between a profile name and command
-  // execution is isValidAwsProfile, which is correct today and is the wrong
-  // thing to be relying on. Windows needs the .cmd extension named explicitly
-  // once the shell is gone.
-  const command = process.platform === "win32" ? "aws.cmd" : "aws";
-  const child = spawn(command, ["sso", "login", "--profile", profile], {
-    stdio: "ignore",
-    detached: true,
-    windowsHide: true,
-    shell: false,
-    env,
-  });
 
-  // Wait to hear that it started.
-  //
-  // This used to answer "login started, check your browser" the instant spawn
-  // returned, which says nothing about whether anything ran. With stdio
-  // ignored and no error listener, a missing AWS CLI produced no browser, no
-  // message, and an unhandled 'error' on the child, so the button did
-  // nothing, twice over. `spawn` and `error` are the two events that settle
-  // this, and one of them always fires.
+  /**
+   * Started, and then listened to.
+   *
+   * `stdio: "ignore"` was the other half of the silent failure: whatever the
+   * CLI had to say went to a closed pipe. stderr is kept now, capped, and read
+   * only for as long as it takes to find out whether the process survives its
+   * own startup.
+   *
+   * Not detached any more either. A detached child is one this process cannot
+   * hear from, and the only reason to want that was to let the sign-in outlive
+   * a request — which it does perfectly well as an ordinary child, because the
+   * request stops waiting on it after the grace period below.
+   *
+   * No shell, still. With `shell: true` the argument list is flattened into a
+   * command string, so the only thing standing between a profile name and
+   * command execution is `isValidAwsProfile`, which is correct today and is the
+   * wrong thing to be relying on.
+   */
+  let child: import("child_process").ChildProcess;
   try {
-    await new Promise<void>((resolve, reject) => {
-      child.once("spawn", () => resolve());
-      child.once("error", reject);
+    child = spawn(command, ["sso", "login", "--profile", profile], {
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+      shell: false,
+      env,
     });
   } catch (err: any) {
-    const missing = err?.code === "ENOENT";
-    res.status(missing ? 400 : 500).json({
-      error: missing
-        ? `The AWS CLI is not installed, or not on this app's PATH, so "aws sso login" could not be run. ` +
-          `Install it, or use the Access key tab instead. That needs no CLI.`
-        : `Could not start "aws sso login": ${err?.message ?? err}`,
-      code: missing ? "AWS_CLI_NOT_FOUND" : "AWS_SSO_LAUNCH_FAILED",
+    // spawn throws synchronously for a bad executable — EINVAL for a .cmd or
+    // .bat without a shell, which is what Windows used to get here every time.
+    // Caught rather than left to reject the handler: Express 4 does not catch
+    // an async throw, so it became a request that never answered at all.
+    res.status(500).json({
+      error: `Could not start the AWS CLI (${command}): ${err?.message ?? err}`,
+      code: "AWS_SSO_LAUNCH_FAILED",
     });
     return;
   }
 
+  let stderr = "";
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (stderr.length < 4096) stderr += chunk.toString();
+  });
+
+  /**
+   * Three outcomes, and the one that means success is "still running".
+   *
+   * `aws sso login` opens a browser and then waits for a person to approve it,
+   * so it is *supposed* to be alive when this answers. What it must not be is
+   * already dead: a config it cannot parse, a profile with no sso_session, an
+   * SSO region that does not resolve — all of those exit within a moment, and
+   * all of them used to be reported to the user as "check your browser".
+   *
+   * So: wait a beat, and treat an early exit as the failure it is.
+   */
+  const GRACE_MS = 2500;
+  const outcome = await new Promise<{ ok: true } | { ok: false; code: number | null; err: any }>(resolve => {
+    const timer = setTimeout(() => resolve({ ok: true }), GRACE_MS);
+    child.once("error", err => { clearTimeout(timer); resolve({ ok: false, code: null, err }); });
+    child.once("exit", code => {
+      clearTimeout(timer);
+      // Exit 0 inside the grace period is a sign-in that was already valid —
+      // the CLI says "Token cached" and stops. That is a success.
+      resolve(code === 0 ? { ok: true } : { ok: false, code, err: null });
+    });
+  });
+
+  if (!outcome.ok) {
+    const missing = outcome.err?.code === "ENOENT";
+    if (missing) {
+      res.status(400).json({
+        error: `The AWS CLI is not installed, or not on this app's PATH, so "aws sso login" could not be run. `
+          + `Install it, or use the Access key tab instead. That needs no CLI.`,
+        code: "AWS_CLI_NOT_FOUND",
+      });
+      return;
+    }
+    // The CLI's own words, which are usually the exact thing somebody needs and
+    // which this endpoint has been throwing away.
+    const said = stderr.trim().split("\n").filter(Boolean).slice(-3).join(" ");
+    res.status(500).json({
+      error: said
+        ? `"aws sso login" stopped straight away: ${said}`
+        : `"aws sso login" stopped straight away`
+          + (outcome.code === null ? "." : ` (exit code ${outcome.code}).`),
+      code: "AWS_SSO_LAUNCH_FAILED",
+    });
+    return;
+  }
+
+  // Running, and waiting on a browser. Let it outlive this request without
+  // holding the response open.
+  //
+  // The stderr listener stays attached deliberately. It caps what it *keeps* at
+  // 4KB but it keeps reading, and a pipe nobody reads fills its buffer and then
+  // blocks the child mid-write — a sign-in that hangs for no visible reason.
   child.unref();
   res.json({ ok: true, profile, message: `AWS SSO login started for profile "${profile}". Check your browser.` });
 });

@@ -107,11 +107,29 @@ export async function reconnectAws(profile?: string): Promise<AwsSwitchResult> {
  * does nothing, with the reason sitting unread.
  */
 export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ profile }),
-  });
+  /**
+   * Bounded, because the failure this endpoint had was a request that never
+   * answered.
+   *
+   * The backend waits a couple of seconds to see whether the CLI survives
+   * starting, so a healthy call is slow enough to be worth naming but nowhere
+   * near this. Anything past it is not slowness, it is silence, and silence
+   * here shows as a button that did nothing.
+   */
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ profile }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (e: any) {
+    if (e?.name === "TimeoutError" || e?.name === "AbortError") {
+      throw new Error("The AWS sign-in did not start — the app stopped waiting after 20 seconds.");
+    }
+    throw e;
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({} as { error?: string }));
     throw new Error(body.error ?? `Could not start the AWS sign-in (${res.status})`);
@@ -130,6 +148,29 @@ export interface AwsProfiles {
    * the half nobody can guess from "Unable to parse config file".
    */
   unusable?: string;
+  /**
+   * Whether `unusable` is something this app can put right.
+   *
+   * True only for an encoding, where the repair is lossless and needs no
+   * guessing. A stray line in the text is left alone: fixing it means deciding
+   * what somebody meant by it.
+   */
+  fixable?: boolean;
+}
+
+/** Re-save the AWS config file as plain UTF-8, keeping everything in it. */
+export async function repairAwsConfig(): Promise<{
+  repaired: { from: string; backup?: string } | null;
+  path: string;
+  stillUnusable?: string;
+}> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-config-repair`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+  });
+  const body = await res.json().catch(() => ({} as { error?: string }));
+  if (!res.ok) throw new Error(body.error ?? `Could not re-save the AWS config (${res.status})`);
+  return body;
 }
 
 export async function fetchAwsProfiles(): Promise<AwsProfiles> {
@@ -138,7 +179,12 @@ export async function fetchAwsProfiles(): Promise<AwsProfiles> {
   if (!res.ok) {
     throw new Error(data.error ?? `Could not read AWS profiles (${res.status})`);
   }
-  return { profiles: data.profiles ?? [], configPath: data.configPath, unusable: data.unusable };
+  return {
+    profiles: data.profiles ?? [],
+    configPath: data.configPath,
+    unusable: data.unusable,
+    fixable: data.fixable,
+  };
 }
 
 /**
@@ -258,7 +304,19 @@ export async function pollSsoSetup(auth: {
 export async function createSsoProfile(p: {
   profileName: string; startUrl: string; ssoRegion: string;
   accountId: string; roleName: string; region: string;
-}): Promise<{ profile: string; path: string }> {
+}): Promise<{
+  profile: string;
+  path: string;
+  /**
+   * Set when the config file had to be re-saved as plain UTF-8 first.
+   *
+   * A byte-order mark, or UTF-16 from PowerShell, makes the AWS CLI refuse the
+   * entire file. Removing it keeps every character — but it is still an edit to
+   * somebody's own config, so it is reported rather than done quietly, with
+   * where the copy of the original went.
+   */
+  repaired?: { from: string; backup?: string };
+}> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-sso-create-profile`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),

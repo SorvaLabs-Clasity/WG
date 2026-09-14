@@ -3,6 +3,7 @@ import path from "path";
 import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
 import { startBackend } from "./server";
+import { installZoom } from "./zoom";
 
 let mainWindow: BrowserWindow | null = null;
 /** True between leaving for GitHub and coming back with a code. */
@@ -102,6 +103,10 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+
+  // Before the first load, so the stored zoom is in place for it rather than
+  // applied as a visible jump once the page has already drawn.
+  installZoom(mainWindow);
 
   mainWindow.loadURL(`http://localhost:${BACKEND_PORT}${DEMO_MODE ? "/" : "/login"}`);
 
