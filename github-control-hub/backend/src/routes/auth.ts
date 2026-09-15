@@ -981,6 +981,53 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
   }
 
   /**
+   * `aws sso login` only means anything for a profile that has SSO in it.
+   *
+   * Handed anything else — an access-key profile, or the `default` this route
+   * falls back to when the caller names nothing — the CLI answers
+   *
+   *     An error occurred (Configuration): Missing the following required SSO
+   *     configuration values: sso_start_url, sso_region. To make sure this
+   *     profile is properly configured to use SSO, please run: aws configure sso
+   *
+   * which is accurate, names no profile, and sends somebody to a wizard that
+   * will build them a second profile they did not need. The config is already
+   * parsed here for other reasons, so the app can say which profile it was
+   * about to use and that this is the wrong kind, before spawning anything.
+   *
+   * Only when the profile is actually readable: an unreadable config is a
+   * different failure with its own message, and turning it into "not an SSO
+   * profile" would be a worse answer than letting the CLI speak.
+   */
+  try {
+    const { configFilePath, readIniFile, parseProfiles } = await import("../services/awsConfigFile");
+    const file = readIniFile(configFilePath());
+    if (file) {
+      const known = parseProfiles(file.text);
+      const found = known.find(p => p.name === profile);
+      if (!found) {
+        res.status(400).json({
+          error: `There is no profile called "${profile}" in ${configFilePath()}.`,
+          code: "AWS_PROFILE_NOT_FOUND",
+        });
+        return;
+      }
+      if (found.type !== "sso") {
+        res.status(400).json({
+          error: `"${profile}" is not an SSO profile — it has no sso_start_url or sso_region, `
+            + `so "aws sso login" has nothing to sign in to. Pick an SSO profile, or use the `
+            + `Profile tab, which is what a profile like this one is for.`,
+          code: "AWS_PROFILE_NOT_SSO",
+        });
+        return;
+      }
+    }
+  } catch {
+    // Unreadable config. Let the CLI answer; it is the authority, and the
+    // profile list has its own report for this.
+  }
+
+  /**
    * Read the config the way the CLI will, before asking the CLI to read it.
    *
    * Everything this checks, the CLI checks too, and answers with one sentence

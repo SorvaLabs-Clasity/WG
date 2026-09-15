@@ -403,6 +403,81 @@ function check(name: string, ok: boolean, got?: unknown) {
       "one directory, many installs, so these cannot be the same value");
   }
 
+  /**
+   * Signing in with the SSO profile the screen is showing.
+   *
+   * Reported as: clicking sign-in on the profile that gets auto-selected gives
+   *
+   *     aws: [ERROR]: An error occurred (Configuration): Missing the following
+   *     required SSO configuration values: sso_start_url, sso_region
+   *
+   * while picking any other profile from the dropdown and switching *back* to
+   * the first one makes the same click work.
+   *
+   * That workaround is the whole diagnosis. `selectedProfile` is shared with
+   * the Profile tab and seeded from `list[0]` — whatever is first in
+   * ~/.aws/config, routinely an access-key profile. The SSO `<select>` lists
+   * only SSO profiles, and an HTML select whose `value` matches none of its
+   * options renders the *first* option and fires no `onChange`. So the screen
+   * showed one profile while the state held another, and the button sent the
+   * one being held. Touching the dropdown fired `onChange` and put a real SSO
+   * profile in the state, which is why going away and coming back fixed it.
+   *
+   * The CLI's message was correct throughout: it names the values a non-SSO
+   * profile lacks. It just never named the profile.
+   */
+  console.log("\nthe SSO tab signs in as the profile it is showing");
+  {
+    const page = fs.readFileSync(`${__dirname}/../frontend/src/pages/LoginPage.tsx`, "utf8");
+
+    check("the tab has one expression for which SSO profile it means",
+      /const ssoTarget = ssoProfiles\.some/.test(page),
+      "shown and sent were two reads of state that could disagree");
+
+    // Derived, not stored. A second piece of state here is the same bug again
+    // with an extra way to get out of step.
+    check("  derived from the list rather than stored beside it",
+      !/setSsoTarget/.test(page));
+
+    check("  and it falls back to a real SSO profile, not to whatever was first",
+      /: \(ssoProfiles\[0\]\?\.name \?\? ""\)/.test(page));
+
+    const sso = page.slice(page.indexOf('awsMethod === "sso" && awsProfiles.some'));
+    const tab = sso.slice(0, sso.indexOf("\n              {awsMethod === \"keys\""));
+
+    check("the select shows it",
+      /<select value=\{ssoTarget\}/.test(tab), "an unmatched value silently shows option 0");
+    check("  the button says it",
+      /Sign in as \{ssoTarget/.test(tab));
+    check("  and the click sends it",
+      (tab.match(/handleAwsSsoLogin\(ssoTarget\)/g) ?? []).length === 2,
+      "sign-in and reopen-browser both, or they can name different profiles");
+    check("  with nothing to click when there is no SSO profile at all",
+      /disabled=\{!ssoTarget\}/.test(tab),
+      '"Sign in as default" sent `default`, which is the same error again');
+  }
+
+  console.log("\nand the CLI is never handed a profile it cannot use");
+  {
+    const auth = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");
+    const at = auth.indexOf('router.post("/aws-sso-login"');
+    const body = auth.slice(at, auth.indexOf("\nrouter.", at + 1));
+
+    check("a profile that is not an SSO profile is refused by name",
+      /AWS_PROFILE_NOT_SSO/.test(body) && /found\.type !== "sso"/.test(body),
+      "the CLI's own message names the missing keys and never the profile");
+    check("  and one that does not exist is told apart from one that is wrong",
+      /AWS_PROFILE_NOT_FOUND/.test(body));
+    check("  before anything is spawned",
+        body.indexOf("AWS_PROFILE_NOT_SSO") < body.indexOf("spawn("),
+      "refusing after the CLI has already answered is not refusing");
+
+    // An unreadable config is a different failure with its own report. Turning
+    // it into "not an SSO profile" would be a worse answer than the CLI's.
+    check("  while an unreadable config still lets the CLI speak",
+      /\} catch \{[\s\S]{0,220}\}/.test(body.slice(body.indexOf("AWS_PROFILE_NOT_SSO"))));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

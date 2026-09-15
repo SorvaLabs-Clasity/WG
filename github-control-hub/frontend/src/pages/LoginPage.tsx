@@ -608,6 +608,35 @@ export default function LoginPage() {
     await checkStatus();
   };
 
+  const ssoProfiles = useMemo(
+    () => awsProfiles.filter(p => p.type === "sso"), [awsProfiles]);
+
+  /**
+   * The profile the SSO tab is actually about.
+   *
+   * `selectedProfile` is shared with the Profile tab and is seeded from
+   * `list[0]` — whatever happens to be first in ~/.aws/config, which is
+   * frequently not an SSO profile at all. The `<select>` here lists only the
+   * SSO ones, and an HTML select whose `value` matches none of its options
+   * displays the *first* option without firing `onChange`. So the screen showed
+   * one profile, the state held another, and "Sign in as …" sent the one being
+   * held:
+   *
+   *     aws: [ERROR]: An error occurred (Configuration): Missing the following
+   *     required SSO configuration values: sso_start_url, sso_region
+   *
+   * — the CLI correctly reporting that the profile it was handed is not an SSO
+   * profile. Picking any other entry and coming back fixed it, because that
+   * fired `onChange` and put a real SSO profile in the state, which is the
+   * workaround somebody found before anybody found the cause.
+   *
+   * Derived rather than stored, so the value rendered and the value sent are
+   * the same expression and cannot drift apart again.
+   */
+  const ssoTarget = ssoProfiles.some(p => p.name === selectedProfile)
+    ? selectedProfile
+    : (ssoProfiles[0]?.name ?? "");
+
   const pasteBlockValid = useMemo(() => {
     const parsed = parseExportBlock(akPasteBlock);
     return !!(parsed.AWS_ACCESS_KEY_ID && parsed.AWS_SECRET_ACCESS_KEY);
@@ -906,8 +935,8 @@ export default function LoginPage() {
               {awsMethod === "sso" && awsProfiles.some(p => p.type === "sso") && (
                 <div className="space-y-2.5">
                   {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
-                    <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
-                      {awsProfiles.filter(p => p.type === "sso").map(p => (
+                    <select value={ssoTarget} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
+                      {ssoProfiles.map(p => (
                         <option key={p.name} value={p.name}>
                           {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? `, ${p.roleName}` : ""}
                         </option>
@@ -919,15 +948,20 @@ export default function LoginPage() {
                       A browser tab opened for AWS SSO. Finish signing in there, then come back and hit Verify.
                     </Hint>
                   )}
+                  {/* Every control below names `ssoTarget`, the same value the
+                      select above is showing. Reading `selectedProfile` here is
+                      what let the label and the action mean two different
+                      profiles. */}
                   <div className="flex justify-end gap-2">
                     {!awsSsoStarted ? (
-                      <Button variant="primary" onClick={() => handleAwsSsoLogin()} className="w-full sm:w-auto">
+                      <Button variant="primary" onClick={() => handleAwsSsoLogin(ssoTarget)}
+                        disabled={!ssoTarget} className="w-full sm:w-auto">
                         <i className="ph-bold ph-browser mr-2"></i>
-                        Sign in as {selectedProfile || "default"}
+                        Sign in as {ssoTarget || "…"}
                       </Button>
                     ) : (
                       <>
-                        <Button variant="ghost" onClick={() => handleAwsSsoLogin()}>Reopen browser</Button>
+                        <Button variant="ghost" onClick={() => handleAwsSsoLogin(ssoTarget)}>Reopen browser</Button>
                         <Button variant="primary" onClick={handleReconnectAws} disabled={refreshing === "aws"}>
                           <i className="ph-bold ph-arrow-clockwise mr-2"></i>Verify
                         </Button>
