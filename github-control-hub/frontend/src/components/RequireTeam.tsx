@@ -1,5 +1,7 @@
+import { useNavigate } from "react-router-dom";
 import { usePermissions } from "../hooks/usePermissions";
-import { Spinner } from "../design";
+import { useAuth } from "../App";
+import { Page, Spinner, Button } from "../design";
 
 /**
  * A screen somebody may not see, said properly.
@@ -13,6 +15,18 @@ import { Spinner } from "../design";
  * This is presentation, not enforcement. Every route behind it is gated on the
  * server, which is the part that matters: this only decides what somebody sees
  * instead of a wall of failed requests.
+ *
+ * **Inside `<Page>`, which is where the navigation lives.** It did not used to
+ * be, and that turned a locked door into a locked room: the notice rendered as
+ * a bare element in place of the whole page, so there were no section tabs, no
+ * account menu, no theme picker and no way to sign out. Anybody who arrived
+ * here — and the desktop app reopens on the route it was last closed on, so
+ * arriving here on launch takes no wrong move at all — had nothing to click but
+ * the browser's back button, which the desktop build does not show. It read as
+ * the app having locked them out of itself rather than out of one screen.
+ *
+ * Nothing about it was theme-specific. Every theme renders its navigation from
+ * `<Page>`, so every theme lost all of it in exactly the same way.
  */
 export default function RequireTeam({ team, title, children }: {
   team: "control-hub" | "aws";
@@ -21,9 +35,16 @@ export default function RequireTeam({ team, title, children }: {
   children: React.ReactNode;
 }) {
   const { data: perms, isLoading, isError } = usePermissions();
+  const { user } = useAuth();
 
+  // Inside the page as well, so the tabs do not appear a beat after the rest of
+  // the window and shift everything under the pointer.
   if (isLoading) {
-    return <div className="py-24 flex justify-center"><Spinner /></div>;
+    return (
+      <Page user={user}>
+        <div className="py-24 flex justify-center"><Spinner /></div>
+      </Page>
+    );
   }
 
   // Being unable to ask GitHub is an outage, not a refusal. Showing the locked
@@ -35,18 +56,23 @@ export default function RequireTeam({ team, title, children }: {
 
   const teamName = team === "aws" ? perms.awsAdminTeam : perms.adminTeam;
 
-  return <Locked title={title} team={teamName} login={perms.login} kind={team} />;
+  return (
+    <Page user={user}>
+      <Locked title={title} team={teamName} login={perms.login} kind={team} />
+    </Page>
+  );
 }
 
 function Locked({ title, team, login, kind }: {
   title: string; team: string; login: string; kind: "control-hub" | "aws";
 }) {
+  const navigate = useNavigate();
   const accent = kind === "aws"
     ? { ring: "border-ochre-edge", icon: "text-ochre", chip: "bg-ochre-wash text-ochre border-ochre-edge" }
     : { ring: "border-indigo-edge", icon: "text-indigo", chip: "bg-indigo-wash text-indigo border-indigo-edge" };
 
   return (
-    <div className="min-h-[70vh] grid place-items-center px-6 py-16">
+    <div className="min-h-[60vh] grid place-items-center px-6 py-16">
       <div className="relative w-full max-w-lg text-center">
         {/* A ruled notice, not an error state. The page is a dead end by
             design, so it is set like a standing notice rather than a warning. */}
@@ -80,10 +106,20 @@ function Locked({ title, team, login, kind }: {
           owners are admitted without being on the team.
         </p>
 
+        {/* Said, and then offered. The sentence alone was the whole of the way
+            out of here, and a sentence is not a door: the section line above is
+            the real answer, and this is the one click for somebody who has
+            just been told they cannot be where they are. */}
         <p className="standfirst relative mt-4 text-[0.7812rem] max-w-[42ch] mx-auto">
-          Everything else in the app is still open to you — including your own
-          cards and alarms on <span className="font-semibold">My work</span>.
+          Everything else in the app is still open to you — the sections above,
+          and your own cards and alarms on <span className="font-semibold">My work</span>.
         </p>
+
+        <div className="relative mt-5 flex justify-center">
+          <Button variant="primary" onClick={() => navigate("/my-work")}>
+            Go to My work
+          </Button>
+        </div>
       </div>
     </div>
   );
