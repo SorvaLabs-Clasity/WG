@@ -14,6 +14,7 @@
  */
 process.env.GITHUB_ORG = "test-org";
 
+import fs from "node:fs";
 import { isControlHubAdmin, isAwsAdmin, invalidateAdminCache, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "./src/services/authorizationService";
 import { initTokenManager, __resetTokenManagerForTests } from "./src/github/client";
 
@@ -248,6 +249,71 @@ globalThis.fetch = (async (input: any) => {
     assert("  and the denial is not remembered once the token works",
       afterRecovery === true,
       "a cached no would have outlived the outage that caused it");
+  }
+
+  /**
+   * Why, and not only whether.
+   *
+   * Reported as: "I removed myself from both teams and still have full access,
+   * all the permissions are out of wack." They were not. An organization owner
+   * passes every check here whatever team they are on, deliberately, so that a
+   * deleted or empty team cannot lock everyone out of their own settings — and
+   * the only visible effect of leaving both teams was nothing happening at all.
+   * From the inside that is indistinguishable from a gate that does not work.
+   *
+   * The rule stays. What changes is that the answer carries the route, and the
+   * app says it, so a working gate can be told from a broken one without
+   * reading the source.
+   */
+  console.log("\nthe answer says how, not only whether");
+  {
+    /**
+     * A plain source assertion, and deliberately not the `check` above: that
+     * one runs a *scenario* through the real resolver and is async. Passing a
+     * boolean to it silently reads as a Scenario, the await is missing, and the
+     * assertion neither runs nor reports — which is exactly what happened on
+     * the first attempt at this block, printing a heading with nothing under
+     * it.
+     */
+    const claim = (name: string, ok: boolean, why?: string) => {
+      console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> ${why ?? "no"}`));
+      if (!ok) failures++;
+    };
+
+    const svc = fs.readFileSync("src/services/authorizationService.ts", "utf8");
+
+    claim("an owner is reported as an owner, not merely as a yes",
+      /return "owner";/.test(svc) && /export type AdminVia/.test(svc),
+      "a bare boolean is what made a deliberate rule look like a broken one");
+    claim("  and team membership as team membership",
+      /\? "team" : null/.test(svc));
+    claim("  while the boolean the gates use is unchanged",
+      /export async function isAwsAdmin[\s\S]{0,160}!!\(await adminVia\(/.test(svc),
+      "this must not become a second, differently-behaved gate");
+
+    // Unanswerable stays unanswerable: a broken App token is not a denial, and
+    // caching it as one locks somebody out for the full TTL after it heals.
+    claim("  and an unreadable answer is still not a denial, and still uncached",
+      /if \(err instanceof Unanswerable\) return null;/.test(svc));
+
+    const route = fs.readFileSync("src/routes/auth.ts", "utf8");
+    const perms = route.slice(route.indexOf('router.get("/permissions"'));
+    const body = perms.slice(0, perms.indexOf("\nrouter."));
+    claim("the endpoint sends the route for both teams",
+      /controlHubAdminVia: github/.test(body) && /awsAdminVia: aws/.test(body));
+    claim("  and still sends the plain verdict beside it",
+      /isControlHubAdmin: !!github/.test(body) && /isAwsAdmin: !!aws/.test(body),
+      "every existing caller reads the boolean");
+
+    const nav = fs.readFileSync("../frontend/src/components/Navbar.tsx", "utf8");
+    claim("and the app says it where somebody is looking for it",
+      /function AdminStanding/.test(nav) && /Organization owner\./.test(nav)
+      && /leaving\s*\n?\s*those teams changes nothing for you/.test(nav));
+    claim("  reading the same cached answer the gates read",
+      /usePermissions\(\)/.test(nav.slice(nav.indexOf("function AdminStanding"))),
+      "a second source here is a line that can disagree with the tabs");
+    claim("  and saying nothing rather than guessing on an older backend",
+      /controlHubAdminVia === undefined && perms\.awsAdminVia === undefined/.test(nav));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

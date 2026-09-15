@@ -59,14 +59,27 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return headers;
 }
 
+/**
+ * How somebody qualifies for an admin screen.
+ *
+ * `"owner"` is the answer that surprises people: an organization owner passes
+ * every check in this app by design, whatever team they are on, so that a
+ * deleted team cannot lock everyone out of their own settings. Absent on an
+ * older backend, which is why the screens that show it check for the string
+ * rather than for a falsy value.
+ */
+export type AdminVia = "owner" | "team" | null;
+
 export interface UserPermissions {
   login: string;
   /** Governs GitHub auto-apply. */
   isControlHubAdmin: boolean;
+  controlHubAdminVia?: AdminVia;
   adminTeam: string;
   /** Governs AWS guardrails, a separate team, usually owned by whoever
    *  administers the AWS account rather than the repos. */
   isAwsAdmin: boolean;
+  awsAdminVia?: AdminVia;
   awsAdminTeam: string;
 }
 

@@ -316,10 +316,23 @@ function check(name: string, ok: boolean, got?: unknown) {
       try { fs.unlinkSync(tmp); } catch { /* nothing to clean up */ }
     }
 
-    // And that it is actually called where the file changes.
+    /**
+     * And that it is actually called where the file changes.
+     *
+     * Scoped to the route and ordered by position, not by counting characters
+     * between the two. The window used to be 120 characters, which is a guess
+     * about how much code sits in the gap rather than a fact about the order —
+     * and it broke the day the response grew a `repaired` field, with the
+     * refresh still happening exactly where it should.
+     */
     const routes = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");
+    const createAt = routes.indexOf('router.post("/aws-sso-create-profile"');
+    const createBody = routes.slice(createAt, routes.indexOf("\nrouter.", createAt + 1));
+    const refreshAt = createBody.indexOf("refreshAwsConfigCache()");
+    const replyAt = createBody.indexOf("res.json({");
     check("  the create-profile route refreshes after writing",
-      /refreshAwsConfigCache[\s\S]{0,120}res\.json\(\{ profile: profileName/.test(routes));
+      refreshAt >= 0 && replyAt >= 0 && refreshAt < replyAt,
+      { refreshAt, replyAt });
     check("  and switching profiles refreshes too, for edits made in a terminal",
       (routes.match(/refreshAwsConfigCache\(\)/g) ?? []).length >= 3);
 

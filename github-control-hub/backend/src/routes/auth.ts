@@ -169,26 +169,38 @@ router.get("/verify", (req: Request, res: Response) => {
  * only covers org-wide Control Hub settings, which have no GitHub equivalent.
  */
 router.get("/permissions", authMiddleware, async (req: Request, res: Response) => {
-  const { isControlHubAdmin, isAwsAdmin, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } =
+  const { controlHubAdminVia, awsAdminVia, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } =
     await import("../services/authorizationService");
   try {
+    /**
+     * The route, not only the verdict.
+     *
+     * An organization owner passes both of these whatever team they are on,
+     * deliberately — otherwise a deleted team locks everyone out of their own
+     * settings. Reported as a yes and nothing else, that rule is invisible:
+     * somebody takes themselves out of both teams to check the gate works,
+     * nothing changes, and the only available conclusion is that the
+     * permissions are broken. They are not, and the app can simply say so.
+     */
     const [github, aws] = await Promise.all([
-      isControlHubAdmin(req.user!.login, req.user!.accessToken),
-      isAwsAdmin(req.user!.login, req.user!.accessToken),
+      controlHubAdminVia(req.user!.login, req.user!.accessToken),
+      awsAdminVia(req.user!.login, req.user!.accessToken),
     ]);
     res.json({
       login: req.user!.login,
-      isControlHubAdmin: github,
+      isControlHubAdmin: !!github,
+      controlHubAdminVia: github,
       adminTeam: CONTROL_HUB_ADMIN_TEAM,
-      isAwsAdmin: aws,
+      isAwsAdmin: !!aws,
+      awsAdminVia: aws,
       awsAdminTeam: AWS_ADMIN_TEAM,
     });
   } catch (err: any) {
     console.error("[auth/permissions]", err?.message ?? err);
     res.json({
       login: req.user!.login,
-      isControlHubAdmin: false, adminTeam: CONTROL_HUB_ADMIN_TEAM,
-      isAwsAdmin: false, awsAdminTeam: AWS_ADMIN_TEAM,
+      isControlHubAdmin: false, controlHubAdminVia: null, adminTeam: CONTROL_HUB_ADMIN_TEAM,
+      isAwsAdmin: false, awsAdminVia: null, awsAdminTeam: AWS_ADMIN_TEAM,
     });
   }
 });

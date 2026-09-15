@@ -390,6 +390,60 @@ function routeBody(source: string, route: string): string {
     }
   }
 
+  /**
+   * The other door into the app, which did not reload.
+   *
+   * Reported as: switched from an AWS-only account to a GitHub-configured one
+   * and "only saw aws tabs, not any github control hub ones", and switching
+   * back and forth left the UI not updating "like it was before".
+   *
+   * The section line is built from a cached `["auth","status"]`, every gate
+   * from a cached `["permissions"]`, and each mounted page holds state of its
+   * own — a selected stream, a filter, a page number — all of it describing the
+   * account being left. The navbar's switcher already reloads for exactly this
+   * reason and says so in a comment. The sign-in panel, which is reachable
+   * while signed in as "add a profile", called `navigate()` instead: same
+   * document, same caches, new account.
+   *
+   * Nothing to do with themes. Every theme reads the same cached status.
+   */
+  console.log("\nswitching account from the sign-in panel reloads too");
+  {
+    const fs = await import("fs");
+    const login = fs.readFileSync("../frontend/src/pages/LoginPage.tsx", "utf8");
+    const switcher = fs.readFileSync("../frontend/src/components/AwsAccountSwitcher.tsx", "utf8");
+
+    check("the navbar switcher still reloads rather than invalidating",
+      /window\.location\.reload\(\)/.test(switcher),
+      "clearing the query cache was tried there and page state is not in it");
+
+    check("and entering the app is a real page load, not a route change",
+      /window\.location\.assign\("\/"\)/.test(login) && !/navigate\("\/analytics"\)/.test(login),
+      "navigate() keeps every cache from the account just left");
+
+    /**
+     * To "/" rather than to a tab. `Home` picks by permission; hard-coding
+     * /analytics opened the app on a locked screen for anybody not on the
+     * admin team, which is its own report.
+     */
+    check("  to the root, so the landing tab is chosen by permission",
+      /const enterApp = useCallback\(\(\) => \{\s*\n\s*window\.location\.assign\("\/"\);/.test(login),
+      "a named tab here is a locked screen for anybody without that team");
+
+    // All three ways an account can change from that panel.
+    for (const handler of ["handleUseProfile", "handlePasteBlockConnect", "handleAccessKeys"]) {
+      const at = login.indexOf(`const ${handler} = async`);
+      const body = login.slice(at, login.indexOf("\n  };", at));
+      check(`  ${handler} reloads when it was a switch`,
+        /if \(addingProfile\) \{ enterApp\(\); return; \}/.test(body), handler);
+      // And only then: reloading after a failed switch throws away the error
+      // message that says why it failed.
+      check(`    and only after it succeeded`,
+        body.indexOf("if (!result.reachable)") < body.indexOf("if (addingProfile)"),
+        "reloading on failure loses the reason it failed");
+    }
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

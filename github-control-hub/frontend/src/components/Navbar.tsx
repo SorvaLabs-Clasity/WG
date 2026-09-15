@@ -9,6 +9,7 @@ import { COMPANY_NAME } from "../design/tokens";
 import ThemePicker from "./ThemePicker";
 import { themeEntry, isRail, type Skin } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
+import { usePermissions } from "../hooks/usePermissions";
 import { fetchAuthStatus } from "../api/auth";
 
 interface NavbarProps {
@@ -149,6 +150,60 @@ const ACCOUNT_MARK = "data-account-menu";
  * opens upwards; the same menu in a bar pinned to the top of the window has to
  * open down, or it lands above the viewport and cannot be reached.
  */
+/**
+ * Which admin screens this account reaches, and by what route.
+ *
+ * Because "why do I still have access?" had no answer anywhere in the app. An
+ * organization owner passes every check here whatever team they are on — by
+ * design, so that a deleted team cannot lock everyone out of their own
+ * settings — and the only visible effect of leaving both teams was nothing
+ * happening at all. From the inside that is indistinguishable from a gate that
+ * does not work, and it was reported as one.
+ *
+ * Reads the same cached answer every gate reads, so it cannot disagree with
+ * what the tabs actually do. Silent on an older backend that does not send the
+ * route, rather than guessing at one.
+ */
+function AdminStanding() {
+  const { data: perms } = usePermissions();
+  if (!perms) return null;
+
+  const owner = perms.controlHubAdminVia === "owner" || perms.awsAdminVia === "owner";
+  if (owner) {
+    return (
+      <p className="text-[0.7188rem] text-ink-3 leading-relaxed mt-2">
+        <span className="font-semibold text-ink-2">Organization owner.</span>{" "}
+        Admitted to every screen here without being on{" "}
+        <span className="font-mono text-[0.6875rem]">{perms.adminTeam}</span> or{" "}
+        <span className="font-mono text-[0.6875rem]">{perms.awsAdminTeam}</span>, so leaving
+        those teams changes nothing for you.
+      </p>
+    );
+  }
+
+  const teams = [
+    perms.controlHubAdminVia === "team" ? perms.adminTeam : null,
+    perms.awsAdminVia === "team" ? perms.awsAdminTeam : null,
+  ].filter(Boolean) as string[];
+
+  // Older backend: it sent the verdict and not the route, and inventing one
+  // here is how this line ends up disagreeing with the tabs.
+  if (perms.controlHubAdminVia === undefined && perms.awsAdminVia === undefined) return null;
+
+  return (
+    <p className="text-[0.7188rem] text-ink-3 leading-relaxed mt-2">
+      {teams.length === 0
+        ? "On neither admin team. The restricted screens will say which to ask for."
+        : <>On {teams.map((t, i) => (
+            <span key={t}>
+              {i > 0 && " and "}
+              <span className="font-mono text-[0.6875rem]">{t}</span>
+            </span>
+          ))}.</>}
+    </p>
+  );
+}
+
 function AccountMenu({
   placement, login, avatarUrl, theme, skin, appVersion, awsProfile,
   open, onToggleOpen, onClose, onToggleEdition, onTheme, onSignOut,
@@ -198,6 +253,7 @@ function AccountMenu({
             <div className="px-5 py-4 border-b border-rule">
               <p className="caps">Signed in as</p>
               <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
+              <AdminStanding />
               <div className="dateline mt-2 text-[0.75rem]">
                 <span>{COMPANY_NAME}</span>
                 {appVersion && <span className="font-mono">v{appVersion}</span>}

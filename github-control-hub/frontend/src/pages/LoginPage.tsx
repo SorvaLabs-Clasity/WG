@@ -190,6 +190,32 @@ export default function LoginPage() {
   const ghConfigured = status?.github.configured;
   const canEnter = awsOk && ghAuthed;
 
+  /**
+   * Leave for the app the way a sign-in does: a real page load.
+   *
+   * Everything this app holds belongs to the account it was read from — the
+   * cached auth status the section line is built from, the cached permissions
+   * every gate reads, and each mounted page's own state, a selected stream, an
+   * expanded row, a filter. `navigate()` keeps all of it and swaps the route,
+   * which is how somebody switched to a GitHub-configured account and arrived
+   * at a section line still built from the AWS-only one they had just left.
+   *
+   * The account switcher in the navbar already reloads and already says why:
+   * clearing the query cache was tried there and was not enough, because page
+   * state is not in the query cache. This is the same decision at the other
+   * door.
+   *
+   * To "/" rather than to a named tab, so `Home` decides where by permission.
+   * Sending everybody to /analytics opened the app on a locked screen for
+   * anybody not on the admin team.
+   *
+   * The session lives in sessionStorage and survives this, which is what makes
+   * it a reload rather than a sign-out.
+   */
+  const enterApp = useCallback(() => {
+    window.location.assign("/");
+  }, []);
+
   const checkStatus = useCallback(async () => {
     try {
       const s = await fetchAuthStatus();
@@ -526,7 +552,12 @@ export default function LoginPage() {
       setNewError(result.error
         ? `Could not use ${selectedProfile}: ${result.error}`
         : `Could not reach AWS with ${selectedProfile}. It may need signing in again.`);
+      await checkStatus();
+      return;
     }
+    // Already signed in, so this was a switch rather than a sign-in, and
+    // everything mounted behind this panel is describing the account just left.
+    if (addingProfile) { enterApp(); return; }
     await checkStatus();
   };
 
@@ -570,7 +601,10 @@ export default function LoginPage() {
       setNewError(result.error
         ? `Those keys did not work: ${result.error}`
         : "Those keys did not reach AWS. They may have expired.");
+      await checkStatus();
+      return;
     }
+    if (addingProfile) { enterApp(); return; }
     await checkStatus();
   };
 
@@ -606,7 +640,12 @@ export default function LoginPage() {
       setNewError(result.error
         ? `Those keys did not work: ${result.error}`
         : "Those keys did not reach AWS. They may have expired.");
+      await checkStatus();
+      return;
     }
+    // Already signed in, so this was a switch, and everything mounted behind
+    // this panel describes the account just left.
+    if (addingProfile) { enterApp(); return; }
     await checkStatus();
   };
 
@@ -1292,7 +1331,7 @@ export default function LoginPage() {
               </button>
             )}
 
-            <button onClick={() => navigate("/analytics")} disabled={!canEnter}
+            <button onClick={enterApp} disabled={!canEnter}
               className={canEnter
                 ? "stamp !bg-forest !border-forest !text-reverse hover:!bg-transparent hover:!text-forest"
                 : "stamp stamp-hollow"}>

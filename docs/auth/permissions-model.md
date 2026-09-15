@@ -32,7 +32,28 @@ bundle that contains them is refused and told which sections to remove. Without
 that, the import route was a way to create an enforcing AWS guardrail while only
 ever proving membership of the GitHub team.
 
-Organization owners pass both checks.
+## Organization owners pass both checks
+
+Always, whatever team they are on. Otherwise an empty, renamed or deleted team
+locks everyone out of their own settings, including out of the screen that would
+let them fix it.
+
+**This is the rule that gets reported as a bug.** Somebody removes themselves
+from both teams to satisfy themselves that the gate works, nothing whatsoever
+changes, and the honest conclusion from the inside is that the permissions are
+broken. They are not — an owner was never being admitted by the team.
+
+So `/auth/permissions` reports the *route* alongside the verdict:
+
+```json
+{ "isAwsAdmin": true, "awsAdminVia": "owner", "awsAdminTeam": "aws-guardrail-admins" }
+```
+
+`"owner"` | `"team"` | `null`, and the account menu says which in a sentence. To
+actually test the team gate, use an account that is a plain org **member**.
+
+Removing yourself from an admin team while remaining an owner changes nothing,
+and the app now says so before you go looking for what broke.
 
 ## What "the app's own settings" covers
 

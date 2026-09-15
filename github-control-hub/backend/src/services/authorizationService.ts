@@ -28,7 +28,19 @@ export const CONTROL_HUB_ADMIN_TEAM = process.env.CONTROL_HUB_ADMIN_TEAM || "con
  */
 export const AWS_ADMIN_TEAM = process.env.AWS_ADMIN_TEAM || "aws-guardrail-admins";
 
-interface CacheEntry { value: boolean; expires: number }
+/**
+ * How somebody qualifies, not merely whether.
+ *
+ * "owner" is the one that surprises people. An organization owner passes every
+ * check here by design — otherwise an empty or deleted team could lock everyone
+ * out of their own settings — and nothing in the app used to say so. Somebody
+ * who removes themselves from both teams, sees no change whatsoever, and is
+ * told only "you are an admin" has no way to tell a working rule from a broken
+ * one, and the reasonable conclusion is that the permissions are broken.
+ */
+export type AdminVia = "owner" | "team" | null;
+
+interface CacheEntry { value: AdminVia; expires: number }
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 60_000;
 
@@ -47,23 +59,32 @@ export function invalidateAdminCache(login?: string): void {
  * would otherwise be indistinguishable from "is not in it".
  */
 export async function isControlHubAdmin(login: string, userToken?: string): Promise<boolean> {
-  return isTeamMember(login, CONTROL_HUB_ADMIN_TEAM, userToken);
+  return !!(await adminVia(login, CONTROL_HUB_ADMIN_TEAM, userToken));
 }
 
 /** Who may create, edit, run or delete AWS guardrails. */
 export async function isAwsAdmin(login: string, userToken?: string): Promise<boolean> {
-  return isTeamMember(login, AWS_ADMIN_TEAM, userToken);
+  return !!(await adminVia(login, AWS_ADMIN_TEAM, userToken));
+}
+
+/** The same question, answered with the route rather than with a yes. */
+export async function controlHubAdminVia(login: string, userToken?: string): Promise<AdminVia> {
+  return adminVia(login, CONTROL_HUB_ADMIN_TEAM, userToken);
+}
+
+export async function awsAdminVia(login: string, userToken?: string): Promise<AdminVia> {
+  return adminVia(login, AWS_ADMIN_TEAM, userToken);
 }
 
 /** Thrown when the answer is unknown, as opposed to "no". */
 class Unanswerable extends Error {}
 
-async function isTeamMember(login: string, team: string, userToken?: string): Promise<boolean> {
+async function adminVia(login: string, team: string, userToken?: string): Promise<AdminVia> {
   const key = `${team}:${login.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expires) return hit.value;
 
-  let value: boolean;
+  let value: AdminVia;
   try {
     value = await resolve(login, team, userToken);
   } catch (err) {
@@ -73,7 +94,7 @@ async function isTeamMember(login: string, team: string, userToken?: string): Pr
     // credential problem lasting a second locked the caller out of every admin
     // screen for a minute after it healed, and gave them a plain "you are not
     // an admin", which is a claim about them rather than about the app.
-    if (err instanceof Unanswerable) return false;
+    if (err instanceof Unanswerable) return null;
     throw err;
   }
 
@@ -81,7 +102,7 @@ async function isTeamMember(login: string, team: string, userToken?: string): Pr
   return value;
 }
 
-async function resolve(login: string, team: string, userToken?: string): Promise<boolean> {
+async function resolve(login: string, team: string, userToken?: string): Promise<AdminVia> {
   const org = getOrg();
 
   /**
@@ -114,7 +135,7 @@ async function resolve(login: string, team: string, userToken?: string): Promise
   // everyone out of their own settings.
   try {
     const { data } = await octokit.rest.orgs.getMembershipForUser({ org, username: login });
-    if (data.role === "admin") return true;
+    if (data.role === "admin") return "owner";
   } catch (err: any) {
     if (err?.status !== 404) {
       console.warn(`[authorization] Org membership check failed for "${login}": ${err?.message ?? err}`);
@@ -127,12 +148,12 @@ async function resolve(login: string, team: string, userToken?: string): Promise
       team_slug: team,
       username: login,
     });
-    return data.state === "active";
+    return data.state === "active" ? "team" : null;
   } catch (err: any) {
     // 404 is the normal "not a member" answer, and also what a missing team returns.
     if (err?.status !== 404) {
       console.warn(`[authorization] Team membership check failed for "${login}" in "${team}": ${err?.message ?? err}`);
     }
-    return false;
+    return null;
   }
 }

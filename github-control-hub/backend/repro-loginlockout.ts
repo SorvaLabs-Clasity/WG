@@ -49,6 +49,10 @@ const CONNECTION_ROUTES = [
   "/aws-sso-login",
   "/aws-use-profile",
   "/aws-access-keys",
+  // Repairing a config file the AWS CLI cannot parse is part of getting a
+  // session, not something done with one: the profiles it recovers are what the
+  // sign-in screen is trying to list. Same three guards as the rest.
+  "/aws-config-repair",
 ];
 
 console.log("the screen that gets you a session does not require one");
