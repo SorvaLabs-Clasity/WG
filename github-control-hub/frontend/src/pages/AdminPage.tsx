@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import {
   Page, Back, Note, Pill, Empty, Spinner, RailCard, Sheet, SheetHeader, Block,
@@ -9,7 +9,7 @@ import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
 import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit,
-  bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, resolvePresetChain,
+  bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
   type AdminFile, type PermissionsFile, type PermissionEntry, type PersonEntry, type Preset,
   type PermissionLeaf, type Explanation, type AuditEntry, type FlatRule,
 } from "../api/admin";
@@ -66,6 +66,13 @@ function slugify(s: string): string {
 
 function entriesEqual(a: PermissionEntry, b: PermissionEntry): boolean {
   return JSON.stringify([a.grant ?? [], a.revoke ?? []]) === JSON.stringify([b.grant ?? [], b.revoke ?? []]);
+}
+
+/** Same members, regardless of order — a reorder is not an edit worth a save. */
+function sameMembers(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every(v => sb.has(v));
 }
 
 // ── the dry-run banner ────────────────────────────────────────────────
@@ -222,9 +229,13 @@ function PersonRow({ login, entry, file, index, onOpen }: {
 
 // ── Person ────────────────────────────────────────────────────────────
 
-function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }: {
+function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, onBack, onSaved }: {
   login: string; file: PermissionsFile; sha: string | null; vocabulary: PermissionLeaf[];
-  canEdit: boolean; onBack: () => void; onSaved: () => void;
+  /** The permission tree: grant/revoke one permission for this person. */
+  canOverride: boolean;
+  /** The preset multi-select: which presets this person holds. */
+  canAssign: boolean;
+  onBack: () => void; onSaved: () => void;
 }) {
   const loginKey = login.toLowerCase();
   const existing = file.people[loginKey];
@@ -236,6 +247,7 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
 
   const [entry, setEntry] = useState<PermissionEntry>({ grant: existing?.grant, revoke: existing?.revoke });
   const [note, setNote] = useState(existing?.note ?? "");
+  const [presets, setPresets] = useState<string[]>(existing?.presets ?? []);
   const [summary, setSummary] = useState(`Update permissions for ${loginKey}`);
 
   // The draft mirrors whichever login is open; opening a different one from
@@ -244,6 +256,7 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
   useEffect(() => {
     setEntry({ grant: existing?.grant, revoke: existing?.revoke });
     setNote(existing?.note ?? "");
+    setPresets(existing?.presets ?? []);
     setSummary(`Update permissions for ${loginKey}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginKey]);
@@ -253,6 +266,7 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
     mutationFn: () => {
       const nextEntry: PersonEntry = {
         ...existing,
+        presets: presets.length ? presets : undefined,
         grant: entry.grant,
         revoke: entry.revoke,
         note: note.trim() ? note.trim() : undefined,
@@ -267,13 +281,54 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
     },
   });
 
-  const inherited = useMemo(() => inheritedFromExplanations(access?.explanations), [access]);
+  const presetsChanged = !sameMembers(presets, existing?.presets ?? []);
+
+  /**
+   * Assigning a preset has to move the tree's baseline before anybody saves,
+   * or the tree keeps showing what the *stored* presets grant while the
+   * multi-select above it already disagrees.
+   *
+   * While the selection matches what is stored, `access.explanations` — the
+   * server's own resolution of this person's teams and presets together — is
+   * exactly right and is used as-is. Once it stops matching, this asks the
+   * server what each *selected* preset resolves to on its own
+   * (`GET /admin/preset/:id/resolved`, the same route the Presets editor
+   * uses) and unions them. That drops this person's team-derived rules from
+   * the preview for as long as the edit is in progress — a person's own
+   * teams are not being edited here, so this is a preview simplification
+   * rather than a correctness gap in what gets saved; the authoritative
+   * answer returns the moment the save succeeds and this refetches.
+   */
+  const presetQueries = useQueries({
+    queries: (presetsChanged ? presets : []).map(id => ({
+      queryKey: ["admin", "preset", id, "resolved"],
+      queryFn: () => fetchResolvedPreset(id),
+      staleTime: 30_000,
+    })),
+  });
+
+  const inherited = useMemo(() => {
+    if (!presetsChanged) return inheritedFromExplanations(access?.explanations);
+    return presetQueries.flatMap(q => inheritedFromExplanations(q.data?.explanations));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetsChanged, access, presetQueries.map(q => q.dataUpdatedAt).join(",")]);
+
   const dirty = !entriesEqual(entry, { grant: existing?.grant, revoke: existing?.revoke })
-    || note.trim() !== (existing?.note ?? "");
+    || note.trim() !== (existing?.note ?? "")
+    || presetsChanged;
 
   const presetLabel = (existing?.presets ?? []).length === 0
     ? "No preset assigned. Everything below is granted directly."
     : `Holds ${existing!.presets!.map(id => file.presets[id]?.name ?? id).join(", ")}.`;
+
+  const presetEntries = useMemo(
+    () => Object.entries(file.presets).sort(([, a], [, b]) => a.name.localeCompare(b.name)),
+    [file],
+  );
+
+  const togglePreset = (id: string) => {
+    setPresets(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
 
   return (
     <>
@@ -285,18 +340,40 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
           <div className="py-16 flex justify-center"><Spinner label="Reading their access" /></div>
         ) : (
           <>
+            {(canAssign || (existing?.presets ?? []).length > 0) && (
+              <Block title="Presets">
+                {presetEntries.length === 0 ? (
+                  <p className={`${TYPE.body} text-ink-3`}>No presets exist yet. Create one on the Presets tab.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {presetEntries.map(([id, preset]) => (
+                      <label key={id}
+                        className={`flex items-center gap-2.5 ${canAssign ? "cursor-pointer" : ""}`}>
+                        <input type="checkbox" checked={presets.includes(id)} disabled={!canAssign}
+                          onChange={() => togglePreset(id)} className="shrink-0" />
+                        <span className={`${TYPE.body} text-ink`}>{preset.name}</span>
+                        {preset.description && (
+                          <span className="text-[0.75rem] text-ink-3">— {preset.description}</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </Block>
+            )}
+
             <Block title="Permissions">
               <PermissionTree vocabulary={vocabulary} inherited={inherited} entry={entry}
-                onChange={setEntry} readOnly={!canEdit} />
+                onChange={setEntry} readOnly={!canOverride} />
             </Block>
 
             <Block title="Note">
-              <textarea value={note} onChange={e => setNote(e.target.value)} disabled={!canEdit}
+              <textarea value={note} onChange={e => setNote(e.target.value)} disabled={!canOverride}
                 placeholder="Why does this person hold what they hold? Visible to any other administrator."
                 className="w-full bg-paper-2 border border-rule px-3 py-2 text-[0.8438rem] text-ink min-h-[4.5rem] disabled:text-ink-3" />
             </Block>
 
-            {canEdit && (
+            {(canOverride || canAssign) && (
               <Block title="Save">
                 <div className="flex items-center gap-4 flex-wrap">
                   <input value={summary} onChange={e => setSummary(e.target.value)}
@@ -319,8 +396,8 @@ function PersonDetail({ login, file, sha, vocabulary, canEdit, onBack, onSaved }
 
 // ── Presets ───────────────────────────────────────────────────────────
 
-function PresetsListView({ file, onOpen, onCreate }: {
-  file: PermissionsFile; onOpen: (id: string) => void; onCreate: () => void;
+function PresetsListView({ file, canCreate, onOpen, onCreate }: {
+  file: PermissionsFile; canCreate: boolean; onOpen: (id: string) => void; onCreate: () => void;
 }) {
   const holders = useMemo(() => countHolders(file), [file]);
   const entries = useMemo(
@@ -330,12 +407,17 @@ function PresetsListView({ file, onOpen, onCreate }: {
 
   return (
     <>
-      <div className="flex justify-end mb-5">
-        <Button variant="primary" onClick={onCreate}>New preset</Button>
-      </div>
+      {canCreate && (
+        <div className="flex justify-end mb-5">
+          <Button variant="primary" onClick={onCreate}>New preset</Button>
+        </div>
+      )}
 
       {entries.length === 0 ? (
-        <Empty title="No presets yet" body="Run the migration from the banner above, or create one here." />
+        <Empty title="No presets yet"
+          body={canCreate
+            ? "Run the migration from the banner above, or create one here."
+            : "Run the migration from the banner above, or ask an administrator to create one."} />
       ) : (
         <div className="grid gap-2">
           {entries.map(([id, preset], i) => {
@@ -369,9 +451,13 @@ function PresetsListView({ file, onOpen, onCreate }: {
   );
 }
 
-function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSaved }: {
+function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelete, onBack, onSaved }: {
   presetId: string | "new"; file: PermissionsFile; sha: string | null; vocabulary: PermissionLeaf[];
-  canEdit: boolean; onBack: () => void; onSaved: () => void;
+  /** `admin.presets.create` for a new preset, `admin.presets.edit` for an existing one. */
+  canEditFields: boolean;
+  /** `admin.presets.delete`. Independent of `canEditFields`: holding one does not imply the other. */
+  canDelete: boolean;
+  onBack: () => void; onSaved: () => void;
 }) {
   const isNew = presetId === "new";
   const existing = isNew ? undefined : file.presets[presetId];
@@ -397,10 +483,21 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSave
     [file, presetId],
   );
 
-  const inherited = useMemo(
-    () => inherits ? resolvePresetChain(file.presets, inherits, 0) : [],
-    [file.presets, inherits],
-  );
+  /**
+   * What `inherits` actually grants, resolved by the server's own
+   * `resolvePreset` rather than a client-side port of it — `GET
+   * /admin/preset/:id/resolved` answers for a chain that has not been saved
+   * yet too, since it resolves whichever existing preset `inherits` currently
+   * names from the stored file, independent of whatever this screen has
+   * drafted for the preset being edited.
+   */
+  const { data: inheritsData } = useQuery({
+    queryKey: ["admin", "preset", inherits, "resolved"],
+    queryFn: () => fetchResolvedPreset(inherits),
+    enabled: !!inherits,
+    staleTime: 30_000,
+  });
+  const inherited = useMemo(() => inheritedFromExplanations(inheritsData?.explanations), [inheritsData]);
 
   // The id a new preset would actually save under, and whether that collides
   // with one that already exists — checked ahead of the click, not discovered
@@ -458,7 +555,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSave
               <label className="block">
                 <span className="caps block mb-1.5">Id</span>
                 <input value={id} onChange={e => setId(e.target.value)} placeholder="engineer"
-                  disabled={!canEdit} className={SURFACE.input} />
+                  disabled={!canEditFields} className={SURFACE.input} />
                 <span className="text-[0.75rem] text-ink-3 mt-1 block">
                   Saves as <span className="font-mono">{finalId}</span>.
                   {idCollision && <span className="text-crimson"> A preset by that id already exists.</span>}
@@ -467,17 +564,17 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSave
             )}
             <label className="block">
               <span className="caps block mb-1.5">Name</span>
-              <input value={name} onChange={e => setName(e.target.value)} disabled={!canEdit}
+              <input value={name} onChange={e => setName(e.target.value)} disabled={!canEditFields}
                 className={SURFACE.input} />
             </label>
             <label className="block sm:col-span-2">
               <span className="caps block mb-1.5">Description</span>
-              <input value={description} onChange={e => setDescription(e.target.value)} disabled={!canEdit}
+              <input value={description} onChange={e => setDescription(e.target.value)} disabled={!canEditFields}
                 className={SURFACE.input} />
             </label>
             <label className="block">
               <span className="caps block mb-1.5">Inherits</span>
-              <select value={inherits} onChange={e => setInherits(e.target.value)} disabled={!canEdit}
+              <select value={inherits} onChange={e => setInherits(e.target.value)} disabled={!canEditFields}
                 className={SURFACE.input}>
                 <option value="">Nothing</option>
                 {otherPresets.map(([pid, p]) => <option key={pid} value={pid}>{p.name}</option>)}
@@ -488,7 +585,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSave
 
         <Block title="Permissions">
           <PermissionTree vocabulary={vocabulary} inherited={inherited} entry={entry}
-            onChange={setEntry} readOnly={!canEdit} />
+            onChange={setEntry} readOnly={!canEditFields} />
         </Block>
 
         {holders.length > 0 && (
@@ -497,22 +594,24 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEdit, onBack, onSave
           </Block>
         )}
 
-        {canEdit && (
+        {(canEditFields || (!isNew && canDelete)) && (
           <Block title="Save">
             <div className="flex items-center gap-4 flex-wrap">
               <input value={summary} onChange={e => setSummary(e.target.value)}
                 placeholder="What changed, and why" className={SURFACE.input} style={{ maxWidth: "32rem" }} />
-              <Button variant="primary" disabled={!canSave} onClick={requestSave}>
-                {save.isPending ? "Saving…" : isNew ? "Create" : "Save"}
-              </Button>
-              {!isNew && (
+              {canEditFields && (
+                <Button variant="primary" disabled={!canSave} onClick={requestSave}>
+                  {save.isPending ? "Saving…" : isNew ? "Create" : "Save"}
+                </Button>
+              )}
+              {!isNew && canDelete && (
                 <Button variant="secondary" disabled={holders.length > 0 || del.isPending}
                   onClick={() => setConfirmDelete(true)}>
                   {del.isPending ? "Deleting…" : "Delete"}
                 </Button>
               )}
             </div>
-            {!isNew && holders.length > 0 && (
+            {!isNew && canDelete && holders.length > 0 && (
               <p className="mt-2 text-[0.75rem] text-ink-3">
                 Held by {holders.length}, so it cannot be deleted until nobody holds it.
               </p>
@@ -605,8 +704,25 @@ export default function AdminPage() {
   const { data: vocab } = useQuery({
     queryKey: ["admin", "vocabulary"], queryFn: fetchVocabulary, staleTime: Infinity,
   });
+
+  // Five distinct capabilities, threaded to where each belongs, rather than
+  // one `canEdit` gating all of People and Presets at once — see the brief:
+  // the preset editor gated on a *people* permission is the bug this fixes.
+  const canPeopleRead = can("admin.people.read");
+  const canPresetsRead = can("admin.presets.read");
+  const canAuditRead = can("admin.audit.read");
+  const canAssign = can("admin.people.assign");
+  const canOverride = can("admin.people.override");
+  const canCreatePreset = can("admin.presets.create");
+  const canEditPresets = can("admin.presets.edit");
+  const canDeletePresets = can("admin.presets.delete");
+
+  // GET /file answers to either People's or Presets' read permission — no
+  // point asking for it (and no organization-wide right to be denied on)
+  // when the viewer holds neither.
+  const canReadFile = canPeopleRead || canPresetsRead;
   const { data: adminFile, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["admin", "file"], queryFn: fetchAdminFile, staleTime: 30_000,
+    queryKey: ["admin", "file"], queryFn: fetchAdminFile, staleTime: 30_000, enabled: canReadFile,
   });
 
   const qc = useQueryClient();
@@ -615,26 +731,40 @@ export default function AdminPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "file"] }),
   });
 
-  const canEdit = can("admin.people.assign");
   const vocabulary = vocab?.permissions ?? [];
 
   const loaded: AdminFile | null = adminFile && !isAdminFileFailure(adminFile) ? adminFile : null;
   const file = loaded?.file ?? null;
   const sha = loaded?.sha ?? null;
 
+  // The three list views, filtered to the ones the viewer actually holds —
+  // `Segmented` used to offer all three unconditionally, so somebody without
+  // `admin.audit.read` could open Audit and collect a 403 for their trouble.
+  const tabOptions: ["people" | "presets" | "audit", string][] = [];
+  if (canPeopleRead) tabOptions.push(["people", "People"]);
+  if (canPresetsRead) tabOptions.push(["presets", "Presets"]);
+  if (canAuditRead) tabOptions.push(["audit", "Audit"]);
+  // Falls back to `mode` itself when `tabOptions` is empty (nothing renders
+  // that reads it then) purely to keep this typed as a real mode, not
+  // `| undefined`, for the branch below where it does.
+  const activeMode = tabOptions.some(([v]) => v === mode) ? mode : (tabOptions[0]?.[0] ?? mode);
+
   if (file && openPerson) {
     return (
       <Page user={user}>
-        <PersonDetail login={openPerson} file={file} sha={sha} vocabulary={vocabulary} canEdit={canEdit}
+        <PersonDetail login={openPerson} file={file} sha={sha} vocabulary={vocabulary}
+          canOverride={canOverride} canAssign={canAssign}
           onBack={() => setOpenPerson(null)} onSaved={() => setOpenPerson(null)} />
       </Page>
     );
   }
 
   if (file && openPreset !== null) {
+    const isNew = openPreset === "new";
     return (
       <Page user={user}>
-        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary} canEdit={canEdit}
+        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary}
+          canEditFields={isNew ? canCreatePreset : canEditPresets} canDelete={canDeletePresets}
           onBack={() => setOpenPreset(null)} onSaved={() => setOpenPreset(null)} />
       </Page>
     );
@@ -649,61 +779,75 @@ export default function AdminPage() {
         </p>
       </header>
 
-      {isLoading && <Spinner label="Reading the permissions file" />}
-
-      {!isLoading && isError && <LoadFailed what="the permissions file" error={error} onRetry={() => refetch()} />}
-
-      {!isLoading && !isError && adminFile && isAdminFileFailure(adminFile) && (
-        <Note intent="danger">
-          <p className="font-semibold">The permissions file could not be read.</p>
-          <p className="mt-1">{adminFile.failure.detail}</p>
-          {adminFile.failure.problems && adminFile.failure.problems.length > 0 && (
-            <ul className="mt-2 list-disc pl-5">
-              {adminFile.failure.problems.map((p, i) => <li key={i}>{p}</li>)}
-            </ul>
-          )}
-        </Note>
-      )}
-
-      {!isLoading && !isError && loaded && loaded.source === "no-repo" && (
-        <Note intent="warn">
-          <p className="font-semibold">There is nowhere to store this yet.</p>
-          <p className="mt-1">The permissions repository does not exist in this organization.</p>
-          {canEdit && (
-            <div className="mt-3">
-              <Button variant="primary" onClick={() => bootstrap.mutate()} disabled={bootstrap.isPending}>
-                {bootstrap.isPending ? "Creating…" : "Create the permissions repository"}
-              </Button>
-              {bootstrap.isError && (
-                <p className="mt-2 text-[0.8125rem] text-crimson">{(bootstrap.error as Error).message}</p>
-              )}
-            </div>
-          )}
-        </Note>
-      )}
-
-      {file && loaded && loaded.source !== "no-repo" && (
+      {tabOptions.length === 0 ? (
+        <Empty title="Nothing to open yet"
+          body="You can see the Admin tab, but you do not hold any of the permissions that unlock what is inside it. Ask an administrator for admin.people.read, admin.presets.read or admin.audit.read." />
+      ) : (
         <>
-          <DryRunBanner enforced={permissions?.enforced ?? false}
-            fileEmpty={Object.keys(file.people).length === 0} canMigrate={canEdit} />
+          {canReadFile && isLoading && <Spinner label="Reading the permissions file" />}
 
-          {loaded.unknownNodes.length > 0 && (
-            <Note intent="neutral">
-              The file names {loaded.unknownNodes.length} permission{loaded.unknownNodes.length === 1 ? "" : "s"}{" "}
-              this version of the app does not have: {loaded.unknownNodes.join(", ")}. Ignored, not enforced.
+          {canReadFile && !isLoading && isError && (
+            <LoadFailed what="the permissions file" error={error} onRetry={() => refetch()} />
+          )}
+
+          {canReadFile && !isLoading && !isError && adminFile && isAdminFileFailure(adminFile) && (
+            <Note intent="danger">
+              <p className="font-semibold">The permissions file could not be read.</p>
+              <p className="mt-1">{adminFile.failure.detail}</p>
+              {adminFile.failure.problems && adminFile.failure.problems.length > 0 && (
+                <ul className="mt-2 list-disc pl-5">
+                  {adminFile.failure.problems.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              )}
             </Note>
           )}
 
-          <div className="mb-6">
-            <Segmented value={mode} onChange={setMode}
-              options={[["people", "People"], ["presets", "Presets"], ["audit", "Audit"]]} />
-          </div>
-
-          {mode === "people" && <PeopleView file={file} onOpen={setOpenPerson} />}
-          {mode === "presets" && (
-            <PresetsListView file={file} onOpen={setOpenPreset} onCreate={() => setOpenPreset("new")} />
+          {canReadFile && !isLoading && !isError && loaded && loaded.source === "no-repo" && (
+            <Note intent="warn">
+              <p className="font-semibold">There is nowhere to store this yet.</p>
+              <p className="mt-1">The permissions repository does not exist in this organization.</p>
+              {canAssign && (
+                <div className="mt-3">
+                  <Button variant="primary" onClick={() => bootstrap.mutate()} disabled={bootstrap.isPending}>
+                    {bootstrap.isPending ? "Creating…" : "Create the permissions repository"}
+                  </Button>
+                  {bootstrap.isError && (
+                    <p className="mt-2 text-[0.8125rem] text-crimson">{(bootstrap.error as Error).message}</p>
+                  )}
+                </div>
+              )}
+            </Note>
           )}
-          {mode === "audit" && <AuditScreen />}
+
+          {/* Audit needs none of this — its own tab, own endpoint, no dependency on the file. */}
+          {(!canReadFile || (file && loaded && loaded.source !== "no-repo")) && (
+            <>
+              {canReadFile && file && loaded && loaded.source !== "no-repo" && (
+                <>
+                  <DryRunBanner enforced={permissions?.enforced ?? false}
+                    fileEmpty={Object.keys(file.people).length === 0} canMigrate={canAssign} />
+
+                  {loaded.unknownNodes.length > 0 && (
+                    <Note intent="neutral">
+                      The file names {loaded.unknownNodes.length} permission{loaded.unknownNodes.length === 1 ? "" : "s"}{" "}
+                      this version of the app does not have: {loaded.unknownNodes.join(", ")}. Ignored, not enforced.
+                    </Note>
+                  )}
+                </>
+              )}
+
+              <div className="mb-6">
+                <Segmented value={activeMode} onChange={setMode} options={tabOptions} />
+              </div>
+
+              {activeMode === "people" && file && <PeopleView file={file} onOpen={setOpenPerson} />}
+              {activeMode === "presets" && file && (
+                <PresetsListView file={file} canCreate={canCreatePreset}
+                  onOpen={setOpenPreset} onCreate={() => setOpenPreset("new")} />
+              )}
+              {activeMode === "audit" && <AuditScreen />}
+            </>
+          )}
         </>
       )}
     </Page>

@@ -127,6 +127,26 @@ export interface PersonAccess {
 export const fetchPersonAccess = (login: string) =>
   apiGet<PersonAccess>(`/admin/person/${encodeURIComponent(login)}`);
 
+// ── a preset's resolved chain ────────────────────────────────────────────
+
+export interface PresetAccess {
+  presetId: string;
+  held: string[];
+  explanations: Record<string, Explanation>;
+}
+
+/**
+ * What one preset's `inherits` chain grants, leaf by leaf — computed by the
+ * server's own `resolvePreset`, not a client-side port of it.
+ *
+ * Resolves from the *stored* file, so it answers for a chain that has not
+ * been saved yet too: the Presets editor calls this with whichever existing
+ * preset `inherits` currently names, even while editing a preset (new or
+ * existing) that has not been saved.
+ */
+export const fetchResolvedPreset = (id: string) =>
+  apiGet<PresetAccess>(`/admin/preset/${encodeURIComponent(id)}/resolved`);
+
 // ── audit ────────────────────────────────────────────────────────────────
 
 export interface AuditEntry {
@@ -169,14 +189,19 @@ export interface MigrateResult {
 
 export const runMigration = () => apiPost<MigrateResult>("/admin/migrate", {});
 
-// ── preset-chain resolution, for the tree ───────────────────────────────
+// ── flattened rules, for the tree ────────────────────────────────────────
 
 /**
  * One grant or revoke, already placed at a layer a tree can rank against
- * whatever it is editing. Mirrors `backend/src/permissions/presets.ts` and
- * `evaluate.ts` closely enough to show the same origin an administrator would
- * see from the server — team-layer rules are out of scope here on purpose,
- * because nothing in the Admin tab edits a team entry.
+ * whatever it is editing.
+ *
+ * Built from an `Explanation` map today — `PersonAccess.explanations` for a
+ * person, `PresetAccess.explanations` for a preset's `inherits` chain — never
+ * hand-computed here. A preset's chain used to be walked client-side by a
+ * `resolvePresetChain` that ported `resolvePreset` down to a duplicated
+ * `MAX_INHERIT_DEPTH`; that drifted from the server the moment its tie rule or
+ * depth cap changed, so it was replaced by `GET /admin/preset/:id/resolved`,
+ * which asks the server's own `resolvePreset` instead of copying it.
  */
 export interface FlatRule {
   node: string;
@@ -184,51 +209,4 @@ export interface FlatRule {
   layer: number;
   /** Shown beside a leaf: "From preset Engineer". Never used to decide anything. */
   origin: string;
-}
-
-const MAX_INHERIT_DEPTH = 4;
-
-/**
- * A preset and everything it inherits, flattened to one rule per node — the
- * most-derived preset in the chain wins at each node, same as the backend.
- * An unknown id, a cycle or an over-deep chain resolve to nothing rather than
- * throwing: the file is somebody's data, and `fileProblems` on the server is
- * what actually refuses it.
- */
-export function resolvePresetChain(
-  presets: Record<string, Preset>, id: string, layer: number,
-): FlatRule[] {
-  const chain: string[] = [];
-  let cursor: string | undefined = id;
-  const seen = new Set<string>();
-
-  while (cursor) {
-    if (seen.has(cursor)) return [];
-    if (chain.length >= MAX_INHERIT_DEPTH + 1) return [];
-    const preset: Preset | undefined = presets[cursor];
-    if (!preset) break;
-    seen.add(cursor);
-    chain.push(cursor);
-    cursor = preset.inherits;
-  }
-  if (chain.length === 0) return [];
-
-  const byNode = new Map<string, { rule: FlatRule; sublayer: number }>();
-  const deepestFirst = [...chain].reverse();
-  deepestFirst.forEach((presetId, index) => {
-    const preset = presets[presetId];
-    if (!preset) return;
-    const origin = `From preset ${preset.name}`;
-    const entries: { node: string; effect: "grant" | "revoke" }[] = [
-      ...(preset.grant ?? []).map(node => ({ node, effect: "grant" as const })),
-      ...(preset.revoke ?? []).map(node => ({ node, effect: "revoke" as const })),
-    ];
-    for (const e of entries) {
-      const existing = byNode.get(e.node);
-      const wins = !existing || index > existing.sublayer
-        || (index === existing.sublayer && e.effect === "revoke");
-      if (wins) byNode.set(e.node, { rule: { node: e.node, effect: e.effect, layer, origin }, sublayer: index });
-    }
-  });
-  return [...byNode.values()].map(v => v.rule);
 }
