@@ -235,3 +235,25 @@ export const testDevAlerts = () =>
     queued: boolean;
     counts: { toReview: number; mine: number; mergeable: number };
   }>("/me/alerts/test", {});
+
+// ── What this person may do ──────────────────────────────────────────
+
+export interface MyPermissions {
+  /** False while `PERMISSIONS_ENABLED` is unset — the old team gates still decide. */
+  enforced: boolean;
+  /** True on an AWS-only install, which has no organization to hold a file. */
+  inert: boolean;
+  /** Every permission held, as leaf keys. */
+  held: string[];
+  /** Set when the file could not be read. `held` is then empty for want of data. */
+  failure: { reason: string; detail: string } | null;
+  adminTeam: string;
+}
+
+/**
+ * What the signed-in person may do, as the server sees it.
+ *
+ * Deliberately ungated on the server — gating your own permission list on a
+ * permission would be a circle — so this needs no special handling here either.
+ */
+export const fetchMyPermissions = () => apiGet<MyPermissions>("/me/permissions");

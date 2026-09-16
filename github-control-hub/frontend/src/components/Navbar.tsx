@@ -10,6 +10,7 @@ import ThemePicker from "./ThemePicker";
 import { themeEntry, isRail, type Skin } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
 import { usePermissions } from "../hooks/usePermissions";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { fetchAuthStatus } from "../api/auth";
 
 interface NavbarProps {
@@ -44,18 +45,27 @@ interface NavbarProps {
  */
 const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
 
+/**
+ * Which permission opens each tab, for `can()` to filter the section line by.
+ *
+ * `expertise.read` and `activity.read.own` are the read keys for "Who knows"
+ * and "Activity" — the narrowest permission that actually opens the tab
+ * rather than one row within it. `repro-permissiongates.ts` checks every key
+ * named here against the real vocabulary, so a typo fails the build instead
+ * of quietly hiding a tab under enforcement.
+ */
 const ITEMS = [
   // First, because it is the one somebody opens without being sent there.
-  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work") },
-  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
-  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws") },
-  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms") },
-  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access") },
-  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
-  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph") },
-  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls") },
-  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows") },
-  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity") },
+  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work"), permission: "me.work.read" },
+  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics"), permission: "overview.read" },
+  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws"), permission: "aws.read" },
+  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms"), permission: "alarms.org.read" },
+  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access"), permission: "access.read" },
+  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies"), permission: "deps.read" },
+  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph"), permission: "repos.read" },
+  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls"), permission: "pulls.read" },
+  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows"), permission: "expertise.read" },
+  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity"), permission: "activity.read.own" },
 ];
 
 /** The edition's date, set the way a paper dates itself. */
@@ -296,7 +306,18 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   // Undefined while the status loads: show everything rather than flashing a
   // one-section line at every launch and then filling it in.
   const githubBlocked = status?.githubAccess?.allowed === false;
-  const items = githubBlocked ? ITEMS.filter(i => ALWAYS_AVAILABLE.has(i.path)) : ITEMS;
+
+  /**
+   * The other filter alongside `githubBlocked`: what the permission system
+   * says this account may open. `can()` answers true for everything while the
+   * flag is off or the data is still loading, so this changes nothing until
+   * enforcement is actually on — same as `githubBlocked` changes nothing on an
+   * install with no AWS confinement.
+   */
+  const { can } = usePermissionSet();
+  const items = ITEMS
+    .filter(i => !githubBlocked || ALWAYS_AVAILABLE.has(i.path))
+    .filter(i => can(i.permission));
 
   /**
    * Leave a section the account you just switched into cannot serve.

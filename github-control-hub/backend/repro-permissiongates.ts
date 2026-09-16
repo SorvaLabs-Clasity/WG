@@ -78,6 +78,18 @@ console.log("\nthe gate is complete, in both directions");
     "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries, no caller",
   };
 
+  /**
+   * One route, not a whole file. `GET /me/permissions` is how the client
+   * learns which permissions it has, so gating it on a permission would be the
+   * same circle `auth.ts` is exempt from above — except `me.ts` carries plenty
+   * of other, correctly-gated routes, so the exemption has to be this precise
+   * or it would quietly cover its neighbours too.
+   */
+  const ROUTE_EXEMPT: Record<string, string> = {
+    'me.ts: router.get("/permissions"':
+      "how the client learns which permissions it has; gating it on a permission would be a circle",
+  };
+
   const files = fs.readdirSync(dir).filter(f => f.endsWith(".ts"));
   const named = new Set<string>();
   const ungated: string[] = [];
@@ -99,13 +111,18 @@ console.log("\nthe gate is complete, in both directions");
     starts.forEach((start, i) => {
       const end = i + 1 < starts.length ? starts[i + 1] : src.length;
       const body = src.slice(start, end);
+      const sig = `${file}: ${body.slice(0, body.indexOf("\n")).trim()}`;
+      if (Object.keys(ROUTE_EXEMPT).some(k => sig.startsWith(k))) return;
       if (!/require(Any)?Permission\(/.test(body)) {
-        ungated.push(`${file}: ${body.slice(0, body.indexOf("\n")).trim()}`);
+        ungated.push(sig);
       }
     });
   }
 
   check("every route names a permission", ungated.length === 0, ungated.slice(0, 8));
+
+  check("  and every route exemption says why",
+    Object.values(ROUTE_EXEMPT).every(reason => reason.length > 20));
 
   // The other direction. A key nothing names is one somebody can hold and never
   // use; a key named but absent from the vocabulary fails closed and silently.
@@ -120,6 +137,52 @@ console.log("\nthe gate is complete, in both directions");
 
   check("  and every exemption says why",
     Object.values(EXEMPT).every(reason => reason.length > 20));
+}
+
+console.log("\nthe permissions endpoint itself");
+{
+  /**
+   * `GET /me/permissions` is how the client learns which permissions it has.
+   * Gating it on a permission is a circle — this asserts the route exists and
+   * that it stays deliberately ungated, rather than trusting that nobody adds
+   * a guard to it later.
+   */
+  const meSrc = fs.readFileSync("./src/routes/me.ts", "utf8");
+  const idx = meSrc.indexOf('router.get("/permissions"');
+  check("GET /me/permissions exists", idx >= 0);
+
+  if (idx >= 0) {
+    const rest = meSrc.slice(idx);
+    const nextRoute = rest.slice(1).search(/router\.(get|post|put|delete|patch)\(/);
+    const body = nextRoute >= 0 ? rest.slice(0, nextRoute + 1) : rest;
+    check("  and it carries no requirePermission — the client's own permission list can't be gated on a permission",
+      !/require(Any)?Permission\(/.test(body));
+  }
+}
+
+console.log("\nthe section line names permissions that exist");
+{
+  /**
+   * Navbar's `ITEMS` filters the section line by `can(item.permission)`. A
+   * typo'd key would fail silently — `can()` would just always answer false
+   * for it under enforcement — so this checks every named key against the
+   * real vocabulary the same way the routes above are checked.
+   */
+  const navSrc = fs.readFileSync("../frontend/src/components/Navbar.tsx", "utf8");
+  const itemsMatch = navSrc.match(/const ITEMS = \[([\s\S]*?)\n\];/);
+  check("Navbar's ITEMS array is found", !!itemsMatch);
+
+  if (itemsMatch) {
+    const entries = [...itemsMatch[1].matchAll(/\{\s*label:/g)].length;
+    const perms = [...itemsMatch[1].matchAll(/permission:\s*"([^"]+)"/g)].map(m => m[1]);
+    check("  every ITEMS entry names a permission", perms.length === entries,
+      { entries, named: perms.length });
+
+    const vocabulary = new Set(PERMISSIONS.map(p => p.key));
+    const invented = perms.filter(k => !vocabulary.has(k));
+    check("  and every permission it names exists in the vocabulary",
+      invented.length === 0, invented);
+  }
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

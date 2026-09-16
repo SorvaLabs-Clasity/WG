@@ -540,4 +540,27 @@ router.post("/alerts/test", requirePermission("me.alerts.test"), async (req: Req
   }
 });
 
+/**
+ * What this person may do, for the client to render against.
+ *
+ * Deliberately ungated. Gating the list of your own permissions on a permission
+ * is a circle, and the answer reveals nothing about anybody else.
+ */
+router.get("/permissions", async (req: Request, res: Response) => {
+  const { accessForSelf } = await import("../permissions");
+  const { PERMISSIONS_ENABLED } = await import("../middleware/permissionGate");
+  try {
+    const access = await accessForSelf(req.user!.login, req.user!.accessToken);
+    res.json({
+      enforced: PERMISSIONS_ENABLED(),
+      inert: access.inert,
+      held: access.permissions.held,
+      failure: access.failure ? { reason: access.failure.reason, detail: access.failure.detail } : null,
+      adminTeam: process.env.CONTROL_HUB_ADMIN_TEAM || "control-hub-admins",
+    });
+  } catch (err: any) {
+    res.status(503).json({ error: `Permissions could not be read: ${err?.message ?? err}` });
+  }
+});
+
 export default router;
