@@ -11,6 +11,8 @@ import {
 } from "./src/permissions/vocabulary";
 import type { Preset } from "./src/permissions/types";
 import { resolvePreset, presetProblems } from "./src/permissions/presets";
+import type { PermissionsFile } from "./src/permissions/types";
+import { collectRules, LAYER } from "./src/permissions/evaluate";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -126,6 +128,53 @@ console.log("\nresolving a preset");
     presetProblems({ x: { name: "X", inherits: "ghost" } }).some(p => /ghost/.test(p)));
 
   check("a healthy set has no problems", presetProblems(presets).length === 0, presetProblems(presets));
+}
+
+console.log("\ncollecting rules from the three layers");
+{
+  const file: PermissionsFile = {
+    version: 1,
+    presets: {
+      engineer: { name: "Engineer", grant: ["me"] },
+      lead: { name: "Lead", inherits: "engineer", grant: ["alarms"] },
+    },
+    teams: {
+      "platform": { presets: ["engineer"], grant: ["repos.read"] },
+      "contractors": { revoke: ["access"] },
+    },
+    people: {
+      "some-login": { presets: ["lead"], grant: ["config.export"], revoke: ["alarms.org.delete"] },
+    },
+  };
+
+  const rules = collectRules(file, "some-login", ["platform", "contractors"]);
+
+  check("a person's own entries are collected",
+    rules.some(r => r.node === "config.export" && r.layer === LAYER.person), rules);
+  check("  their preset's, at a lower layer",
+    rules.some(r => r.node === "alarms" && r.layer === LAYER.preset));
+  check("  what that preset inherits, same layer",
+    rules.some(r => r.node === "me" && r.layer === LAYER.preset));
+  check("  and their teams', lower still",
+    rules.some(r => r.node === "repos.read" && r.layer === LAYER.team));
+  check("  including a team's preset",
+    rules.some(r => r.node === "me" && r.layer === LAYER.team));
+  check("  and a team's revoke",
+    rules.some(r => r.node === "access" && r.effect === "revoke" && r.layer === LAYER.team));
+
+  // The login is the key, and GitHub logins are not case-sensitive in practice.
+  check("the login is matched case-insensitively",
+    collectRules(file, "SOME-LOGIN", []).some(r => r.node === "config.export"));
+
+  check("somebody with no entry and no teams gets no rules at all",
+    collectRules(file, "stranger", []).length === 0);
+
+  // A team the file does not mention contributes nothing, rather than failing.
+  check("a team with no entry in the file contributes nothing",
+    collectRules(file, "stranger", ["some-other-team"]).length === 0);
+
+  check("every rule says where it came from",
+    rules.every(r => r.origin.length > 0), rules.filter(r => !r.origin));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
