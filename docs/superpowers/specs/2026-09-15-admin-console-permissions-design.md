@@ -48,20 +48,28 @@ They get a real permission model instead.
 
 ## Decisions taken before design
 
-These four were settled with the product owner and are load-bearing. Everything
-below follows from them.
+These were settled with the product owner and are load-bearing. Everything below
+follows from them.
 
 | Decision | Choice |
 |---|---|
 | **Scope** | App concepts only. Repo actions stay with GitHub. |
-| **Failure mode** | Fail closed. Organization owners exempt. |
+| **Failure mode** | Fail closed, with no cached fallback. Organization owners exempt. |
 | **Trust model** | The repo is the source of truth, and is locked down so only the App can commit. |
-| **Default grant** | Deny by default. A person with no entry has *nothing*, including their own personal screens. |
+| **Default grant** | Deny by default. A person with no entry has *nothing* — including reading, and including their own personal screens. |
+| **Granularity** | A permission for every action, reads included. Grouped into a tree so a branch can be granted in one click, with every individual leaf still togglable. |
 
-The fourth is the strictest of the available readings and was chosen
-deliberately. It has a consequence that is not optional: **switching this on
-locks the entire organization out until the file names them.** That is handled
-as an explicit migration step below, never as a deploy side-effect.
+Two of these have consequences that are not optional and are designed for
+rather than discovered.
+
+**Deny by default means switching this on locks the whole organization out**
+until the file names them. Handled as an explicit migration step with a dry-run
+diff, never as a deploy side-effect.
+
+**Fail closed with no fallback means a GitHub outage stops the app** for
+everybody except organization owners, including the AWS half, which does not
+otherwise depend on GitHub. Accepted explicitly, so that a cached grant can
+never outlive the file that granted it.
 
 ## The two teams become one
 
@@ -81,130 +89,197 @@ point. Two teams plus a permission file would be three sources of truth.
 
 ## The vocabulary
 
-Flat, dotted, one key per action. Flat because a key is a string in a JSON file
-and a string in a route declaration, and any structure in between is a chance
-for the two to disagree.
+**Reading is a permission.** Every tab, every panel. A person with no entry
+cannot read anything — not the Activity log, not the access map, not a
+repository list, not their own queue. This reverses the *"reading is open"*
+rule in `docs/auth/permissions-model.md`, which must be updated when this
+ships.
 
-The list is derived from the actual endpoint inventory, not invented. Every key
-below corresponds to at least one route that exists today.
+### Leaves and branches
 
-### Admin
+The canonical permissions are the **leaves**. Only a leaf is ever checked by
+`requirePermission`, and only a leaf may appear in a route declaration.
 
-```
-admin.console.open            Open the Admin tab at all
-admin.people.assign           Assign a preset to a person
-admin.people.override         Toggle an individual permission on a person
-admin.presets.create          Create a preset
-admin.presets.edit            Edit a preset
-admin.presets.delete          Delete a preset
-admin.audit.read              Read the change history of the permissions file
-```
+The dots are not decoration — they are the group tree. `alarms.org.create` sits
+under `alarms.org`, which sits under `alarms`. **A grant or a revoke may name
+any node, at any depth**, and means every leaf beneath it. So:
 
-`admin.console.open` is deliberately *not* sufficient to change anything. A
-read-only auditor is a real role.
+| Entry | Means |
+|---|---|
+| `alarms` | every alarms permission |
+| `alarms.org` | the four org-alarm permissions |
+| `alarms.org.create` | exactly one |
 
-### My work — personal, and still granted
+This is what makes ~120 permissions assignable without ticking 120 boxes, while
+leaving every individual box tickable. There is no separate "group" concept to
+keep in sync with the permission list: the tree *is* the list, read at a
+different depth.
 
-```
-me.work.read                  The queue: your PRs, reviews, checks
-me.push.check                 "Why can't I push"
-me.repos.read                 Your own repository list (feeds the suggestions)
-me.alerts.read                Your notification settings
-me.alerts.manage              Change them
-me.alerts.test                Send yourself a test
-me.alarms.read                Your own alarms
-me.alarms.manage              Create, edit, delete your own alarms
-me.destination.manage         Your own email/Teams destination
-me.widgets.manage             Your own cards
-```
-
-Under the chosen default these are granted rather than assumed. Every
-realistic preset will include them; the engine has no special case.
-
-### Activity
+### The tree
 
 ```
-activity.read.own             Rows where you are the actor
-activity.read.app             Rows where somebody else is the actor    ← issue #5
-activity.read.github          Rows sourced from GitHub webhooks
-activity.pulse.read           The activity pulse chart
-activity.undo.repo            Undo a repository action
-activity.undo.app             Undo an app-config action (scanner, widget)
-activity.undo.aws             Undo an AWS action
-activity.retry                Retry a failed action
-activity.resolution.undo      Undo a conflict resolution
-activity.detailedLogging.read
-activity.detailedLogging.manage
+me                              My work — all of it is about you and nobody else
+  me.work.read                    Your queue: your PRs, reviews, checks
+  me.push.check                   "Why can't I push"
+  me.repos.read                   Your own repository list
+  me.alerts.read                  Your notification settings
+  me.alerts.manage                Change them
+  me.alerts.test                  Send yourself a test
+  me.alarms.read                  Your own alarms
+  me.alarms.manage                Create, edit, delete them
+  me.destination.read             Your own email / Teams destination
+  me.destination.manage
+  me.widgets.read                 Your own cards
+  me.widgets.manage
+
+overview                        The Overview tab
+  overview.read                   Open it at all
+  overview.cards.read             The cards on it
+  overview.freshness.read         Query freshness indicators
+  overview.refresh                Force a query to refresh now
+
+activity                        The Activity tab
+  activity.read.own               Rows where you are the actor
+  activity.read.app               Rows where somebody else is         ← issue #5
+  activity.read.github            Rows from GitHub webhooks
+  activity.pulse.read             The pulse chart
+  activity.undo.repo              Undo a repository action
+  activity.undo.app               Undo an app-config action
+  activity.undo.aws               Undo an AWS action
+  activity.retry                  Retry a failed action
+  activity.resolution.undo        Undo a conflict resolution
+  activity.detailedLogging.read
+  activity.detailedLogging.manage
+
+alarms                          The Alarms tab
+  alarms.org.read                 Org-wide alarms
+  alarms.org.create
+  alarms.org.edit
+  alarms.org.delete
+  alarms.groups.read              Email groups
+  alarms.groups.manage
+  alarms.groups.test
+  alarms.teamsFlow.read           The shared Teams webhook
+  alarms.teamsFlow.manage
+  alarms.security.read            Security-alert settings
+  alarms.security.manage
+  alarms.feeds.read               Per-feed notification settings
+  alarms.feeds.manage
+
+aws                             The AWS tab
+  aws.read                        Open it at all
+  aws.rules.read
+  aws.rules.create
+  aws.rules.edit
+  aws.rules.delete
+  aws.rules.enforce               Move a rule from report into enforce
+  aws.findings.read
+  aws.sweep.run
+  aws.remediate                   Fix a finding
+  aws.preview                     Preview a remediation
+  aws.exclusions.read
+  aws.exclusions.manage
+  aws.accounts.read
+  aws.costs.read
+
+access                          The Access tab
+  access.read                     Open it at all
+  access.people.read              By person
+  access.teams.read               By team
+  access.repos.read               By repository
+  access.refresh                  Force a recrawl
+
+deps                            The Vulnerabilities tab
+  deps.read                       Open it at all
+  deps.advisories.read
+  deps.age.read
+  deps.dependabot.read
+  deps.dependabot.manage          Enable / disable on a repository
+  deps.dependabot.bulk            Bulk operations, close PRs
+  deps.renovate.read
+  deps.renovate.manage            The bot name, dashboard ticks
+
+repos                           The Repos tab
+  repos.read                      Open it at all
+  repos.detail.read               One repository's detail
+  repos.blastRadius.read
+  repos.query.read                Saved graph queries
+  repos.query.refresh
+  repos.graph.rebuild             Re-aggregate the whole graph
+
+pulls                           The Pull requests tab
+  pulls.read                      Open it at all
+  pulls.state.read
+  pulls.mutes.read
+  pulls.mute                      Mute a reminder
+  pulls.pause                     Pause reminders for everyone
+  pulls.settings.read
+  pulls.settings.manage
+  pulls.run                       Run the reminder pass now
+
+expertise                       The Who knows tab
+  expertise.read                  Open it at all
+  expertise.repo.read
+  expertise.path.read
+  expertise.library.read
+
+org                             Organization-level reads
+  org.members.read
+  org.config.read
+  org.webhookHealth.read
+  org.budget.read                 The GitHub API budget
+
+config                          Import and export
+  config.export
+  config.import
+
+admin                           The Admin tab
+  admin.console.open              Open it at all
+  admin.people.read               See who has what
+  admin.people.assign             Assign a preset
+  admin.people.override           Toggle one permission on one person
+  admin.presets.read
+  admin.presets.create
+  admin.presets.edit
+  admin.presets.delete
+  admin.audit.read                The change history of the file
 ```
 
-`activity.undo.*` is split three ways because the three answer to different
-people, and because `undoPolicy.ts` already distinguishes them —
-`UndoRequirement` gained an `awsTeam` field on 2026-09-15 for exactly this
-reason. These permissions replace that field's team lookup with a permission
-lookup; the three-way split survives intact.
+**About 120 leaves, 11 top-level branches.** `admin.console.open` is
+deliberately not sufficient to change anything — a read-only auditor is a real
+role.
 
-**An undo permission is necessary, never sufficient.** The repo-level check in
-`denyIfNotPermitted` — `assertWritable` with the caller's own token — still
-runs, and still refuses. Undo is the clearest case where both authorities must
-agree, and where only one of them is ours.
+### Overview must not be a side channel
 
-### Alarms
+The Overview tab reads data belonging to seven other tabs: alarms,
+dependencies, the graph, repositories, security queries, org config. A
+dashboard that aggregates everything is the classic way a permission system
+leaks — you cannot open the Vulnerabilities tab, but a card on Overview shows
+you its numbers.
 
-```
-alarms.org.read      alarms.org.create    alarms.org.edit      alarms.org.delete
-alarms.groups.read   alarms.groups.manage alarms.groups.test
-alarms.teamsFlow.read
-alarms.teamsFlow.manage
-alarms.security.manage        The security-alert settings
-alarms.feeds.manage           Per-feed notification settings
-```
+So `overview.read` opens the tab and **nothing more**. Every card additionally
+requires the read permission of the data it displays, and a card whose data you
+may not read is *absent*, not empty — an empty card invites somebody to report a
+bug. The same rule applies anywhere one screen surfaces another's data.
 
-`alarms.ts` already contains `refusedForSubject`, which decides *which* team may
-write based on what the alarm watches — an alarm on an AWS guardrail is an AWS
-change. That logic is kept and re-expressed: an alarm whose subject is a
-guardrail requires `aws.rules.edit` in addition to `alarms.org.*`. This is the
-one place where the route alone cannot decide, and the capability object
-(approach C, borrowed) is used.
+### Two that are necessary but never sufficient
 
-### AWS
+`activity.undo.repo` does not let you undo a repository action. It lets you
+*ask*; `denyIfNotPermitted` then runs `assertWritable` with your own token and
+GitHub decides. Both must agree, and only one of them is ours.
 
-```
-aws.rules.read       aws.rules.create     aws.rules.edit       aws.rules.delete
-aws.rules.enforce             Move a rule from report to enforce
-aws.sweep.run                 Run a sweep
-aws.remediate                 Fix a finding
-aws.preview                   Preview a remediation
-aws.exclusions.read  aws.exclusions.manage
-aws.findings.read    aws.accounts.read    aws.costs.read
-```
+`config.import` requires the permission for **every section present in the
+bundle**. An export carries scanners, widgets *and* AWS guardrails in one file,
+so without that rule import is a way around every other gate — a hole this
+codebase has already found once.
 
-`aws.rules.enforce` is separated from `aws.rules.edit` on purpose: moving a rule
-into enforce mode is the act that can break production, and it is reasonable to
-let somebody author rules without being able to arm them.
+### One that the route cannot decide
 
-### The rest
-
-```
-scanners.read      scanners.create   scanners.edit    scanners.delete   scanners.run
-widgets.org.read   widgets.org.create widgets.org.edit widgets.org.delete
-access.read                  The access map — aggregates everyone's permissions
-access.refresh
-graph.read         graph.rebuild
-pulls.read         pulls.pause      pulls.mute       pulls.settings.manage  pulls.run
-deps.read          deps.dependabot.manage  deps.renovate.manage  deps.bulk
-expertise.read     org.read         budget.read
-config.export      config.import
-```
-
-`config.import` warrants its own note. An export bundle carries scanners,
-widgets *and* AWS guardrails in one file, so importing it writes to both sides.
-The existing rule — an import containing AWS sections is refused unless the
-caller has AWS authority — is kept, expressed as: `config.import` requires the
-permission for every section present in the bundle. Without that, import is a
-way around every other gate, which is a hole this codebase has already found
-once.
-
-**Total: ~95 keys.** Deep enough that presets are not a convenience.
+`alarms.ts` already contains `refusedForSubject`, which picks the authority
+from what the alarm *watches*: an alarm on a guardrail is an AWS change. Kept
+and re-expressed — such an alarm additionally requires `aws.rules.edit`. This is
+the one place the capability object (approach C) is used instead of middleware,
+because the subject is not known until the body or the stored record is read.
 
 ## The file
 
@@ -221,20 +296,23 @@ once.
     "engineer": {
       "name": "Engineer",
       "description": "Own work, read-only elsewhere",
-      "permissions": ["me.work.read", "me.alarms.manage", "activity.read.own", "..."]
+      "grant": ["me", "activity.read.own", "repos.read", "pulls.read"],
+      "revoke": []
     },
     "alarms-admin": {
       "name": "Alarms administrator",
       "inherits": "engineer",
-      "permissions": ["alarms.org.create", "alarms.org.edit", "alarms.groups.manage"]
+      "grant": ["alarms"],
+      "revoke": ["alarms.org.delete"]
     }
   },
 
   "people": {
     "some-login": {
+      "id": 1234567,
       "presets": ["alarms-admin"],
-      "grant": ["config.export"],
-      "revoke": ["alarms.org.delete"],
+      "grant": ["config.export", "aws.findings.read"],
+      "revoke": ["alarms.groups"],
       "note": "Owns the release alarms. No delete, by request.",
       "updatedAt": "2026-09-15T14:02:11Z",
       "updatedBy": "someone-else"
@@ -243,22 +321,54 @@ once.
 }
 ```
 
-**Effective permissions** for a person are computed as:
+Every string in a `grant` or `revoke` is a **node**, not necessarily a leaf.
+`"me"` is twelve permissions; `"alarms.org.delete"` is one.
 
-1. Start empty. *(Deny by default.)*
-2. Union the permissions of every assigned preset, resolving `inherits` first.
-3. Union `grant`.
-4. Subtract `revoke`.
+### Effective permissions: most specific wins
 
-`revoke` is applied last and always wins, so "this preset, but not that one
-thing" is expressible without cloning a preset. The UI must show each permission
-as *from preset X*, *granted here*, or *revoked here* — a permission whose
-origin is invisible is a permission nobody will dare change.
+For each leaf in the vocabulary, collect every entry that is that leaf or an
+ancestor of it, from both the person and their presets. **The longest match
+decides.** Ties break in this order:
+
+1. A person's entry beats a preset's entry at the same depth.
+2. Between a preset and the preset it inherits from, the child wins.
+3. At equal depth and layer, **revoke beats grant.**
+
+A leaf matched by nothing at all is denied, because the default is deny.
+
+This is the rule rather than "union the grants, then subtract the revokes",
+because the blanket version cannot express the second of these two, and both
+are things somebody will want on their first afternoon:
+
+| Written as | Means |
+|---|---|
+| `grant: ["alarms"]`, `revoke: ["alarms.org.delete"]` | all alarms except deleting one |
+| `revoke: ["aws"]`, `grant: ["aws.findings.read"]` | no AWS at all, except seeing findings |
+
+Under subtract-last the second silently yields nothing, and the person who
+wrote it has no way to tell from the file that it did not work.
+
+The UI must show, for every permission, *why* it is on or off: **from preset
+X**, **granted here**, **revoked here**, or **not granted**. A permission whose
+origin is invisible is one nobody will dare change.
 
 **Preset inheritance is single-parent and depth-limited to 4.** A cycle is a
 schema error and fails the file closed. Multiple inheritance was rejected:
 diamond resolution is a rule nobody remembers, and `presets: []` on a person
 already allows composition where it is genuinely wanted.
+
+### A branch grant is live, and that is visible
+
+Somebody holding `alarms` holds every leaf under it — *including leaves added
+by a later version of the app*. That is what makes a group a group rather than
+a snapshot, and it is the behaviour asked for. It is also a way for an upgrade
+to widen access without anybody deciding to.
+
+So the vocabulary carries an `addedIn` version per leaf, the file carries
+`reviewedAt`, and the Admin tab shows a banner when the vocabulary has gained
+leaves under a branch anybody holds: *"3 new permissions exist under `aws`.
+6 people gained them. Review."* Acknowledging sets `reviewedAt`. The grant stays
+live; what changes is that it stops being silent.
 
 ### Logins
 
@@ -302,9 +412,10 @@ to be able to believe it took effect. The 60-second TTL is the entire window in
 which a revocation can still be honoured, and it is bounded and stated rather
 than dependent on how long an outage lasts.
 
-If this proves too brittle in practice, the softening is in Open Questions
-below rather than in the design — it is a decision to revisit deliberately, not
-a default to slide into.
+**Accepted explicitly by the product owner:** if GitHub is down, nobody can use
+the app except organization owners. That includes the AWS half, which does not
+otherwise depend on GitHub. It is a known cost of not letting a cached grant
+outlive the file that granted it.
 
 ## Failure modes
 
@@ -317,6 +428,10 @@ The product owner asked for these to be thought through rather than discovered.
 | Malformed JSON | Fail closed. A syntax error means somebody edited by hand, which is exactly when a stale grant must not be resurrected. Owners see the parse error with the line. |
 | Schema-invalid (unknown preset ref, cycle) | Fail closed, same reasoning. The specific invalid entry is named. |
 | Unknown permission key in the file | **Ignored, not fatal.** A key removed by an app upgrade must not lock the org out. Surfaced in the admin UI as "unknown, ignored" so it can be cleaned up. |
+| A `grant` names a branch that no longer exists | Same: ignored, surfaced. A renamed branch would otherwise silently drop everyone under it, which fails closed but looks like the app breaking. |
+| An upgrade adds leaves under a held branch | Granted live, and the Admin tab says so until acknowledged. See "A branch grant is live". |
+| A card on Overview shows data from a tab you cannot read | The card is absent, not empty. An empty card reads as a bug and invites a report; an absent one is the permission working. |
+| Someone holds a write permission but not the matching read | Allowed, and shown as odd in the UI. `alarms.org.create` without `alarms.org.read` is strange but coherent, and refusing it would mean the engine second-guesses the administrator. |
 | GitHub unreachable / rate-limited | Fail closed. Owners keep access and can see the read error. Everyone else is read-only until GitHub recovers. No cached fallback — see Reading, above. |
 | App token loses repo access | Indistinguishable from unreachable at the API level; treated the same, but the admin UI distinguishes 404 from 5xx in its message. |
 | Someone pushes to the repo directly | The ruleset should prevent it. If it happens, the app reads it — the file *is* the source of truth. This is the accepted consequence of the chosen trust model, and the repo's ruleset is the control. The admin UI shows the last commit author, so a non-App committer is visible. |
@@ -385,9 +500,15 @@ Four screens.
 Search, filter by preset, filter to "no permissions". Clicking one opens the
 grid below.
 
-**Person.** Every permission, grouped by tab, each showing its state and its
-origin — *from Engineer*, *granted here*, *revoked here* — with a toggle. A free
-text note. Save is one commit.
+**Person.** The permission **tree**, collapsed to its 11 branches by default.
+Every node carries a tri-state checkbox — all, some, none — so a branch can be
+granted with one click and then opened to untick one leaf. Each leaf shows its
+origin: *from Engineer*, *granted here*, *revoked here*, *not granted*. Toggling
+a node writes the shortest entry that expresses the intent: ticking every leaf
+under `alarms` one at a time collapses to `grant: ["alarms"]` on save, so the
+file stays legible and a later-added leaf is included rather than missed.
+
+A free text note. Save is one commit.
 
 **Presets.** Create, edit, delete, and see who holds each. Editing shows "this
 will change N people" before saving.
@@ -406,16 +527,37 @@ thing the app must do without a permission.
 Following this repo's convention, `repro-*.ts` suites asserting properties, not
 implementations:
 
-- `repro-permissions.ts` — evaluation: deny-by-default, preset union, inherit
-  depth, cycle rejection, revoke-wins, unknown-key tolerance, owner exemption.
+- `repro-permissions.ts` — evaluation: deny-by-default; branch grants expand to
+  their leaves; **longest prefix wins**, in both directions (grant-branch with
+  revoke-leaf, and revoke-branch with grant-leaf); person beats preset at equal
+  depth; child preset beats parent; revoke beats grant at equal depth and layer;
+  inherit depth limit; cycle rejection; unknown key and unknown branch tolerated
+  and reported; owner exemption.
 - `repro-permissionsfile.ts` — the file: parse, schema-validate, `sha`
   concurrency, malformed input fails closed and does *not* use the cached copy,
   stale copy expiry.
-- `repro-permissiongates.ts` — completeness: every write route names a key,
-  every key in a route exists in the vocabulary and vice versa, no route file
-  unguarded and unexempted.
+- `repro-permissiongates.ts` — completeness: every write route **and every read
+  route** names a key; every key named in a route exists in the vocabulary and
+  every vocabulary leaf is named by at least one route; no route file unguarded
+  and unexempted. Reads are in scope now, which roughly doubles what this
+  covers and is the assertion that makes "read is a permission" real rather
+  than aspirational.
 - Extensions to `repro-undo.ts` for the three-way undo split, and
   `repro-authz.ts` for owner exemption reporting.
+
+## Documents this invalidates
+
+Both must be updated in the same change that flips `PERMISSIONS_ENABLED`, not
+after:
+
+- `docs/auth/permissions-model.md` — states **"Reading is open. Anyone signed in
+  can see rules, findings, the access map and the activity log."** That stops
+  being true. It also documents the two admin teams; one of them is going away.
+- `docs/operations/setup.md` — the `AWS_ADMIN_TEAM` setup step, and the App
+  permission table, which gains nothing but whose *reasons* change.
+
+A design that silently contradicts a document somebody will read next month is
+how the org ends up with two answers to the same question.
 
 ## Staging
 
@@ -424,8 +566,11 @@ Four pieces, each shippable and useful alone:
 1. **Vocabulary + evaluation engine + tests.** No UI, no file, no enforcement.
    Pure functions; the riskiest logic tested before anything depends on it.
 2. **Storage: repo read/write, caching, failure modes.** Still not enforcing.
-3. **Enforcement: middleware on every route, behind `PERMISSIONS_ENABLED`.**
-   Plus the build-time completeness assertions.
+3. **Enforcement: middleware on every route — reads included — behind
+   `PERMISSIONS_ENABLED`.** Plus the build-time completeness assertions. Reads
+   roughly double this stage: ~77 read endpoints join the ~78 writes, and the
+   read side is where a wrong answer is least visible, because a screen that
+   renders empty looks like a screen with no data.
 4. **The Admin tab, migration generator and dry-run.** Then the flip.
 
 ## Open questions
@@ -435,11 +580,6 @@ None blocking. Two worth revisiting after stage 1:
 - Whether `activity.read.app` should support the *redaction* variant discussed
   (see the row it came from) rather than being binary. The engine supports it as
   a third key if wanted; it is not in the vocabulary above.
-- Whether a short last-known-good window (minutes, not hours) should soften the
-  GitHub-outage case. Rejected above so that a revocation cannot outlive its
-  own file, but the brittleness is real and the AWS half of the app has no
-  business depending on GitHub's availability. Revisit with operational
-  evidence rather than in advance.
 - Whether presets should be assignable to GitHub *teams* as well as people. It
   was rejected above for resolution complexity, but an org this size may find
   per-person assignment tedious enough to justify revisiting with a strict
