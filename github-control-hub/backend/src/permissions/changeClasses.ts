@@ -31,6 +31,27 @@ export const CHANGE_CLASS = {
 /** Every permission a `PUT /file` write could ever require. Also the route's coarse gate. */
 export const ALL_CHANGE_CLASSES: string[] = Object.values(CHANGE_CLASS);
 
+/**
+ * One entry out of a table keyed by whatever the file called it.
+ *
+ * A plain `table[id]` is a prototype read as well as an own-property read, so
+ * ids the file is perfectly entitled to use — `constructor`, `toString`,
+ * `valueOf`, `hasOwnProperty` — came back as inherited `Object.prototype`
+ * members instead of `undefined`. `!b && a` and `b && !a` were then never true
+ * for them, so creating *and* deleting a preset called `constructor` both
+ * classified as `admin.presets.edit`: `admin.presets.edit` alone was
+ * sufficient to create and to delete presets, two of the three authorities
+ * this whole module exists to keep apart, by choosing the id.
+ *
+ * `__proto__` is the same family — `JSON.parse` makes it an own property, so
+ * `Object.hasOwn` sees it and a bare read does not necessarily — and is closed
+ * by the same lookup.
+ */
+function own<T>(table: Record<string, T> | undefined, id: string): T | undefined {
+  if (!table || !Object.hasOwn(table, id)) return undefined;
+  return table[id];
+}
+
 function asSet(nodes: string[] | undefined): Set<string> {
   return new Set(nodes ?? []);
 }
@@ -51,6 +72,16 @@ function entryOverrideChanged(before: PermissionEntry | undefined, after: Permis
 
 function presetsAssignmentChanged(before: PersonEntry | TeamEntry | undefined, after: PersonEntry | TeamEntry | undefined): boolean {
   return !sameSet(before?.presets, after?.presets);
+}
+
+/**
+ * GitHub's numeric user id, which `types.ts` describes as the thing that makes
+ * a renamed login detectable rather than silently orphaned. Removing or
+ * changing it removes that detection, so it is an override of what the entry
+ * says about who it is about.
+ */
+function idChanged(before: PersonEntry | undefined, after: PersonEntry | undefined): boolean {
+  return (before?.id ?? undefined) !== (after?.id ?? undefined);
 }
 
 function noteChanged(before: PersonEntry | undefined, after: PersonEntry | undefined): boolean {
@@ -84,16 +115,30 @@ function presetFieldsChanged(before: Preset | undefined, after: Preset | undefin
 export function changeClasses(before: PermissionsFile, after: PermissionsFile): string[] {
   const classes = new Set<string>();
 
+  /**
+   * The format version decides how everything below it is read, so changing it
+   * reinterprets every section at once rather than editing one of them. There
+   * is no narrower authority that could be the right answer, and nothing in
+   * the app has a reason to bump it through this route — the migration writes
+   * its own file — so it asks for all five rather than for none, which is what
+   * it asked for before.
+   */
+  if ((before.version ?? undefined) !== (after.version ?? undefined)) {
+    for (const key of ALL_CHANGE_CLASSES) classes.add(key);
+  }
+
   // ── people ──────────────────────────────────────────────────────────
   const peopleLogins = new Set([
     ...Object.keys(before.people ?? {}),
     ...Object.keys(after.people ?? {}),
   ]);
   for (const login of peopleLogins) {
-    const b = before.people?.[login];
-    const a = after.people?.[login];
+    const b = own(before.people, login);
+    const a = own(after.people, login);
     if (presetsAssignmentChanged(b, a)) classes.add(CHANGE_CLASS.peopleAssign);
-    if (entryOverrideChanged(b, a) || noteChanged(b, a)) classes.add(CHANGE_CLASS.peopleOverride);
+    if (entryOverrideChanged(b, a) || noteChanged(b, a) || idChanged(b, a)) {
+      classes.add(CHANGE_CLASS.peopleOverride);
+    }
   }
 
   // ── teams ───────────────────────────────────────────────────────────
@@ -106,8 +151,8 @@ export function changeClasses(before: PermissionsFile, after: PermissionsFile): 
     ...Object.keys(after.teams ?? {}),
   ]);
   for (const slug of teamSlugs) {
-    const b = before.teams?.[slug];
-    const a = after.teams?.[slug];
+    const b = own(before.teams, slug);
+    const a = own(after.teams, slug);
     if (!b && !a) continue;
     const changed = presetsAssignmentChanged(b, a) || entryOverrideChanged(b, a);
     if (changed) classes.add(CHANGE_CLASS.peopleAssign);
@@ -118,8 +163,8 @@ export function changeClasses(before: PermissionsFile, after: PermissionsFile): 
   const afterPresets = after.presets ?? {};
   const presetIds = new Set([...Object.keys(beforePresets), ...Object.keys(afterPresets)]);
   for (const id of presetIds) {
-    const b = beforePresets[id];
-    const a = afterPresets[id];
+    const b = own(beforePresets, id);
+    const a = own(afterPresets, id);
     if (!b && a) { classes.add(CHANGE_CLASS.presetsCreate); continue; }
     if (b && !a) { classes.add(CHANGE_CLASS.presetsDelete); continue; }
     if (presetFieldsChanged(b, a)) classes.add(CHANGE_CLASS.presetsEdit);
