@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { idleLabel } from "../lib/idle";
 import { ago } from "../lib/ago";
 import { useAuth } from "../App";
-import { useMyWork, usePushCheck, useShipped } from "../hooks/useMe";
-import { useAccessRepos } from "../hooks/useAccess";
+import { useMyWork, usePushCheck, useShipped, useMyRepos } from "../hooks/useMe";
 import {
   Page, PageHeader, Note, Pill, Empty, Spinner, Segmented,
   SURFACE, TYPE, RefreshButton, LoadFailed,
@@ -508,7 +507,18 @@ function PushCheck() {
    * five minutes, already answers exactly this question, and costs GitHub
    * nothing.
    */
-  const { data: names = [] } = useAccessRepos(true);
+  /**
+   * The suggestion list, from a read about *you* rather than about the
+   * organization.
+   *
+   * It came from `useAccessRepos`, which is `/api/access` — behind the Control
+   * Hub admin gate, because that map aggregates everybody's permissions. So the
+   * suggestions worked for admins and 403'd silently for everybody else,
+   * leaving the people who most need this tab typing names from memory into a
+   * box that says nothing when they get one wrong.
+   */
+  const { data: mine } = useMyRepos(true);
+  const names = mine?.repos ?? [];
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("main");
   const { data, isFetching, isError, error } = usePushCheck(repo, branch);
@@ -522,8 +532,19 @@ function PushCheck() {
         <div className="flex-1 min-w-[14rem]">
           <label className="caps block mb-1">Repository</label>
           <input list="mywork-repos" value={repo} onChange={e => setRepo(e.target.value)}
-            placeholder="Start typing a name" className="field-line display text-[1.125rem]" />
+            placeholder="Start typing a name" className="field-line display text-[1.125rem]"
+            autoComplete="off" spellCheck={false} />
           <datalist id="mywork-repos">{names.map(n => <option key={n} value={n} />)}</datalist>
+          {/* An organization owner reaches every repository by virtue of the
+              role, and the graph records only explicit grants — so the list
+              below them is short and a name missing from it still works. Said,
+              rather than letting a short list imply a limit that is not there. */}
+          {mine && !mine.complete && (
+            <p className="standfirst text-[0.75rem] mt-1.5">
+              You are an organization owner, so you reach every repository. These are only the
+              ones granted to you directly; any other name works too.
+            </p>
+          )}
         </div>
         <div className="w-[11rem]">
           <label className="caps block mb-1">Branch</label>

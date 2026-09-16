@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
-import { isAwsAdmin } from "../services/authorizationService";
+import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import {
   getActivity,
   getActivityForRepo,
@@ -65,7 +65,25 @@ async function denyIfNotPermitted(
   entries: ActivityEntry[], login: string, accessToken: string, verb: string,
   pick: (e: ActivityEntry) => ReturnType<typeof undoRequirement> = undoRequirement,
 ): Promise<{ status: number; body: Record<string, unknown> } | null> {
-  const { adminTeam, repos } = requirementsFor(entries, pick);
+  const { adminTeam, awsTeam, repos } = requirementsFor(entries, pick);
+
+  /**
+   * The AWS team, checked before the Control Hub one because they are separate
+   * authorities and a row can only be about one of them. Nothing reaches this
+   * today — no AWS row carries an undo payload, so the route refuses earlier —
+   * and it is here so that the day one does, it is gated on the people who
+   * administer the account rather than on the people who administer the repos.
+   */
+  if (awsTeam && !(await isAwsAdmin(login, accessToken))) {
+    return {
+      status: 403,
+      body: {
+        error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can ` +
+          `${verb} this. It changes an AWS account rather than a repository.`,
+        code: "AWS_ADMIN_REQUIRED",
+      },
+    };
+  }
 
   if (adminTeam && !(await isControlHubAdmin(login, accessToken))) {
     return {

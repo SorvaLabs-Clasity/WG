@@ -4,8 +4,8 @@ import { readPrSnapshot } from "../services/alarmService";
 import { myWork } from "../services/developerService";
 import { accessForUser, accessForRepo } from "../services/accessMapService";
 import { createOctokit } from "../github/client";
-import { getProtection } from "../services/branchService";
-import { fromClassic, explainPush } from "../services/pushExplainer";
+import { getProtection, getBranchRules } from "../services/branchService";
+import { fromClassic, fromBranchRules, explainPush } from "../services/pushExplainer";
 import { searchActivity } from "../services/activitySearch";
 import { getDetailedLogging } from "../services/orgConfigService";
 import {
@@ -147,6 +147,38 @@ router.get("/access", async (req: Request, res: Response) => {
  * admin on the repository, and using the app's token would answer for people
  * GitHub would not have answered.
  */
+/**
+ * The repositories the caller can reach, for the suggestion list beside
+ * "Why can't I push?".
+ *
+ * That list used to come from `/api/access`, which is behind
+ * `requireControlHubAdmin` — the whole point of that gate being that the access
+ * map aggregates the organization's permissions. So the suggestions worked for
+ * admins and 403'd silently for everybody else, leaving exactly the people who
+ * most need the tab typing repository names from memory into a box that says
+ * nothing when they get one wrong.
+ *
+ * Here instead, because this is a question about *yourself*: it answers with
+ * the caller's own repositories and nobody else's, which needs no gate and
+ * cannot aggregate anything. `accessForUser` is the same read `push-check`
+ * already does one line below, and is cached.
+ */
+router.get("/repos", async (req: Request, res: Response) => {
+  try {
+    const me = await accessForUser(req.user!.login);
+    const names = me.repos.map(r => r.repo).sort((a, b) => a.localeCompare(b));
+    /**
+     * An organization owner reaches every repository by virtue of the role,
+     * and `accessForUser` lists only explicit grants — so an owner's list is
+     * frequently short and wrong. Said rather than silently padded: the screen
+     * can offer what it has and explain why a name that is missing still works.
+     */
+    res.json({ repos: names, orgRole: me.orgRole, complete: me.orgRole !== "owner" });
+  } catch (err: any) {
+    res.status(500).json({ error: sanitizeError(err, "me") });
+  }
+});
+
 router.get("/push-check", async (req: Request, res: Response) => {
   const repo = String(req.query.repo ?? "").trim();
   const branch = String(req.query.branch ?? "").trim();
@@ -165,18 +197,49 @@ router.get("/push-check", async (req: Request, res: Response) => {
       });
     }
 
+    const octokit = createOctokit(req.user!.accessToken, "Why can't I push?");
+
+    /**
+     * The rules actually in force, which is not the same question as classic
+     * branch protection.
+     *
+     * This asked `getProtection` alone — the classic API — which knows nothing
+     * about rulesets and nothing whatever about *organization* rulesets. In an
+     * organization that protects branches with org rulesets, that call answers
+     * 404, `fromClassic(null)` is null, and `explainPush` reports "nothing
+     * protects this branch". So the tab told everybody they could push straight
+     * to main on every repository they had write on. Reported exactly that way.
+     *
+     * The effective-rules endpoint is asked first because it is the one that
+     * answers the question the screen is asking, and it needs only read access
+     * rather than admin — so it answers for the people least likely to be
+     * repository administrators, who are the people asking.
+     *
+     * Classic protection is still read, for repositories that use it and have
+     * no rulesets at all. Rules win when both exist: they are the merged,
+     * already-resolved answer, and classic protection cannot contribute a rule
+     * the branch-rules endpoint has not already accounted for.
+     */
+    const rules = await getBranchRules(octokit, repo, branch);
+
     let raw: Record<string, unknown> | null = null;
     let unreadable = false;
     try {
-      raw = await getProtection(createOctokit(req.user!.accessToken, "Why can't I push?"), repo, branch);
+      raw = await getProtection(octokit, repo, branch);
     } catch {
-      // Reading protection needs admin. Not being allowed to read the rules is
-      // not the same as there being none, and reporting it as none would tell
-      // somebody they can push straight to a protected branch.
+      // Reading classic protection needs admin. Not being allowed to read the
+      // rules is not the same as there being none, and reporting it as none
+      // would tell somebody they can push straight to a protected branch.
       unreadable = true;
     }
 
-    if (unreadable) {
+    const effective = fromBranchRules(rules) ?? fromClassic(raw);
+
+    // Only when nothing could be read at all. A readable ruleset answers the
+    // question whether or not classic protection was refused, and saying
+    // "cannot tell" over a rule we can see would be the same silence in a
+    // different costume.
+    if (unreadable && !effective) {
       return res.json({
         repo, branch, reachable: true, unreadable: true,
         message: "Only an administrator of this repository can read its protection rules, "
@@ -186,7 +249,7 @@ router.get("/push-check", async (req: Request, res: Response) => {
 
     res.json({
       reachable: true,
-      ...explainPush(repo, branch, fromClassic(raw), 
+      ...explainPush(repo, branch, effective, 
         { login: me.login, role: mine?.role ?? (me.orgRole === "owner" ? "admin" : "read") },
         me.teams.map(t => t.slug)),
       // Who to ask. A rule you cannot satisfy on your own is only actionable

@@ -27,6 +27,74 @@ import type { BranchProtection } from "./branchService";
  * `required_pull_request_reviews` being present at all is what makes a pull
  * request mandatory, regardless of how many approvals it asks for.
  */
+/**
+ * The effective rules for a branch, in the app's own shape.
+ *
+ * The companion to {@link fromClassic}, and the one that sees organization
+ * rulesets. `GET /repos/{owner}/{repo}/rules/branches/{branch}` answers with a
+ * flat list of rules — `{ type: "pull_request", parameters: {...},
+ * ruleset_source_type: "Organization", ruleset_id, ... }` — already merged
+ * across every ruleset that targets the branch, so there is nothing to resolve
+ * here beyond reading each rule's type.
+ *
+ * Two shape differences from classic protection are worth naming, because both
+ * invert:
+ *
+ *   - Classic reports what is *allowed* (`allow_force_pushes`); a ruleset
+ *     reports the restriction's *presence* (`non_fast_forward` means force
+ *     pushes are blocked). So a rule existing is a prevention, not a permission.
+ *   - Classic nests approvals under `required_pull_request_reviews`; a ruleset
+ *     puts them in the `pull_request` rule's parameters under a different name
+ *     again (`required_approving_review_count`).
+ *
+ * `enforcement` is deliberately left unset. This endpoint returns only rules
+ * that are *in force*, so an evaluate-mode or disabled ruleset contributes
+ * nothing to it — which means the "not active, so nothing is blocked" branch in
+ * `explainPush` must not fire for this shape, and would wrongly clear every
+ * rule here if it did.
+ */
+export function fromBranchRules(rules: Array<Record<string, any>> | null): BranchProtection | null {
+  if (!rules || rules.length === 0) return null;
+
+  const of = (type: string) => rules.find(r => r?.type === type);
+  const paramsOf = (type: string) => of(type)?.parameters ?? undefined;
+
+  const pr = paramsOf("pull_request");
+  const checks = paramsOf("required_status_checks");
+  const deployments = paramsOf("required_deployments");
+
+  /** The ruleset a rule came from, for a message that names something real. */
+  const named = rules.find(r => r?.ruleset_source)?.ruleset_source
+    ?? rules.find(r => r?.ruleset_id)?.ruleset_source_type;
+
+  return {
+    type: "ruleset",
+    rulesetName: typeof named === "string" ? named : undefined,
+    requirePr: !!pr,
+    requiredApprovals: Number(pr?.required_approving_review_count ?? 0),
+    dismissStaleReviews: !!pr?.dismiss_stale_reviews_on_push,
+    requireCodeOwnerReviews: !!pr?.require_code_owner_review,
+    requireLastPushApproval: !!pr?.require_last_push_approval,
+    requireConversationResolution: !!pr?.required_review_thread_resolution,
+    requireStatusChecks: !!checks,
+    strictStatusChecks: !!checks?.strict_required_status_checks_policy,
+    statusCheckContexts: (checks?.required_status_checks ?? [])
+      .map((c: any) => c?.context).filter(Boolean),
+    requireDeployments: !!deployments,
+    requiredDeploymentEnvironments: deployments?.required_deployment_environments ?? [],
+    requireSignedCommits: !!of("required_signatures"),
+    requireLinearHistory: !!of("required_linear_history"),
+    // A ruleset's bypass list is not in this response, and guessing "admins are
+    // exempt" from its absence would tell somebody a rule does not apply to
+    // them when it does.
+    enforceAdmins: true,
+    preventForcePush: !!of("non_fast_forward"),
+    preventDeletion: !!of("deletion"),
+    restrictCreations: !!of("creation"),
+    restrictUpdates: !!of("update"),
+  };
+}
+
 export function fromClassic(raw: Record<string, any> | null): BranchProtection | null {
   if (!raw) return null;
   const pr = raw.required_pull_request_reviews;

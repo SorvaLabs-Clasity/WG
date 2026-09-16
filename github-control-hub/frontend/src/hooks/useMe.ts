@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchMyWork, fetchPushCheck, fetchShipped, fetchMyAccess,
-  fetchDevAlerts, saveDevAlerts, testDevAlerts,
+  fetchDevAlerts, saveDevAlerts, testDevAlerts, fetchMyRepos,
 } from "../api/me";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -27,6 +27,15 @@ export function useMyWork() {
  * `enabled` rather than a guard inside the fetcher: a half-filled form is not a
  * question, and asking it produces a 400 the user did not cause.
  */
+export function useMyRepos(enabled = true) {
+  return useQuery({
+    queryKey: ["me", "repos"],
+    queryFn: fetchMyRepos,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export function usePushCheck(repo: string, branch: string) {
   return useQuery({
     queryKey: ["me", "push-check", repo, branch],

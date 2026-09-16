@@ -96,6 +96,21 @@ export interface Shipped {
 
 export const fetchMyWork = () => apiGet<MyWork>("/me/work");
 
+/**
+ * The repositories the caller can reach.
+ *
+ * Deliberately not `/access/repos`, which is behind the Control Hub admin gate
+ * because it aggregates the whole organization's permissions. This is a
+ * question about yourself, so it needs no gate — and asking the gated one meant
+ * the suggestion list was empty for everybody who is not an admin.
+ *
+ * `complete` is false for an organization owner, whose access comes from the
+ * role rather than from grants the graph records, so the list is short and the
+ * screen has to say so rather than imply a name missing from it is unreachable.
+ */
+export interface MyRepos { repos: string[]; orgRole?: string; complete: boolean }
+export const fetchMyRepos = () => apiGet<MyRepos>("/me/repos");
+
 export const fetchPushCheck = (repo: string, branch: string) =>
   apiGet<PushCheck>(`/me/push-check?repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`);
 

@@ -42,7 +42,7 @@ export default function AlarmModal({
    */
   personal?: boolean;
 }) {
-  const { data: spec, isLoading } = useWidgetConditions(isOpen ? widgetId : null);
+  const { data: spec, isLoading, error: specError } = useWidgetConditions(isOpen ? widgetId : null);
   const { data: groups } = useEmailGroups(isOpen && !personal);
   const { data: destination } = useMyDestination(isOpen && personal);
   const { data: variables } = useTemplateVariables(isOpen);
@@ -200,6 +200,42 @@ export default function AlarmModal({
 
         <div className="p-6 overflow-y-auto space-y-5">
           {isLoading && <p className="text-sm text-gray-500 dark:text-slate-400">Loading…</p>}
+
+          {/* The three branches below were `isLoading`, `spec && none`, and
+              `spec && some`. A *failed* read matches none of them: `isLoading`
+              goes false, `spec` stays undefined, and the dialog renders an
+              empty box — which is the whole of what somebody sees, and says
+              nothing about what went wrong. Reported as "it says loading, then
+              nothing shows up in the popup".
+
+              A dialog with nothing in it is the one state that cannot be acted
+              on, so the failure is named here rather than left to the console,
+              along with the card it was asking about: the id is what turns
+              "something failed" into a reproducible report. */}
+          {!isLoading && specError && (
+            <div className="space-y-2">
+              <p className="text-sm text-crimson font-semibold">
+                This card&rsquo;s alarm options could not be read.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-slate-400">
+                {(specError as Error).message}
+              </p>
+              <p className="text-[0.75rem] text-gray-400 dark:text-slate-500 font-mono break-all">
+                card {widgetId || "(none selected)"}
+              </p>
+            </div>
+          )}
+
+          {/* And a card that was never chosen. `cards[0]?.id ?? ""` is empty
+              when the personal board has no cards, which leaves the query
+              disabled — not loading, not failed, never answered — and produced
+              the same empty box by a different route. */}
+          {!isLoading && !specError && !spec && !widgetId && (
+            <p className="text-sm text-gray-500 dark:text-slate-400">
+              No card is selected. An alarm watches one of your own cards, so add one under
+              My widgets first.
+            </p>
+          )}
 
           {spec && spec.conditions.length === 0 && (
             <p className="text-sm text-amber-700 dark:text-amber-400">

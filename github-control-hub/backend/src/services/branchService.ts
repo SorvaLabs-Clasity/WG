@@ -890,3 +890,45 @@ export async function getAllProtections(
   
   return protections;
 }
+
+/**
+ * Every rule in force on one branch, from every source.
+ *
+ * `getBranchProtection` — which is what this app asked — is the *classic*
+ * branch-protection API. It knows nothing about rulesets, and nothing at all
+ * about org-level ones: a repository protected entirely by an organization
+ * ruleset answers 404 there, which `getProtection` faithfully reports as
+ * `null`, which the push explainer faithfully reports as "nothing protects this
+ * branch". So the app told people they could push straight to main on every
+ * repository they had write on, in an organization where org rulesets are how
+ * protection is actually done.
+ *
+ * `GET /repos/{owner}/{repo}/rules/branches/{branch}` is the endpoint for the
+ * question this app is asking. It returns the *effective* rules for a branch —
+ * repository rulesets and organization rulesets together, already resolved,
+ * with the ruleset each rule came from attached. It also needs only read access
+ * rather than admin, so it answers for the people who most need the answer and
+ * are least likely to be repository administrators.
+ *
+ * Returns an empty array when nothing applies, and that is a real answer.
+ * `null` is reserved for "could not ask", which the caller must not render as
+ * "nothing is stopping you".
+ */
+export async function getBranchRules(
+  octokit: Octokit,
+  repo: string,
+  branch: string,
+): Promise<Array<Record<string, any>> | null> {
+  try {
+    const { data } = await octokit.request(
+      "GET /repos/{owner}/{repo}/rules/branches/{branch}",
+      { owner: getOrg(), repo, branch },
+    );
+    return (data as unknown as Array<Record<string, any>>) ?? [];
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status;
+    // A repository or branch that is not there is not a protection answer.
+    if (status === 404) return null;
+    return null;
+  }
+}

@@ -89,7 +89,27 @@ export function unsupportedUndoReason(action: string): string {
  */
 interface UndoRequirement {
   repo?: RepoLevel;
+  /** Membership of the Control Hub admin team. */
   adminTeam?: boolean;
+  /**
+   * Membership of the AWS guardrail team, which is a different team answering
+   * to different people.
+   *
+   * Nothing sets this today, and that is the point of adding it. No AWS row
+   * carries an `undoPayload` — every `logActivity` call in awsGuardrails.ts
+   * passes five arguments and the payload is the tenth — so `isReversible` is
+   * false and the undo route refuses before any permission is consulted. AWS
+   * events cannot be undone by anybody, which is the safe state and was
+   * reached by accident rather than by decision.
+   *
+   * The accident is one line from becoming a hole. The moment somebody makes
+   * an AWS action undoable, `undoRequirement` hands an unrecognized action the
+   * fallback below — which demands the *Control Hub* team, the wrong one — and
+   * a Control Hub admin who is deliberately not on the AWS team could reverse
+   * a production guardrail change. Naming the distinction now means the next
+   * person has somewhere correct to put it.
+   */
+  awsTeam?: boolean;
 }
 
 const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
@@ -149,23 +169,45 @@ export function retryRequirement(entry: ActivityEntry): UndoRequirement {
  */
 export function requirementsFor(
   entries: ActivityEntry[], pick: (e: ActivityEntry) => UndoRequirement,
-): { adminTeam: boolean; repos: Record<RepoLevel, string[]> } {
+): { adminTeam: boolean; awsTeam: boolean; repos: Record<RepoLevel, string[]> } {
   const repos: Record<RepoLevel, Set<string>> = { push: new Set(), admin: new Set() };
   let adminTeam = false;
+  let awsTeam = false;
   for (const e of entries) {
     const r = pick(e);
     if (r.adminTeam) adminTeam = true;
+    if (r.awsTeam) awsTeam = true;
     if (r.repo && e.repo) repos[r.repo].add(e.repo);
   }
   for (const r of repos.admin) repos.push.delete(r);
-  return { adminTeam, repos: { push: [...repos.push], admin: [...repos.admin] } };
+  return { adminTeam, awsTeam, repos: { push: [...repos.push], admin: [...repos.admin] } };
+}
+
+/**
+ * Whether this row is about AWS rather than about a repository.
+ *
+ * Read from the action rather than from a list of undoable operations, because
+ * the question it answers is "whose change is this" and that is true of a row
+ * whether or not anything can currently reverse it.
+ */
+export function isAwsAction(action: string): boolean {
+  return action.startsWith("aws.");
 }
 
 /** What undoing this entry demands. Unknown operations demand the most. */
 export function undoRequirement(entry: ActivityEntry): UndoRequirement {
   const action = entry.undoPayload?.action;
   if (!action) return {};
-  return UNDO_REQUIREMENTS[action] ?? { repo: "admin", adminTeam: true };
+  const known = UNDO_REQUIREMENTS[action];
+  if (known) return known;
+  /**
+   * An operation nobody listed. It demands the most, and *which* most depends
+   * on what the row is about: an AWS row falling back to the Control Hub team
+   * would be gated on people who were deliberately not given AWS authority.
+   */
+  return isAwsAction(entry.action)
+    ? { awsTeam: true }
+    : { repo: "admin", adminTeam: true };
 }
 
 /** True when any entry here needs Control Hub admin to reverse. */

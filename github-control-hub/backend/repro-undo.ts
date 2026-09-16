@@ -10,6 +10,7 @@ import {
   undoBlockedReason, isReversible, needsRepoWrite,
   ALLOWED_UNDO_ACTIONS,
 } from "./src/services/undoPolicy";
+import fs from "node:fs";
 import type { ActivityEntry } from "./src/services/activityService";
 
 let failures = 0;
@@ -426,6 +427,59 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
       /denyIfNotPermitted\(\s*(?!\[entry\],)/.test(body),
       body.slice(gate, gate + 90));
   }
+}
+
+/**
+ * Undoing an AWS change is the AWS team's business, not the Control Hub team's.
+ *
+ * Asked for as "if they are not on the aws guardrails team, they definitely
+ * should NOT be able to undo any aws events from the activity tab". They
+ * cannot, and not because anything checks: no AWS row carries an `undoPayload`
+ * — every logActivity call in awsGuardrails.ts passes five arguments and the
+ * payload is the tenth — so `isReversible` is false and the route refuses
+ * before any permission is consulted. Safe, and reached by accident.
+ *
+ * One line from becoming a hole. `undoRequirement` used to hand every
+ * unrecognized action `{ repo: "admin", adminTeam: true }`, which demands the
+ * *Control Hub* team — so making a single AWS action undoable would have let a
+ * Control Hub admin who was deliberately kept off the AWS team reverse a
+ * guardrail change. These pin the distinction while it is still cheap.
+ */
+console.log("\nan AWS row is the AWS team's to reverse");
+{
+  const policy = fs.readFileSync(`${__dirname}/src/services/undoPolicy.ts`, "utf8");
+  const activity = fs.readFileSync(`${__dirname}/src/routes/activity.ts`, "utf8");
+
+  check("the requirement can name the AWS team at all",
+    /awsTeam\?: boolean;/.test(policy),
+    "with only `adminTeam` there is nowhere correct to put this");
+
+  check("  and an unlisted AWS action falls back to it, not to the Control Hub team",
+    /isAwsAction\(entry\.action\)\s*\n?\s*\? \{ awsTeam: true \}/.test(policy),
+    "the fallback is what an action nobody listed gets, which is the dangerous case");
+
+  check("  while an unlisted repository action still demands the most",
+    /\{ repo: "admin", adminTeam: true \}/.test(policy));
+
+  check("the undo route enforces it",
+    /awsTeam && !\(await isAwsAdmin\(/.test(activity)
+    && /AWS_ADMIN_REQUIRED/.test(activity));
+
+  // Separate authorities. Passing the Control Hub check must not admit
+  // somebody to an AWS change, so the AWS check cannot sit behind it.
+  const deny = activity.slice(activity.indexOf("async function denyIfNotPermitted"));
+  const body = deny.slice(0, deny.indexOf("\n}\n"));
+  check("  and checks it independently of the Control Hub team",
+    body.indexOf("awsTeam &&") < body.indexOf("adminTeam &&"),
+    "one gate behind the other makes them one authority");
+
+  // The state that makes all of the above theoretical, asserted so that the
+  // day it changes, the assertions above are already standing.
+  const allowList = policy.slice(
+    policy.indexOf("ALLOWED_UNDO_ACTIONS"), policy.indexOf("]);"));
+  check("and no AWS row is undoable today, which is why none of this fires",
+    !/aws\./.test(allowList),
+    "an AWS action in the allow-list would make this live rather than latent");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
