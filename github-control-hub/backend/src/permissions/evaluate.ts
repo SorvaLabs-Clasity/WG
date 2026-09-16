@@ -1,5 +1,6 @@
 import type { PermissionsFile, PermissionEntry } from "./types";
 import { resolvePreset, type Rule } from "./presets";
+import { isKnownNode } from "./vocabulary";
 
 /**
  * Where a rule was written, in increasing authority.
@@ -55,4 +56,55 @@ export function collectRules(
   out.push(...ownRules(person, LAYER.person, "set on this person"));
 
   return out;
+}
+
+export interface Decision {
+  held: boolean;
+  /** The rule that decided it, for the admin screen. Null when nothing matched. */
+  rule: LayeredRule | null;
+}
+
+/** On a segment boundary: `me` must not match `members.read`. */
+function covers(node: string, leaf: string): boolean {
+  return leaf === node || leaf.startsWith(node + ".");
+}
+
+const depthOf = (node: string) => node.split(".").length;
+
+/**
+ * Whether this person holds one leaf, and which rule said so.
+ *
+ * **The longest match decides.** Depth first, because specificity is the
+ * strongest signal of intent: somebody who wrote `aws.findings.read` meant that
+ * leaf more precisely than whoever wrote `aws`. Only at equal depth does it
+ * matter who wrote it — person over preset over team — and only at equal depth
+ * *and* layer does revoke win over grant, which is the safe answer when two
+ * teams disagree.
+ *
+ * The alternative, union-the-grants-then-subtract-the-revokes, cannot express
+ * "none of AWS except the findings": the shallow revoke eats the deep grant and
+ * the file gives no sign that it did.
+ *
+ * A rule naming a node the vocabulary does not have decides nothing. That keeps
+ * a renamed or deleted branch from silently continuing to grant, and it is why
+ * an unknown node is tolerated at read time rather than failing the file.
+ */
+export function decideLeaf(leaf: string, rules: LayeredRule[]): Decision {
+  let best: LayeredRule | null = null;
+
+  for (const rule of rules) {
+    if (!isKnownNode(rule.node)) continue;
+    if (!covers(rule.node, leaf)) continue;
+    if (!best) { best = rule; continue; }
+
+    const a = [depthOf(rule.node), rule.layer, rule.sublayer, rule.effect === "revoke" ? 1 : 0];
+    const b = [depthOf(best.node), best.layer, best.sublayer, best.effect === "revoke" ? 1 : 0];
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] === b[i]) continue;
+      if (a[i] > b[i]) best = rule;
+      break;
+    }
+  }
+
+  return { held: best?.effect === "grant", rule: best };
 }

@@ -12,7 +12,7 @@ import {
 import type { Preset } from "./src/permissions/types";
 import { resolvePreset, presetProblems } from "./src/permissions/presets";
 import type { PermissionsFile } from "./src/permissions/types";
-import { collectRules, LAYER } from "./src/permissions/evaluate";
+import { collectRules, LAYER, decideLeaf, type LayeredRule } from "./src/permissions/evaluate";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -175,6 +175,86 @@ console.log("\ncollecting rules from the three layers");
 
   check("every rule says where it came from",
     rules.every(r => r.origin.length > 0), rules.filter(r => !r.origin));
+}
+
+console.log("\nresolution: the longest match decides");
+{
+  const r = (node: string, effect: "grant" | "revoke", layer: number, sublayer = 99): LayeredRule =>
+    ({ node, effect, layer, sublayer, origin: "test" });
+
+  check("a leaf matched by nothing is denied",
+    decideLeaf("alarms.org.create", []).held === false);
+
+  check("a branch grant reaches the leaf",
+    decideLeaf("alarms.org.create", [r("alarms", "grant", LAYER.person)]).held === true);
+
+  /**
+   * "All alarms except deleting one." The blanket rule this replaces —
+   * union the grants, then subtract the revokes — handles this correctly and
+   * the next case wrongly.
+   */
+  check("a deeper revoke beats a shallower grant",
+    decideLeaf("alarms.org.delete",
+      [r("alarms", "grant", LAYER.person), r("alarms.org.delete", "revoke", LAYER.person)],
+    ).held === false);
+
+  /**
+   * "No AWS at all, except seeing findings." Under subtract-last this silently
+   * yields nothing and the person who wrote it cannot tell from the file that
+   * it did not work.
+   */
+  check("a deeper grant beats a shallower revoke",
+    decideLeaf("aws.findings.read",
+      [r("aws", "revoke", LAYER.person), r("aws.findings.read", "grant", LAYER.person)],
+    ).held === true);
+
+  check("  and the shallower revoke still holds elsewhere",
+    decideLeaf("aws.rules.delete",
+      [r("aws", "revoke", LAYER.person), r("aws.findings.read", "grant", LAYER.person)],
+    ).held === false);
+
+  // Layer only breaks ties at equal depth. A longer team rule beats a shorter
+  // personal one, because specificity is the stronger signal.
+  check("at equal depth, a person beats their preset",
+    decideLeaf("config.export",
+      [r("config.export", "revoke", LAYER.preset), r("config.export", "grant", LAYER.person)],
+    ).held === true);
+
+  check("at equal depth, a preset beats a team",
+    decideLeaf("config.export",
+      [r("config.export", "revoke", LAYER.team), r("config.export", "grant", LAYER.preset)],
+    ).held === true);
+
+  check("but a longer team rule beats a shorter personal one",
+    decideLeaf("aws.rules.delete",
+      [r("aws", "grant", LAYER.person), r("aws.rules.delete", "revoke", LAYER.team)],
+    ).held === false);
+
+  // Two teams disagreeing is a real state, and the safe answer is no.
+  check("at equal depth and layer, revoke wins",
+    decideLeaf("access.read",
+      [r("access.read", "grant", LAYER.team), r("access.read", "revoke", LAYER.team)],
+    ).held === false);
+
+  // Within a preset chain, the child outranks what it inherits.
+  check("within a layer, a higher sublayer wins",
+    decideLeaf("me.work.read",
+      [r("me.work.read", "grant", LAYER.preset, 0), r("me.work.read", "revoke", LAYER.preset, 1)],
+    ).held === false);
+
+  check("the deciding rule is reported, for the admin screen",
+    decideLeaf("alarms.org.create", [r("alarms", "grant", LAYER.person)]).rule?.node === "alarms");
+
+  // A branch that no longer exists must not match anything, or a renamed
+  // branch silently keeps granting.
+  check("a rule naming an unknown node decides nothing",
+    decideLeaf("alarms.org.create", [r("nonsense", "grant", LAYER.person)]).held === false);
+
+  // Segment boundaries again, this time in the resolver.
+  check("a rule does not match a leaf that merely starts with its text",
+    decideLeaf("activity.read.github",
+      [r("activity.read.app", "grant", LAYER.person)],
+    ).held === false);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
