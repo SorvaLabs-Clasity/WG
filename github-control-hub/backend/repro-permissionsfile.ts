@@ -230,5 +230,45 @@ console.log("\nwriting the file");
     "otherwise a change you just made is invisible for up to a minute");
 }
 
+console.log("\nwho the caller is");
+{
+  const subject = fs.readFileSync("./src/permissions/subject.ts", "utf8");
+
+  /**
+   * The exemption that keeps a broken file from locking everybody out. It has
+   * to be read from GitHub rather than from the permissions file, or the file
+   * could revoke the exemption that exists to survive the file.
+   */
+  check("organization ownership is read from GitHub, not from the file",
+    /getMembershipForUser/.test(subject) && /role === "admin"/.test(subject));
+  check("  and never from the permissions file",
+    !/loadPermissions|PermissionsFile/.test(subject));
+
+  /**
+   * One paginated call, not one per team. The obvious implementation — list
+   * every team in the org, then ask "is this person in it" for each — is
+   * O(teams) GitHub calls for every permission load, on every request. An org
+   * with fifty teams would spend fifty calls answering one question.
+   */
+  check("the caller's teams are read in one paginated call",
+    /listForAuthenticatedUser/.test(subject));
+  check("  not by asking per team",
+    !/getMembershipForUserInOrg/.test(subject),
+    "that is O(teams) calls per permission load");
+  check("  paged the way the rest of this codebase pages",
+    /per_page: 100/.test(subject) && /page\b/.test(subject));
+
+  /**
+   * Fail closed, the same rule as the file: an unreadable membership means the
+   * person keeps only what their own entries and presets give them. Not a
+   * fallback to a remembered list.
+   */
+  check("an unreadable membership yields no teams rather than the last known set",
+    /catch/.test(subject) && !/lastKnownTeams|cachedTeams\b/.test(subject));
+
+  check("answers are cached, so a screen is not a burst of GitHub calls",
+    /TTL|expires/.test(subject) && /forgetSubjects/.test(subject));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
