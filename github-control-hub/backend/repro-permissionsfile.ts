@@ -10,6 +10,9 @@
  */
 import { fileProblems, unknownNodesIn, isUsable } from "./src/permissions/validate";
 import type { PermissionsFile } from "./src/permissions/types";
+import fs from "node:fs";
+import { emptyFile } from "./src/permissions/types";
+import { decodeFileContent, isFailure, forgetPermissions } from "./src/permissions/store";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -111,6 +114,31 @@ console.log("\nevery problem says where it is");
   const p = fileProblems({ version: 1, presets: { a: { name: "A", inherits: "ghost" } }, teams: {}, people: {} });
   check("a problem names its location", p.every(x => x.where.length > 0), p);
   check("  and what is wrong", p.every(x => x.what.length > 0));
+}
+
+console.log("\nreading the file");
+{
+  // Decoding is the only part of the reader that is pure enough to test
+  // directly; the rest needs GitHub and is exercised by the route tests in
+  // stage 3. Base64 with embedded newlines is what the contents API returns.
+  check("base64 content is decoded, newlines and all",
+    decodeFileContent(Buffer.from('{"version":1}', "utf8").toString("base64")) === '{"version":1}');
+  const wrapped = Buffer.from('{"version":1}', "utf8").toString("base64").match(/.{1,4}/g)!.join("\n");
+  check("  and GitHub's line-wrapped base64 too",
+    decodeFileContent(wrapped) === '{"version":1}');
+
+  check("a failure is distinguishable from a load",
+    isFailure({ reason: "unreachable", detail: "x" })
+    && !isFailure({ file: emptyFile(), sha: null, source: "absent" }));
+
+  // The decision that must not soften: a failure yields nothing, never a
+  // remembered copy. A cached grant is a grant nobody can revoke.
+  const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
+  check("nothing keeps a last-known-good copy",
+    !/lastKnownGood|lastGood|fallbackFile/.test(store),
+    "a cached grant outlives the file that granted it");
+  check("  and the cache is cleared rather than served on failure",
+    /forgetPermissions/.test(store));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
