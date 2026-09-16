@@ -13,7 +13,8 @@ import { PERMISSIONS } from "./src/permissions/vocabulary";
 import { startingFile, dryRun } from "./src/permissions/migrate";
 import { fileProblems } from "./src/permissions/validate";
 import { permissionsFor } from "./src/permissions/evaluate";
-import { emptyFile } from "./src/permissions/types";
+import { emptyFile, type PermissionsFile } from "./src/permissions/types";
+import { changeClasses } from "./src/permissions/changeClasses";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -37,9 +38,9 @@ console.log("the admin router");
    */
   for (const [path, permission] of [
     ['router.get("/file"', "admin.people.read"],
-    ['router.put("/file"', "admin.people.assign"],
     ['router.get("/vocabulary"', "admin.console.open"],
     ['router.get("/person/:login"', "admin.people.read"],
+    ['router.get("/preset/:id/resolved"', "admin.presets.read"],
     ['router.get("/audit"', "admin.audit.read"],
     ['router.post("/bootstrap"', "admin.people.assign"],
   ] as const) {
@@ -47,6 +48,33 @@ console.log("the admin router");
     const line = at >= 0 ? admin.slice(at, admin.indexOf("\n", at)) : "";
     check(`  ${path.slice(12)} needs ${permission}`,
       at >= 0 && line.includes(`requirePermission("${permission}")`), line.trim());
+  }
+
+  /**
+   * `PUT /file` is not "one permission" any more: it receives a whole file,
+   * and which of the five admin write permissions it needs depends on what
+   * the diff actually contains. The route's own middleware is a coarse
+   * `requireAnyPermission` of all five — a cheap rejection of somebody with
+   * no admin write authority at all — and the fine-grained refusal happens
+   * inside the handler, against `changeClasses`. This checks the coarse gate
+   * names every one of the five; the finer behaviour is exercised directly
+   * against `changeClasses` below, not by scanning source text for it.
+   */
+  {
+    const at = admin.indexOf('router.put(');
+    const handlerAt = admin.indexOf("async (req: Request, res: Response) => {", at);
+    const gate = at >= 0 && handlerAt > at ? admin.slice(at, handlerAt) : "";
+    check('  PUT /file is gated on requireAnyPermission of all five admin write permissions',
+      at >= 0 && /requireAnyPermission\(/.test(gate)
+        && ["admin.people.assign", "admin.people.override", "admin.presets.create",
+            "admin.presets.edit", "admin.presets.delete"].every(k => gate.includes(`"${k}"`)),
+      gate.trim());
+
+    check('  and the handler derives the finer requirement from changeClasses',
+      /changeClasses\(/.test(admin) && /PERMISSION_REQUIRED/.test(admin.slice(at)));
+
+    check('  and the fine-grained check is inert while PERMISSIONS_ENABLED is off, like the gate',
+      /if \(PERMISSIONS_ENABLED\(\)\)/.test(admin.slice(at, admin.indexOf("savePermissions(", at))));
   }
 
   /**
@@ -165,6 +193,154 @@ console.log("\nthe dry run");
   check("an owner is reported as exempt rather than as losing nothing by luck",
     dryRun(emptyFile(), [{ login: "o", isControlHubAdmin: false, isAwsAdmin: false, isOrgOwner: true }])[0]
       .isOrgOwner === true);
+}
+
+console.log("\nchangeClasses: what a PUT /file write actually requires");
+{
+  /**
+   * `changeClasses` is what stops the five admin write permissions collapsing
+   * back into one: it is asked what a diff *does*, never what endpoint asked
+   * for it. Every case here asserts the relationship a diff has to require —
+   * "a diff that only touches `note` requires exactly `admin.people.override`"
+   * — never a character count or a call shape, which is how several other
+   * suites in this repo have already had to be rewritten once before.
+   */
+  const base = (): PermissionsFile => ({
+    version: 1,
+    presets: {
+      engineer: { name: "Engineer", grant: ["repos.read"] },
+      lead: { name: "Lead", inherits: "engineer", grant: ["pulls.mute"] },
+    },
+    teams: { platform: { presets: ["engineer"] } },
+    people: {
+      ana: { presets: ["engineer"], grant: ["deps.read"], note: "on the platform team" },
+    },
+  });
+
+  const eq = (a: string[], b: string[]) =>
+    a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
+
+  check("a no-op write requires nothing",
+    changeClasses(base(), base()).length === 0, changeClasses(base(), base()));
+
+  check("reordering a set (a person's presets) is still a no-op",
+    changeClasses(base(), {
+      ...base(),
+      people: { ana: { ...base().people.ana, presets: ["engineer"] } },
+    }).length === 0);
+
+  // ── person.presets: admin.people.assign, alone ──────────────────────
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, presets: ["engineer", "lead"] };
+    check("assigning a person a second preset requires exactly admin.people.assign",
+      eq(changeClasses(base(), after), ["admin.people.assign"]), changeClasses(base(), after));
+  }
+
+  // ── person.grant/revoke/note: admin.people.override, alone ──────────
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, grant: ["deps.read", "aws.costs.read"] };
+    check("granting a person something extra requires exactly admin.people.override",
+      eq(changeClasses(base(), after), ["admin.people.override"]), changeClasses(base(), after));
+  }
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, revoke: ["deps.age.read"] };
+    check("revoking something from a person requires exactly admin.people.override",
+      eq(changeClasses(base(), after), ["admin.people.override"]), changeClasses(base(), after));
+  }
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, note: "moved teams" };
+    check("a diff that only touches note requires exactly admin.people.override",
+      eq(changeClasses(base(), after), ["admin.people.override"]), changeClasses(base(), after));
+  }
+
+  // ── a brand new person, an entry removed ─────────────────────────────
+  {
+    const after = base();
+    after.people.ben = { presets: ["engineer"] };
+    check("a new person entry with presets requires admin.people.assign",
+      eq(changeClasses(base(), after), ["admin.people.assign"]), changeClasses(base(), after));
+  }
+  {
+    const before = base();
+    before.people.ben = { grant: ["overview.read"] };
+    const after = base();
+    check("removing a person entry that only held overrides requires admin.people.override",
+      eq(changeClasses(before, after), ["admin.people.override"]), changeClasses(before, after));
+  }
+
+  // ── teams: admin.people.assign ───────────────────────────────────────
+  {
+    const after = base();
+    after.teams = { platform: { presets: ["engineer", "lead"] } };
+    check("a changed team's presets requires admin.people.assign",
+      eq(changeClasses(base(), after), ["admin.people.assign"]), changeClasses(base(), after));
+  }
+
+  // ── presets: create, edit, delete, in isolation ──────────────────────
+  {
+    const after = base();
+    after.presets = { ...after.presets, manager: { name: "Manager" } };
+    check("a preset id that appears requires exactly admin.presets.create",
+      eq(changeClasses(base(), after), ["admin.presets.create"]), changeClasses(base(), after));
+  }
+  {
+    const after = base();
+    delete after.presets.lead;
+    check("a preset id that disappears requires exactly admin.presets.delete",
+      eq(changeClasses(base(), after), ["admin.presets.delete"]), changeClasses(base(), after));
+  }
+  {
+    const after = base();
+    after.presets = { ...after.presets, engineer: { ...after.presets.engineer, grant: ["repos.read", "pulls.read"] } };
+    check("changing an existing preset's grant requires exactly admin.presets.edit",
+      eq(changeClasses(base(), after), ["admin.presets.edit"]), changeClasses(base(), after));
+  }
+  {
+    const after = base();
+    after.presets = { ...after.presets, engineer: { ...after.presets.engineer, inherits: "lead" } };
+    check("changing an existing preset's inherits requires exactly admin.presets.edit",
+      eq(changeClasses(base(), after), ["admin.presets.edit"]), changeClasses(base(), after));
+  }
+
+  // ── a rename is an edit, not a create+delete ─────────────────────────
+  {
+    const after = base();
+    after.presets = { ...after.presets, engineer: { ...after.presets.engineer, name: "Software Engineer" } };
+    check("renaming a preset (same id, new `name`) is an edit, not a create and a delete",
+      eq(changeClasses(base(), after), ["admin.presets.edit"]), changeClasses(base(), after));
+  }
+
+  // ── the case the check exists for: never the most specific class alone ──
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, presets: ["engineer", "lead"] };
+    after.presets = { ...after.presets, lead: { ...after.presets.lead, grant: ["pulls.mute", "pulls.pause"] } };
+    check("assigning a preset and editing that preset in the same write requires both",
+      eq(changeClasses(base(), after), ["admin.people.assign", "admin.presets.edit"]),
+      changeClasses(base(), after));
+  }
+
+  // ── everything at once, nothing dropped ──────────────────────────────
+  {
+    const after = base();
+    after.people.ana = { ...after.people.ana, presets: ["lead"], grant: ["deps.read"], note: "promoted" };
+    after.people.ben = { presets: ["engineer"] };
+    after.teams = { platform: { presets: ["lead"] } };
+    after.presets = {
+      engineer: after.presets.engineer,
+      manager: { name: "Manager" },
+    }; // lead deleted, manager created, engineer untouched
+    const got = changeClasses(base(), after);
+    check("every class present shows up at once, in one diff",
+      eq(got, [
+        "admin.people.assign", "admin.people.override",
+        "admin.presets.create", "admin.presets.delete",
+      ]), got);
+  }
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

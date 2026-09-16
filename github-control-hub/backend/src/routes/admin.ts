@@ -1,9 +1,10 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { requirePermission } from "../middleware/permissionGate";
+import { requirePermission, requireAnyPermission, PERMISSIONS_ENABLED } from "../middleware/permissionGate";
 import {
   loadPermissions, savePermissions, isFailure, unknownNodesIn, fileProblems,
-  forgetPermissions, accessForOther, PERMISSIONS,
+  forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
+  changeClasses, explainPreset,
 } from "../permissions";
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
 import { emptyFile, type PermissionsFile } from "../permissions/types";
@@ -48,7 +49,25 @@ router.get("/file", requirePermission("admin.people.read"), async (_req: Request
   }
 });
 
-router.put("/file", requirePermission("admin.people.assign"), async (req: Request, res: Response) => {
+/**
+ * This receives a whole file, the same shape whether the caller only meant to
+ * change one person's note or meant to rewrite every preset in the
+ * organization. `requireAnyPermission` below is a cheap rejection of somebody
+ * with no admin write authority at all — it is not the whole answer, because
+ * every one of the five admin write permissions reaches this one route.
+ *
+ * `changeClasses` derives what the write actually does from the diff against
+ * what is currently stored, and the handler requires every class it names —
+ * never just the most specific one — the same rule `config.import` follows
+ * for its own multi-section bundle.
+ */
+router.put(
+  "/file",
+  requireAnyPermission(
+    "admin.people.assign", "admin.people.override",
+    "admin.presets.create", "admin.presets.edit", "admin.presets.delete",
+  ),
+  async (req: Request, res: Response) => {
   const { file, sha, summary } = req.body ?? {};
 
   if (typeof summary !== "string" || summary.trim().length === 0 || summary.length >= 200) {
@@ -57,6 +76,40 @@ router.put("/file", requirePermission("admin.people.assign"), async (req: Reques
   }
 
   try {
+    /**
+     * Off by default, exactly like the gate above: with `PERMISSIONS_ENABLED`
+     * unset this has to stay inert, or an install that never turned the
+     * subsystem on would start losing writes to a check nobody asked for.
+     */
+    if (PERMISSIONS_ENABLED()) {
+      // The same cached read `requireAnyPermission` just made.
+      const access = await accessForSelf(req.user!.login, req.user!.accessToken);
+
+      // No organization, no file, nothing to decide — same as the gate.
+      if (!access.inert) {
+        if (access.failure) {
+          res.status(503).json({
+            code: "PERMISSIONS_UNAVAILABLE",
+            error: `Permissions could not be read, so this cannot be allowed or refused. ${access.failure.detail}`,
+          });
+          return;
+        }
+
+        const loadedBefore = await loadPermissions();
+        const before = isFailure(loadedBefore) ? emptyFile() : loadedBefore.file;
+        const required = changeClasses(before, file as PermissionsFile);
+        const missing = required.find(key => !access.permissions.has(key));
+        if (missing) {
+          res.status(403).json({
+            code: "PERMISSION_REQUIRED",
+            permission: missing,
+            error: `This change needs the "${missing}" permission, which you do not have.`,
+          });
+          return;
+        }
+      }
+    }
+
     // sha is the blob the editor loaded; savePermissions refuses rather than
     // clobbering a concurrent edit if it has moved on.
     const result = await savePermissions(file as PermissionsFile, sha ?? null, req.user!.login, summary);
@@ -106,6 +159,29 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
     }
   });
 
+/**
+ * What one preset's `inherits` chain grants, leaf by leaf — the same
+ * `explanations` shape `GET /person/:login` returns, computed by the
+ * server's own `resolvePreset` rather than a client-side port of it.
+ *
+ * Resolves from the *stored* file, which is what lets the Presets editor ask
+ * this for a chain it has not saved yet: `:id` names whichever existing
+ * preset the `inherits` field currently points at, not the preset being
+ * edited itself.
+ */
+router.get("/preset/:id/resolved", requirePermission("admin.presets.read"), async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const loaded = await loadPermissions();
+    const file = isFailure(loaded) ? emptyFile() : loaded.file;
+    const explanations = explainPreset(file.presets ?? {}, req.params.id);
+    const held = Object.entries(explanations).filter(([, e]) => e.held).map(([key]) => key).sort();
+
+    res.json({ presetId: req.params.id, held, explanations });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "admin") });
+  }
+});
+
 router.get("/audit", requirePermission("admin.audit.read"), async (_req: Request, res: Response) => {
   try {
     const octokit = createOctokit(getSystemToken(), "Permissions");
@@ -126,6 +202,9 @@ router.get("/audit", requirePermission("admin.audit.read"), async (_req: Request
   }
 });
 
+// Writes a whole file too, but never over one `changeClasses` could be asked
+// to diff: it only ever creates an *empty* file, so there is nothing here to
+// launder a people/preset change past that check.
 router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: Request, res: Response) => {
   const createRepo = req.body?.createRepo === true;
 
@@ -238,6 +317,10 @@ router.get("/dry-run", requirePermission("admin.people.read"), async (_req: Requ
   }
 });
 
+// Writes a whole file too, but refuses outright when `permissions.json`
+// already names anyone (see the 409 below) — so it can only ever generate a
+// starting file for an organization that has none, never overwrite one
+// `changeClasses` could be asked to diff a real people/preset change past.
 router.post("/migrate", requirePermission("admin.people.assign"), async (req: Request, res: Response) => {
   try {
     const loaded = await loadPermissions();

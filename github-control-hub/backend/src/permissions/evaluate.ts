@@ -1,4 +1,4 @@
-import type { PermissionsFile, PermissionEntry } from "./types";
+import type { PermissionsFile, PermissionEntry, Preset } from "./types";
 import { resolvePreset, type Rule } from "./presets";
 import { isKnownNode, isUnder, PERMISSIONS } from "./vocabulary";
 
@@ -194,4 +194,35 @@ export function permissionsFor(file: PermissionsFile, subject: Subject): Permiss
       };
     },
   };
+}
+
+/**
+ * What one preset's own `inherits` chain grants, leaf by leaf — the same
+ * per-leaf shape `permissionsFor(...).explain` returns for a whole person,
+ * computed here from a single chain rather than from a person's teams, presets
+ * and own entries layered together.
+ *
+ * `frontend/src/api/admin.ts` used to hand-port `resolvePreset` for exactly
+ * this — down to a duplicated `MAX_INHERIT_DEPTH` — so the Presets editor could
+ * show what an `inherits` selection actually grants before it is saved. A hand
+ * port is a drift hazard: if the tie rule or the depth cap ever changes here,
+ * that screen would quietly start lying about what a preset grants. This is
+ * what the admin route now serves instead, over `resolvePreset` itself rather
+ * than a copy of it.
+ *
+ * A single chain needs no `layer` of its own to compete against — there is
+ * only ever one candidate rule per node here, so every rule is placed at
+ * layer 0 and `decideLeaf`'s depth-then-revoke tie-break applies within the
+ * chain exactly as `resolvePreset` already resolved it.
+ */
+export function explainPreset(presets: Record<string, Preset>, id: string): Record<string, Explanation> {
+  const rules: LayeredRule[] = resolvePreset(presets, id, "preset").map(r => ({ ...r, layer: 0 }));
+  const out: Record<string, Explanation> = {};
+  for (const { key } of PERMISSIONS) {
+    const decision = decideLeaf(key, rules);
+    out[key] = decision.rule
+      ? { held: decision.held, reason: decision.held ? "granted" : "revoked", origin: decision.rule.origin }
+      : { held: false, reason: "not granted", origin: null };
+  }
+  return out;
 }

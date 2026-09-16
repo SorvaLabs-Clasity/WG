@@ -191,16 +191,15 @@ console.log("\nthe gate is complete, in both directions");
     invented.length === 0, invented);
 
   /**
-   * `admin.*` is excepted because the admin console's own routes do not exist
-   * yet — stage 4 builds them.
-   *
-   * **Stage 4 must delete this exception.** Once those routes are written,
-   * every `admin.*` key has a route to name it, and leaving the filter here
-   * would mean the one branch that hands out every other permission is the one
-   * branch nothing checks. It is a scaffold with a removal date, not a rule.
+   * The `admin.*` exception this check used to carry is gone: every
+   * `admin.*` key now has a route that names it, including the five write
+   * permissions `PUT /file` used to collapse into one — `changeClasses` gave
+   * each of them a literal `requireAnyPermission(...)` mention on that route
+   * for exactly this reason, so the one branch that hands out every other
+   * permission is no longer the one branch nothing checks.
    */
-  const unused = [...vocabulary].filter(k => !named.has(k) && !k.startsWith("admin."));
-  check("every permission is named by at least one route (admin.* excepted, stage 4)",
+  const unused = [...vocabulary].filter(k => !named.has(k));
+  check("every permission is named by at least one route",
     unused.length === 0, unused.slice(0, 12));
 
   check("  and every exemption says why",
