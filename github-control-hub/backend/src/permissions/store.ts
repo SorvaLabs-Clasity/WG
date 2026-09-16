@@ -1,6 +1,7 @@
 import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import { emptyFile, type PermissionsFile } from "./types";
 import { fileProblems, isUsable } from "./validate";
+import { testHooks } from "./testing";
 
 /**
  * Where the permissions live, and how they are read.
@@ -96,6 +97,9 @@ export async function loadPermissions(now = Date.now()): Promise<LoadedPermissio
 }
 
 async function read(): Promise<LoadedPermissions | LoadFailure> {
+  const hooked = testHooks()?.loadFile;
+  if (hooked) return hooked();
+
   // An AWS-only install has no GitHub organization and no repository to hold a
   // file. The system is inert there; stage 3's gate reads this reason and lets
   // everything through.

@@ -17,7 +17,8 @@ import {
 } from "./src/permissions/store";
 import { forgetSubjects, subjectFor } from "./src/permissions/subject";
 import { PERMISSIONS } from "./src/permissions/vocabulary";
-import { accessFor } from "./src/permissions/index";
+import { accessForSelf, accessForOther } from "./src/permissions/index";
+import { setPermissionsTestHooks } from "./src/permissions/testing";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -374,9 +375,18 @@ console.log("\nthe one question the app asks");
   check("it composes the store, the subject and the engine",
     /loadPermissions/.test(index) && /subjectFor/.test(index) && /permissionsFor/.test(index));
 
-  check("  and it passes the caller's own token as their own",
-    /subjectFor\(login, \{ ownToken: userToken \}\)/.test(index),
+  check("  and accessForSelf passes the caller's own token as their own",
+    /subjectFor\(login, \{ ownToken \}\)/.test(index),
     "anything else attributes one person's teams to another");
+
+  /**
+   * The structural half of the fix: `accessForOther` cannot forward a token
+   * it does not have. A doc comment saying "don't pass somebody else's
+   * token" is a promise nothing enforces; a missing parameter is.
+   */
+  check("  while accessForOther declares exactly one parameter, so it has no token to misuse",
+    /export async function accessForOther\(login: string\): Promise<Access> \{/.test(index),
+    "a second parameter here would let a dry-run diff reuse the operator's token");
 
   /**
    * AWS-only installs have no GitHub organization and no repository to hold a
@@ -403,7 +413,7 @@ console.log("\nthe one question the app asks");
   check("unknown nodes are surfaced rather than swallowed",
     /unknownNodesIn/.test(index));
 
-  check("nothing below accessFor may reject",
+  check("nothing below accessForSelf/accessForOther may reject",
     /} catch \(err: any\) \{/.test(index) && /reason: "unreachable"/.test(index));
 }
 
@@ -422,7 +432,7 @@ console.log("\nthe one question the app asks");
     forgetPermissions();
     forgetSubjects();
 
-    const access = await accessFor("anybody");
+    const access = await accessForOther("anybody");
     check("it is flagged inert", access.inert === true, access.inert);
     check("  and says why", access.failure?.reason === "aws-only", access.failure);
     check("  and every check passes", access.permissions.has("admin.presets.delete")
@@ -480,13 +490,13 @@ console.log("\nthe one question the app asks");
     forgetSubjects();
 
     let rejected = false;
-    let access: Awaited<ReturnType<typeof accessFor>> | null = null;
+    let access: Awaited<ReturnType<typeof accessForSelf>> | null = null;
     try {
-      access = await accessFor("anybody", "a-token-belonging-to-anybody");
+      access = await accessForSelf("anybody", "a-token-belonging-to-anybody");
     } catch {
       rejected = true;
     }
-    check("accessFor does not reject when the organization is unset", !rejected);
+    check("accessForSelf does not reject when the organization is unset", !rejected);
     check("  it returns a closed answer instead",
       access !== null && access.permissions.held.length === 0, access?.permissions.held);
     check("  with a reason on it", access?.failure != null, access?.failure);
@@ -497,6 +507,55 @@ console.log("\nthe one question the app asks");
 
     if (org === undefined) delete process.env.GITHUB_ORG; else process.env.GITHUB_ORG = org;
     if (awsOnly === undefined) delete process.env.AWS_ONLY; else process.env.AWS_ONLY = awsOnly;
+    forgetPermissions();
+    forgetSubjects();
+  }
+
+  console.log("\nteams belong to the person they were read for");
+  {
+    /**
+     * The Critical stage 2's review found, tested by behaviour rather than by
+     * grepping the source. `teams.listForAuthenticatedUser` takes no username, so
+     * an implementation that passes the wrong token attributes one person's teams
+     * to another — and the old tests would have passed through that bug.
+     *
+     * Stage 3 found the same defect one level up: `accessFor(login, userToken)`
+     * forwarded whatever token it was given as `ownToken`, unconditionally, with
+     * the "must belong to login" rule stated only in a doc comment. Fixed
+     * structurally instead: `accessForSelf` takes a token and is the only one
+     * that can hand it to `subjectFor`; `accessForOther` takes no token
+     * parameter at all, so there is nothing for it to misuse.
+     */
+    setPermissionsTestHooks({
+      loadFile: () => ({ file: { version: 1, presets: {},
+        teams: { admins: { grant: ["aws"] } }, people: {} }, sha: "x", source: "github" }),
+      ownTeams: (token: string) => token === "admin-token" ? ["admins"] : [],
+      teamsOf: (login: string) => login === "an-admin" ? ["admins"] : [],
+      ownerOf: () => false,
+    });
+
+    const self = await accessForSelf("an-admin", "admin-token");
+    check("your own token gives you your own teams", self.permissions.has("aws.rules.read"));
+
+    // The bug: inspecting somebody else must go through a function that has no
+    // token to lend them in the first place.
+    const other = await accessForOther("somebody-else");
+    check("inspecting somebody else does not lend them your teams",
+      !other.permissions.has("aws.rules.read"),
+      "an admin's teams were being attributed to whoever they inspected");
+
+    // And the misattribution must not be cached against them either.
+    const otherAgain = await accessForOther("somebody-else");
+    check("  nor is it cached against them",
+      !otherAgain.permissions.has("aws.rules.read"));
+
+    // Not just that this test happens not to pass a token — the signature
+    // itself accepts none, so no future caller can reintroduce the bug.
+    const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
+    check("  and accessForOther's signature accepts no token to misuse",
+      /export async function accessForOther\(login: string\): Promise<Access> \{/.test(index));
+
+    setPermissionsTestHooks(null);
     forgetPermissions();
     forgetSubjects();
   }
