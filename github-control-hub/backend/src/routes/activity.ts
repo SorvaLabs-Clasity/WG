@@ -26,6 +26,7 @@ import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 import {
   createBranch,
   deleteBranch,
@@ -169,7 +170,7 @@ function isAwsRow(action: string): boolean {
  * made the pager stop at page two whatever the table held and made search blind
  * to anything older. Filters are query parameters now, and the cursor is opaque.
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.actor", "activity.read.github"), async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const repo = req.query.repo as string | undefined;
   const cursor = req.query.cursor as string | undefined;
@@ -263,7 +264,7 @@ async function refuseGithubRow(res: Response, action: string): Promise<boolean> 
   return true;
 }
 
-router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => {
+router.post("/:id/undo", requireAnyPermission("activity.undo.repo", "activity.undo.app", "activity.undo.aws"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const entry = await getActivityById(req.params.id);
     if (!entry) {
@@ -353,7 +354,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
   }
 });
 
-router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => {
+router.post("/:id/redo", requireAnyPermission("activity.undo.repo", "activity.undo.app", "activity.undo.aws"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const entry = await getActivityById(req.params.id);
     if (!entry) {
@@ -437,7 +438,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
   }
 });
 
-router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) => {
+router.post("/:id/retry", requirePermission("activity.retry"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const entry = await getActivityById(req.params.id);
     if (!entry) {
@@ -544,7 +545,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
  * already carried out.
  */
 
-router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Response) => {
+router.post("/:id/undo-resolution", requirePermission("activity.resolution.undo"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const entry = await getActivityById(req.params.id);
     if (!entry) { res.status(404).json({ error: "Activity entry not found" }); return; }
@@ -1101,7 +1102,7 @@ let pulseCache: { at: number; hours: number; tz: string; awsOnly: boolean; value
 // of rows. The client still polls every minute and is served from here.
 const PULSE_TTL_MS = 5 * 60_000;
 
-router.get("/pulse", async (req: Request, res: Response) => {
+router.get("/pulse", requirePermission("activity.pulse.read"), async (req: Request, res: Response) => {
   try {
     const hours = Math.min(Math.max(Number(req.query.hours) || 168, 1), 24 * 90);
     // The reader's own zone, so "busiest hour" is an hour they recognise. Kept
@@ -1125,7 +1126,7 @@ router.get("/pulse", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/detailed-logging", async (req: Request, res: Response) => {
+router.get("/detailed-logging", requirePermission("activity.detailedLogging.read"), async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
@@ -1139,7 +1140,7 @@ router.get("/detailed-logging", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/detailed-logging", async (req: Request, res: Response) => {
+router.put("/detailed-logging", requirePermission("activity.detailedLogging.manage"), async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",

@@ -24,6 +24,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { logActivity } from "../services/activityService";
 import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
 import { listGuardrails } from "../aws-guardrails/store";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -173,7 +174,7 @@ function templateProblem(
 
 // ── what a widget can be alarmed on ───────────────────────────────────
 
-router.get("/variables", (_req: Request, res: Response) => {
+router.get("/variables", requirePermission("alarms.org.read"), (_req: Request, res: Response) => {
   res.json(TEMPLATE_VARIABLES);
 });
 
@@ -198,7 +199,7 @@ async function subjectFor(id: string): Promise<{ id: string; title?: string; typ
   return (await getWidget(id)) as any;
 }
 
-router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) => {
+router.get("/widgets/:widgetId/conditions", requirePermission("alarms.org.read"), async (req: Request, res: Response) => {
   const widget = await subjectFor(String(req.params.widgetId));
   if (!widget) return res.status(404).json({ error: "Widget not found" });
   res.json({
@@ -219,7 +220,7 @@ router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) 
 
 // ── alarms ────────────────────────────────────────────────────────────
 
-router.get("/", async (_req: Request, res: Response) => {
+router.get("/", requirePermission("alarms.org.read"), async (_req: Request, res: Response) => {
   try {
     // The organization's, never anybody's own. A personal alarm watches a card
     // only its owner can see, so listing it here would put a stranger's private
@@ -256,7 +257,7 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", requireAnyPermission("alarms.org.create", "aws.rules.edit"), async (req: Request, res: Response) => {
   try {
     const { widgetId, name, condition, groupId, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate,
@@ -326,7 +327,7 @@ function withoutHooks(g: any) {
   return { ...g, teamsRecipients: g.teamsRecipients ?? [] };
 }
 
-router.get("/groups", async (_req: Request, res: Response) => {
+router.get("/groups", requirePermission("alarms.groups.read"), async (_req: Request, res: Response) => {
   try {
     // Organization groups only. A personal group is where one person's own
     // alarms land; offering it here would let an administrator point an
@@ -352,7 +353,7 @@ router.get("/groups", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/groups", requireAdmin, async (req: Request, res: Response) => {
+router.post("/groups", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const name = String(req.body?.name ?? "").trim();
     if (!name) return res.status(400).json({ error: "A group needs a name" });
@@ -365,7 +366,7 @@ router.post("/groups", requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/groups/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/groups/:id", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -392,7 +393,7 @@ router.delete("/groups/:id", requireAdmin, async (req: Request, res: Response) =
   }
 });
 
-router.post("/groups/:id/members", requireAdmin, async (req: Request, res: Response) => {
+router.post("/groups/:id/members", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -422,7 +423,7 @@ router.post("/groups/:id/members", requireAdmin, async (req: Request, res: Respo
   }
 });
 
-router.delete("/groups/:id/members", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/groups/:id/members", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const subscriptionArn = String(req.query.subscriptionArn ?? "");
     if (!subscriptionArn) return res.status(400).json({ error: "subscriptionArn is required" });
@@ -469,7 +470,7 @@ router.delete("/groups/:id/members", requireAdmin, async (req: Request, res: Res
  * Lambda posts to whatever is stored here with no further checks, so anything
  * accepted is somewhere the app will send alarm text.
  */
-router.post("/groups/:id/teams", requireAdmin, async (req: Request, res: Response) => {
+router.post("/groups/:id/teams", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -496,7 +497,7 @@ router.post("/groups/:id/teams", requireAdmin, async (req: Request, res: Respons
   }
 });
 
-router.delete("/groups/:id/teams/:address", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/groups/:id/teams/:address", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -537,7 +538,7 @@ router.delete("/groups/:id/teams/:address", requireAdmin, async (req: Request, r
  *
  * Unset means the group's zone, and an unset group means the organization's.
  */
-router.put("/groups/:id/people/:address/timezone", requireAdmin, async (req: Request, res: Response) => {
+router.put("/groups/:id/people/:address/timezone", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -582,7 +583,7 @@ router.put("/groups/:id/people/:address/timezone", requireAdmin, async (req: Req
  * One value for the whole group, because one email reaches every subscriber
  * with the same body.
  */
-router.put("/groups/:id/timezone", requireAdmin, async (req: Request, res: Response) => {
+router.put("/groups/:id/timezone", requireAdmin, requirePermission("alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -608,7 +609,7 @@ router.put("/groups/:id/timezone", requireAdmin, async (req: Request, res: Respo
  * Set once, by an administrator. Everybody else supplies an address and never
  * opens Power Automate.
  */
-router.get("/teams-flow", async (_req: Request, res: Response) => {
+router.get("/teams-flow", requirePermission("alarms.teamsFlow.read"), async (_req: Request, res: Response) => {
   try {
     const { getOrgConfig } = await import("../services/orgConfigService");
     const flow = (await getOrgConfig()).teamsFlow;
@@ -620,7 +621,7 @@ router.get("/teams-flow", async (_req: Request, res: Response) => {
   }
 });
 
-router.put("/teams-flow", requireAdmin, async (req: Request, res: Response) => {
+router.put("/teams-flow", requireAdmin, requirePermission("alarms.teamsFlow.manage"), async (req: Request, res: Response) => {
   try {
     const { setTeamsFlow } = await import("../services/orgConfigService");
     const raw = String(req.body?.url ?? "").trim();
@@ -645,7 +646,7 @@ router.put("/teams-flow", requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/groups/:id/test", requireAdmin, async (req: Request, res: Response) => {
+router.post("/groups/:id/test", requireAdmin, requirePermission("alarms.groups.test"), async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -670,11 +671,11 @@ router.post("/groups/:id/test", requireAdmin, async (req: Request, res: Response
 
 // ── the security-tab toggle ───────────────────────────────────────────
 
-router.get("/security", async (_req: Request, res: Response) => {
+router.get("/security", requirePermission("alarms.security.read"), async (_req: Request, res: Response) => {
   res.json(await getSecuritySettings());
 });
 
-router.put("/security", requireAdmin, async (req: Request, res: Response) => {
+router.put("/security", requireAdmin, requirePermission("alarms.security.manage"), async (req: Request, res: Response) => {
   try {
     const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate, timezone } = req.body ?? {};
@@ -716,7 +717,7 @@ router.put("/security", requireAdmin, async (req: Request, res: Response) => {
 
 const FEEDS = ["renovate-pr", "dependabot-alert"] as const;
 
-router.get("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response) => {
+router.get("/feeds/:feed", requirePermission("alarms.feeds.read"), async (req: Request<{ feed: string }>, res: Response) => {
   const feed = String(req.params.feed);
   if (!(FEEDS as readonly string[]).includes(feed)) {
     return res.status(404).json({ error: "Unknown notification feed" });
@@ -728,7 +729,7 @@ router.get("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
   }
 });
 
-router.put("/feeds/:feed", requireAdmin, async (req: Request<{ feed: string }>, res: Response) => {
+router.put("/feeds/:feed", requireAdmin, requirePermission("alarms.feeds.manage"), async (req: Request<{ feed: string }>, res: Response) => {
   const feed = String(req.params.feed);
   if (!(FEEDS as readonly string[]).includes(feed)) {
     return res.status(404).json({ error: "Unknown notification feed" });
@@ -782,7 +783,7 @@ router.put("/feeds/:feed", requireAdmin, async (req: Request<{ feed: string }>, 
 // `/feeds/:feed` is two segments and cannot collide, but it is registered above
 // anyway: the rule that keeps this working is position, not path shape.
 
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", requireAnyPermission("alarms.org.edit", "aws.rules.edit"), async (req: Request, res: Response) => {
   try {
     const existing = await getAlarm(String(req.params.id));
     if (!existing) return res.status(404).json({ error: "Alarm not found" });
@@ -830,7 +831,7 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", requireAnyPermission("alarms.org.delete", "aws.rules.edit"), async (req: Request, res: Response) => {
   const existing = await getAlarm(String(req.params.id));
   // Absent and somebody-else's answer identically here: on this route a
   // personal alarm is not a thing that exists.
