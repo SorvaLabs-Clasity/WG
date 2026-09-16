@@ -91,13 +91,35 @@ function presetsFor(member: MemberSnapshot): string[] {
 }
 
 /**
+ * A fresh copy of the three presets, never the module-level object itself.
+ *
+ * `emptyFile()`'s docblock gives the reason and this function used to ignore
+ * it: handing out a shared reference means one consumer that pushes a node
+ * into `PRESETS.member.grant` widens what "member" means for every file the
+ * process builds afterwards. `dryRun` below now builds one starting file per
+ * member, so the shared reference would be handed out once per person per
+ * dry-run rather than once per migration.
+ */
+function clonePresets(): Record<string, Preset> {
+  const out: Record<string, Preset> = {};
+  for (const [id, preset] of Object.entries(PRESETS)) {
+    out[id] = {
+      ...preset,
+      ...(preset.grant ? { grant: [...preset.grant] } : {}),
+      ...(preset.revoke ? { revoke: [...preset.revoke] } : {}),
+    };
+  }
+  return out;
+}
+
+/**
  * A permissions file that reproduces today's access exactly: everybody named,
  * everybody holding the preset (or two) matching their current team
  * membership.
  */
 export function startingFile(members: MemberSnapshot[]): PermissionsFile {
   const file = emptyFile();
-  file.presets = PRESETS;
+  file.presets = clonePresets();
   for (const member of members) {
     file.people[member.login.toLowerCase()] = { presets: presetsFor(member) };
   }
@@ -106,7 +128,7 @@ export function startingFile(members: MemberSnapshot[]): PermissionsFile {
 
 export interface DryRunRow {
   login: string;
-  /** Leaves this person holds today (under the `member` baseline) but would not under `file`. */
+  /** Leaves this person holds today — under their *own* standing — but would not under `file`. */
   losing: string[];
   /** How many leaves this person would hold under `file`. */
   keeping: number;
@@ -120,24 +142,31 @@ function subjectOf(login: string, isOrgOwner: boolean): Subject {
 
 /**
  * For each member, what they would lose if `file` were the permissions file
- * enforcement used today, compared against the one baseline everybody shares:
- * the `member` preset, which is what a plain signed-in person can do now.
+ * enforcement used today.
+ *
+ * **The baseline is each person's own current standing, not a constant.** It
+ * used to be the `member` preset for everybody, which made `losing`
+ * structurally incapable of naming anything above plain-member level: no
+ * `admin.*`, no `aws.*`, no `access.*`. A file that stripped every
+ * administrator and every AWS operator of everything they hold reported a
+ * clean dry-run, and `docs/operations/setup.md` makes that column the gate on
+ * the whole flip — "anything in the 'would lose' column is a decision to make
+ * *before* the flip". An operator reading an empty column turns enforcement on.
+ *
+ * `startingFile([member])` is exactly today's access for one person: the
+ * presets their own `isControlHubAdmin` / `isAwsAdmin` standing earns them,
+ * resolved by the same engine that will decide it after the flip. Comparing
+ * against that is the comparison the screen claims to be making.
  *
  * An empty file loses everybody everything. `startingFile`'s whole purpose is
  * for this to report nothing lost for anybody — that is the proof the flip is
  * survivable, not merely an assertion that it is.
  */
 export function dryRun(file: PermissionsFile, members: MemberSnapshot[]): DryRunRow[] {
-  const baselineFile: PermissionsFile = { ...emptyFile(), presets: { member: PRESETS.member } };
-
   return members.map(member => {
     const subject = subjectOf(member.login, member.isOrgOwner);
-    const key = member.login.toLowerCase();
 
-    const baseline = permissionsFor(
-      { ...baselineFile, people: { [key]: { presets: ["member"] } } },
-      subject,
-    );
+    const baseline = permissionsFor(startingFile([member]), subject);
     const actual = permissionsFor(file, subject);
 
     const losing = baseline.held.filter(leaf => !actual.has(leaf));
