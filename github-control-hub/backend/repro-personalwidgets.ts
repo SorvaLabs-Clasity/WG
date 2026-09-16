@@ -41,7 +41,7 @@ function handler(marker: string): string {
       /owner\?: string;/.test(service),
       "optional, so every widget created before this is shared and needs no migration");
 
-    const list = handler('router.get("/", async');
+    const list = handler('router.get("/",');
     check("asking without a scope returns only the shared board",
       /: !w\.owner/.test(list),
       "otherwise everybody's personal cards appear on the Overview tab");
@@ -57,7 +57,7 @@ function handler(marker: string): string {
 
   // ── whose board a card lands on ─────────────────────────────────────
   {
-    const create = handler('router.post("/", async');
+    const create = handler('router.post("/",');
     check("the owner comes from the session",
       /const owner = personal \? req\.user!\.login : undefined;/.test(create),
       "an owner read from the body is a way to post a card to a colleague's dashboard");

@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import { requireControlHubAdmin } from "../middleware/teamGate";
+import { requirePermission } from "../middleware/permissionGate";
 import {
   accessSummary, accessForUser, accessForRepo, knownRepos, invalidateAccessMap,
 } from "../services/accessMapService";
@@ -33,7 +34,7 @@ const router = Router();
  */
 router.use(requireControlHubAdmin);
 
-router.get("/summary", async (_req: Request, res: Response) => {
+router.get("/summary", requirePermission("access.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await accessSummary());
   } catch (err) {
@@ -41,7 +42,7 @@ router.get("/summary", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/user/:login", async (req: Request<{ login: string }>, res: Response) => {
+router.get("/user/:login", requirePermission("access.people.read"), async (req: Request<{ login: string }>, res: Response) => {
   try {
     res.json(await accessForUser(req.params.login));
   } catch (err) {
@@ -49,7 +50,7 @@ router.get("/user/:login", async (req: Request<{ login: string }>, res: Response
   }
 });
 
-router.get("/repo/:repo", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/repo/:repo", requirePermission("access.repos.read"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     res.json(await accessForRepo(req.params.repo));
   } catch (err) {
@@ -57,7 +58,7 @@ router.get("/repo/:repo", async (req: Request<{ repo: string }>, res: Response) 
   }
 });
 
-router.get("/teams", async (_req: Request, res: Response) => {
+router.get("/teams", requirePermission("access.teams.read"), async (_req: Request, res: Response) => {
   try {
     const { teamSummary } = await import("../services/accessMapService");
     res.json(await teamSummary());
@@ -66,7 +67,7 @@ router.get("/teams", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/team/:slug", async (req: Request<{ slug: string }>, res: Response) => {
+router.get("/team/:slug", requirePermission("access.teams.read"), async (req: Request<{ slug: string }>, res: Response) => {
   try {
     const { accessForTeam } = await import("../services/accessMapService");
     res.json(await accessForTeam(String(req.params.slug)));
@@ -75,7 +76,7 @@ router.get("/team/:slug", async (req: Request<{ slug: string }>, res: Response) 
   }
 });
 
-router.get("/repos", async (_req: Request, res: Response) => {
+router.get("/repos", requirePermission("access.repos.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await knownRepos());
   } catch (err) {
@@ -93,7 +94,7 @@ router.get("/repos", async (_req: Request, res: Response) => {
  * not showing needs to see that this ran and that it was not the thing that
  * would have helped.
  */
-router.post("/refresh", async (req: Request, res: Response) => {
+router.post("/refresh", requirePermission("access.refresh"), async (req: Request, res: Response) => {
   const startedAt = Date.now();
   invalidateAccessMap();
   await logSync("access", req.user?.login ?? SCHEDULE_ACTOR, {

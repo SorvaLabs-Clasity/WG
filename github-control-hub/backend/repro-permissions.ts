@@ -24,7 +24,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
 console.log("the vocabulary");
 {
-  check("every permission in the vocabulary is present", PERMISSIONS.length === 101, PERMISSIONS.length);
+  check("every permission in the vocabulary is present", PERMISSIONS.length === 104, PERMISSIONS.length);
 
   /**
    * The rule the whole tree rests on. If `activity.read.app` were both a
