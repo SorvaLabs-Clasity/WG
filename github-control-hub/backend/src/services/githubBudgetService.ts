@@ -432,6 +432,17 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
     scalesWith: "how often it is asked",
     note: "Runs on the asker's own token, so it draws on their allowance.",
   },
+  "Permissions": {
+    trigger: "Any request that needs a permission decision, at most once every "
+      + "60 seconds because the answer is cached",
+    endpoints: ["GET /repos/{o}/{r}/contents/{path}"],
+    files: ["permissions/store.ts"],
+    scalesWith: "nothing",
+    note: "Reads permissions.json from the private permissions repository, "
+      + "with the App's own token rather than the caller's. One request "
+      + "however large the organization is. Writes happen only from the "
+      + "Admin tab.",
+  },
   "Reading this page": {
     trigger: "Opening this tab",
     endpoints: ["GET /rate_limit"],

@@ -141,5 +141,64 @@ console.log("\nreading the file");
     /forgetPermissions/.test(store));
 }
 
+console.log("\nfileProblems is total: it reports, it never throws");
+{
+  /**
+   * `fileProblems` runs on arbitrary parsed JSON — somebody's hand-edit —
+   * and `store.ts` gates every request on it. A throw here is not "a
+   * rejection with extra steps": the caller treats a throw differently from
+   * a returned list of problems, so a throw is a fail-*OPEN* path. Every
+   * shape below used to crash `presetProblems` reaching into a `null` entry
+   * that `validate.ts` had reported but not removed.
+   */
+  const safely = (raw: unknown) => {
+    try {
+      return { threw: false, problems: fileProblems(raw) };
+    } catch (e) {
+      return { threw: true, problems: [] as ReturnType<typeof fileProblems> };
+    }
+  };
+
+  const cases: Array<[string, unknown]> = [
+    ["a null preset", { version: 1, presets: { a: null }, teams: {}, people: {} }],
+    ["a preset that is a string", { version: 1, presets: { a: "text" }, teams: {}, people: {} }],
+    ["a null team", { version: 1, presets: {}, teams: { t: null }, people: {} }],
+    ["a null person", { version: 1, presets: {}, teams: {}, people: { p: null } }],
+  ];
+  for (const [name, raw] of cases) {
+    const result = safely(raw);
+    check(`  ${name} does not throw`, !result.threw);
+    check(`    and is reported as a problem`, result.problems.length > 0, result.problems);
+  }
+}
+
+console.log("\na malformed presets assignment is a problem, not a silent no-op");
+{
+  // `presets: "engineer"` is not an array. Reading "not an array" as "no
+  // presets assigned" makes a broken assignment look unused rather than
+  // broken, and grants nothing where the file asked for something.
+  const malformed = { version: 1, presets: {}, teams: {},
+    people: { p: { presets: "engineer" } } };
+  check("a person with a non-array presets value is not usable", !isUsable(malformed));
+  check("  and the problem names the person",
+    fileProblems(malformed).some(p => p.where === "people.p"), fileProblems(malformed));
+
+  // Absent is still fine — this is what the earlier behaviour must not
+  // regress.
+  const absent = { version: 1, presets: {}, teams: {}, people: { p: { grant: ["me"] } } };
+  check("  while a person with no presets at all is still usable", isUsable(absent));
+}
+
+console.log("\na preset with no name is reported once, not twice");
+{
+  // `validate.ts` reports it at the specific `presets.<id>`; `presetProblems`
+  // (stage 1's own checker) reports the same defect again at the coarser
+  // `presets`, because it has no per-id location. One defect, one problem.
+  const nameless = { version: 1, presets: { a: {} }, teams: {}, people: {} };
+  const p = fileProblems(nameless);
+  check("exactly one problem is reported for one nameless preset", p.length === 1, p);
+  check("  and it is the specific one", p[0]?.where === "presets.a", p);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -67,11 +67,20 @@ export function fileProblems(raw: unknown): FileProblem[] {
   const teams = (isObject(raw.teams) ? raw.teams : {}) as Record<string, PermissionEntry & { presets?: string[] }>;
   const people = (isObject(raw.people) ? raw.people : {}) as Record<string, PermissionEntry & { presets?: string[] }>;
 
+  // Filtered to entries that are actually objects, and never the caller's
+  // `presets` itself: `presetProblems` (and, through it, `resolvePreset`) is
+  // stage 1's code, written to assume a well-formed map. Handing it a `null`
+  // or a string in place of a preset is exactly the kind of hand-edited
+  // mistake this validator exists to catch — and must not throw doing so,
+  // since a throw here is a fail-*open* path for `store.ts`, which treats it
+  // differently from an ordinary rejection.
+  const objectPresets: Record<string, Preset> = {};
   for (const [id, preset] of Object.entries(presets)) {
     if (!isObject(preset)) {
       problems.push({ where: `presets.${id}`, what: "is not an object" });
       continue;
     }
+    objectPresets[id] = preset as unknown as Preset;
     if (typeof preset.name !== "string" || preset.name.length === 0) {
       problems.push({ where: `presets.${id}`, what: "has no name" });
     }
@@ -79,7 +88,14 @@ export function fileProblems(raw: unknown): FileProblem[] {
 
   // Cycles, over-deep chains and dangling parents, from stage 1's own checker
   // rather than a second implementation that could disagree with it.
-  for (const message of presetProblems(presets)) {
+  for (const message of presetProblems(objectPresets)) {
+    // A nameless preset is already reported above, at the more specific
+    // `presets.<id>`. `presetProblems` reports the same defect again at the
+    // coarser `presets`, because it has no per-id location to report at; kept
+    // rather than removed from `presets.ts` since stage 1's own suite may
+    // depend on it, and suppressed here instead so the file's owner sees one
+    // problem, not two, for one mistake.
+    if (/ has no name$/.test(message)) continue;
     problems.push({ where: "presets", what: message });
   }
 
@@ -92,7 +108,17 @@ export function fileProblems(raw: unknown): FileProblem[] {
       // `isObject` narrows to Record<string, unknown>, so `presets` is
       // `unknown` here rather than a list. Checked rather than asserted: this
       // runs on a file somebody may have hand-edited.
-      const assigned = Array.isArray(entry.presets) ? entry.presets : [];
+      //
+      // A `presets` that is present but not an array (a string, say, from a
+      // hand-edit that dropped the brackets) must be reported, not treated as
+      // "no presets assigned" — that reading makes the entry look unused
+      // rather than broken, and silently grants nothing where the file asked
+      // for something.
+      if (entry.presets !== undefined && !Array.isArray(entry.presets)) {
+        problems.push({ where: `${label}.${key}`, what: `has a "presets" that is not an array` });
+        continue;
+      }
+      const assigned = entry.presets ?? [];
       for (const id of assigned) {
         if (typeof id !== "string" || !presets[id]) {
           problems.push({ where: `${label}.${key}`, what: `is assigned preset "${String(id)}", which does not exist` });

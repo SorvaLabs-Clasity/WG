@@ -52,7 +52,10 @@ function rulesOf(entry: PermissionEntry, sublayer: number, origin: string): Rule
  * An unknown id, a cycle or an over-deep chain all resolve to nothing rather
  * than throwing. The file is somebody's data; `presetProblems` reports what is
  * wrong with it, and the caller fails it closed. A throw here would take down
- * every request instead.
+ * every request instead. A present-but-not-an-object entry (`null`, a string, a
+ * hand-edited mistake) is tolerated the same way as a missing one, for the same
+ * reason: `!preset` is true for `null` exactly as it is for `undefined`, and
+ * nothing below this line dereferences the entry without checking it first.
  */
 export function resolvePreset(
   presets: Record<string, Preset>, id: string, layerLabel: string,
@@ -108,6 +111,13 @@ export function presetProblems(presets: Record<string, Preset>): string[] {
   const problems: string[] = [];
 
   for (const [id, preset] of Object.entries(presets)) {
+    // Defence in depth: `validate.ts` is expected to hand this a map already
+    // filtered to object entries and to report a null/non-object preset
+    // itself, but this function must never throw on whatever it is handed —
+    // a throw is a fail-*open* path for the caller that gates evaluation on
+    // it. Skip rather than report: the more specific report is validate.ts's
+    // job, and duplicating it here would just be the other half of finding 4.
+    if (!preset || typeof preset !== "object") continue;
     if (!preset.name) problems.push(`preset "${id}" has no name`);
     if (!preset.inherits) continue;
 
