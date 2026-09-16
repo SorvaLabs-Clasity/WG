@@ -127,3 +127,72 @@ async function read(): Promise<LoadedPermissions | LoadFailure> {
 
   return { file: parsed, sha: data.sha ?? null, source: "github" };
 }
+
+export type WriteResult =
+  | { ok: true; sha: string }
+  | { ok: false; reason: "conflict" | "invalid" | "failed"; detail: string };
+
+/**
+ * The commit message, which is the audit log.
+ *
+ * Git history is the record of who changed whose permissions and when — chosen
+ * over a separate audit table precisely because it cannot be edited from inside
+ * the app. So the message has to carry the actor: the committer is the App for
+ * every commit, and without the actor named in the body the history says only
+ * that something changed.
+ */
+export function commitMessageFor(actor: string, summary: string): string {
+  return `${summary}\n\nBy ${actor} via Control Hub`;
+}
+
+/**
+ * Save the file, refusing rather than clobbering.
+ *
+ * `sha` is the blob the editor loaded. GitHub rejects the write if the file has
+ * moved on, which is what stops two administrators on the same screen from
+ * silently discarding each other's work — the second one is told, re-reads, and
+ * re-applies.
+ *
+ * The file is validated *before* it is written. Writing one that cannot be read
+ * back is how an administrator locks the organization out of the screen that
+ * would fix it, and the validator is the same one the reader uses, so the two
+ * cannot disagree about what is acceptable.
+ */
+export async function savePermissions(
+  next: PermissionsFile, sha: string | null, actor: string, summary: string,
+): Promise<WriteResult> {
+  if (!isUsable(next)) {
+    const problems = fileProblems(next).map(p => `${p.where}: ${p.what}`);
+    return { ok: false, reason: "invalid", detail: problems.join("; ") };
+  }
+
+  const token = getSystemToken();
+  if (!token) return { ok: false, reason: "failed", detail: "The GitHub App's credentials are not loaded." };
+
+  const body = JSON.stringify(next, null, 2) + "\n";
+  try {
+    const octokit = createOctokit(token, "Permissions");
+    const res = await octokit.rest.repos.createOrUpdateFileContents({
+      owner: getOrg(),
+      repo: PERMISSIONS_REPO,
+      path: PERMISSIONS_PATH,
+      message: commitMessageFor(actor, summary),
+      content: Buffer.from(body, "utf8").toString("base64"),
+      ...(sha ? { sha: sha } : {}),
+    });
+    // The change is live immediately rather than up to a minute later, which is
+    // the difference between a screen that reflects your edit and one that
+    // appears to have ignored it.
+    forgetPermissions();
+    return { ok: true, sha: (res.data as any)?.content?.sha ?? "" };
+  } catch (err: any) {
+    const status = err?.status ?? err?.response?.status;
+    if (status === 409 || status === 422) {
+      return {
+        ok: false, reason: "conflict",
+        detail: "Somebody else saved while this was open. Reload and re-apply your change.",
+      };
+    }
+    return { ok: false, reason: "failed", detail: err?.message ?? String(err) };
+  }
+}

@@ -12,7 +12,9 @@ import { fileProblems, unknownNodesIn, isUsable } from "./src/permissions/valida
 import type { PermissionsFile } from "./src/permissions/types";
 import fs from "node:fs";
 import { emptyFile } from "./src/permissions/types";
-import { decodeFileContent, isFailure, forgetPermissions } from "./src/permissions/store";
+import {
+  decodeFileContent, isFailure, forgetPermissions, commitMessageFor,
+} from "./src/permissions/store";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -198,6 +200,34 @@ console.log("\na preset with no name is reported once, not twice");
   const p = fileProblems(nameless);
   check("exactly one problem is reported for one nameless preset", p.length === 1, p);
   check("  and it is the specific one", p[0]?.where === "presets.a", p);
+}
+
+console.log("\nwriting the file");
+{
+  check("the commit message names the change and who made it",
+    commitMessageFor("some-login", "Grant alarms.org.create to other-login")
+      === "Grant alarms.org.create to other-login\n\nBy some-login via Control Hub",
+    commitMessageFor("some-login", "Grant alarms.org.create to other-login"));
+
+  const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
+
+  /**
+   * Two administrators on the same screen must not silently discard each
+   * other's work. The sha the editor loaded is sent back; a changed one means
+   * somebody saved first, and the write is refused rather than applied.
+   */
+  check("the write sends the sha it read",
+    /sha: sha \?\? undefined|sha:\s*sha/.test(store), "without it a concurrent save is lost");
+  check("  and a 409 from GitHub is reported as a conflict",
+    /409/.test(store) && /"conflict"/.test(store));
+
+  // Writing a file that cannot be read back is how an admin locks the org out.
+  check("a file that would not validate is refused before it is written",
+    /isUsable\(next\)/.test(store) || /fileProblems\(next\)/.test(store));
+
+  check("a successful write drops the cache",
+    /forgetPermissions\(\)/.test(store.slice(store.indexOf("savePermissions"))),
+    "otherwise a change you just made is invisible for up to a minute");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
