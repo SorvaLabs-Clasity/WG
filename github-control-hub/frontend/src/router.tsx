@@ -11,6 +11,7 @@ import AwsPage from "./pages/AwsPage";
 import ExpertisePage from "./pages/ExpertisePage";
 import MyWorkPage from "./pages/MyWorkPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
+import AdminPage from "./pages/AdminPage";
 import { isAuthenticated } from "./api/client";
 import RequireTeam from "./components/RequireTeam";
 import NoAccess from "./components/NoAccess";
@@ -172,6 +173,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <KnowledgeGraphPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/admin",
+    element: (
+      <RequireAuth>
+        <AdminPage />
       </RequireAuth>
     ),
   }

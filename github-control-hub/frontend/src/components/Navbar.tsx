@@ -73,6 +73,11 @@ const ITEMS = [
   { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls"), permissions: ["pulls.read"] },
   { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows"), permissions: ["expertise.read"] },
   { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity"), permissions: ["activity.read.own", "activity.read.app.rows", "activity.read.github"] },
+  // Last, and gated on the one permission that opens it: this is the screen
+  // that decides what every other permission in this list means, so it stays
+  // out of sight for everybody who does not hold it rather than resolving to
+  // a locked door.
+  { label: "Admin", path: "/admin", match: (p: string) => p.startsWith("/admin"), permissions: ["admin.console.open"] },
 ];
 
 /**
