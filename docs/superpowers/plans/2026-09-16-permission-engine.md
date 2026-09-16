@@ -465,7 +465,7 @@ import { resolvePreset, presetProblems } from "./src/permissions/presets";
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `npx tsx repro-permissions.ts`
-Expected: FAIL — `Cannot find module './src/permissions/types'`
+Expected: FAIL — `Cannot find module './src/permissions/presets'`. Not `types`: the `import type` line above is elided before the module is ever resolved at runtime, so the first missing module Node actually looks for is the value import.
 
 - [ ] **Step 3: Write the types**
 

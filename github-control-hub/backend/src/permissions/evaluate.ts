@@ -1,6 +1,6 @@
 import type { PermissionsFile, PermissionEntry } from "./types";
 import { resolvePreset, type Rule } from "./presets";
-import { isKnownNode, PERMISSIONS } from "./vocabulary";
+import { isKnownNode, isUnder, PERMISSIONS } from "./vocabulary";
 
 /**
  * Where a rule was written, in increasing authority.
@@ -26,9 +26,10 @@ function ownRules(entry: PermissionEntry, layer: number, origin: string): Layere
  * Every rule that could bear on this person, flattened across the three layers.
  *
  * Order does not matter here — the resolver sorts — so this is a plain
- * concatenation. `sublayer: 99` on direct entries puts them above anything
- * inherited within the same layer, which is what "my own grant beats my
- * preset's" means when both sit at the same depth.
+ * concatenation. "My own grant beats my preset's" falls out of `layer` alone,
+ * since a person's entries and their presets sit at different layers. The
+ * `sublayer: 99` on a direct entry only marks it as belonging to no inheritance
+ * chain; the resolver does not compare it.
  */
 export function collectRules(
   file: PermissionsFile, login: string, teamSlugs: string[],
@@ -64,11 +65,6 @@ export interface Decision {
   rule: LayeredRule | null;
 }
 
-/** On a segment boundary: `me` must not match `members.read`. */
-function covers(node: string, leaf: string): boolean {
-  return leaf === node || leaf.startsWith(node + ".");
-}
-
 const depthOf = (node: string) => node.split(".").length;
 
 /**
@@ -80,6 +76,13 @@ const depthOf = (node: string) => node.split(".").length;
  * matter who wrote it — person over preset over team — and only at equal depth
  * *and* layer does revoke win over grant, which is the safe answer when two
  * teams disagree.
+ *
+ * `sublayer` is deliberately absent from that comparison. It orders a preset
+ * against the preset it inherits from, which `resolvePreset` has already settled
+ * by the time a rule gets here; comparing it across unrelated chains — one
+ * person's two sibling presets, or a team's preset against another team's own
+ * entry — would decide on an accident of chain position and let a grant slip
+ * past the revoke that should have won.
  *
  * The alternative, union-the-grants-then-subtract-the-revokes, cannot express
  * "none of AWS except the findings": the shallow revoke eats the deep grant and
@@ -94,11 +97,11 @@ export function decideLeaf(leaf: string, rules: LayeredRule[]): Decision {
 
   for (const rule of rules) {
     if (!isKnownNode(rule.node)) continue;
-    if (!covers(rule.node, leaf)) continue;
+    if (!isUnder(leaf, rule.node)) continue;
     if (!best) { best = rule; continue; }
 
-    const a = [depthOf(rule.node), rule.layer, rule.sublayer, rule.effect === "revoke" ? 1 : 0];
-    const b = [depthOf(best.node), best.layer, best.sublayer, best.effect === "revoke" ? 1 : 0];
+    const a = [depthOf(rule.node), rule.layer, rule.effect === "revoke" ? 1 : 0];
+    const b = [depthOf(best.node), best.layer, best.effect === "revoke" ? 1 : 0];
     for (let i = 0; i < a.length; i++) {
       if (a[i] === b[i]) continue;
       if (a[i] > b[i]) best = rule;

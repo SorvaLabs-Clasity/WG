@@ -12,9 +12,14 @@ export interface Rule {
   node: string;
   effect: "grant" | "revoke";
   /**
-   * Ordering *within* a layer, used only for preset inheritance: a child's own
-   * entries outrank the parent's, so "inherit Engineer, but not that one thing"
-   * is writable. Higher wins.
+   * Ordering *within one `inherits` chain*, used only for preset inheritance: a
+   * child's own entries outrank the parent's, so "inherit Engineer, but not that
+   * one thing" is writable. Higher wins.
+   *
+   * It is chain-relative, so it means nothing between rules from different
+   * chains. `resolvePreset` therefore settles it before returning and nothing
+   * outside this file compares it; it survives only so the admin screen can say
+   * which preset in a chain had the last word.
    */
   sublayer: number;
   /** Shown in the admin UI: "from Engineer", "granted here". Never used to decide. */
@@ -37,6 +42,12 @@ function rulesOf(entry: PermissionEntry, sublayer: number, origin: string): Rule
  * Walks up to the root first so that the deepest ancestor gets the lowest
  * sublayer, then the chain back down raises it — the preset asked for always
  * ends up highest.
+ *
+ * At most one rule per node comes back: within a chain the most-derived preset
+ * has the last word, so the chain is reduced here rather than leaving a stack of
+ * superseded rules for the resolver to compare. That keeps `sublayer` a
+ * within-chain concern; comparing it against a rule from an unrelated chain
+ * would pre-empt the revoke-wins tie-break and grant where the spec says revoke.
  *
  * An unknown id, a cycle or an over-deep chain all resolve to nothing rather
  * than throwing. The file is somebody's data; `presetProblems` reports what is
@@ -62,16 +73,29 @@ export function resolvePreset(
   return finish(chain, presets, layerLabel);
 }
 
-/** `chain` is child-first; sublayer counts up so the child ends highest. */
+/**
+ * `chain` is child-first; sublayer counts up so the child ends highest, and the
+ * highest sublayer per node is the only one that survives.
+ *
+ * A preset that both grants and revokes the same node at once is a file that
+ * contradicts itself at a single point; revoke wins there, the same answer the
+ * resolver gives two teams that disagree.
+ */
 function finish(chain: string[], presets: Record<string, Preset>, layerLabel: string): Rule[] {
-  const out: Rule[] = [];
+  const byNode = new Map<string, Rule>();
   const deepestFirst = [...chain].reverse();
   deepestFirst.forEach((presetId, index) => {
     const preset = presets[presetId];
     if (!preset) return;
-    out.push(...rulesOf(preset, index, `${layerLabel} ${preset.name}`));
+    for (const rule of rulesOf(preset, index, `${layerLabel} ${preset.name}`)) {
+      const held = byNode.get(rule.node);
+      const wins = !held
+        || rule.sublayer > held.sublayer
+        || (rule.sublayer === held.sublayer && rule.effect === "revoke");
+      if (wins) byNode.set(rule.node, rule);
+    }
   });
-  return out;
+  return [...byNode.values()];
 }
 
 /**

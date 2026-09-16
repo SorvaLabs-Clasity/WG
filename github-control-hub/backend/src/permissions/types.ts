@@ -49,7 +49,14 @@ export interface PermissionsFile {
   people: Record<string, PersonEntry>;
 }
 
-/** An empty file. Grants nobody anything, which is the correct default. */
-export const EMPTY_FILE: PermissionsFile = {
-  version: 1, presets: {}, teams: {}, people: {},
-};
+/**
+ * An empty file. Grants nobody anything, which is the correct default.
+ *
+ * A function rather than a shared constant: stage 2 returns this on every read
+ * failure, so a single consumer that pushed one preset into it would widen
+ * access for every request the process served afterwards. A fresh object per
+ * call cannot be poisoned.
+ */
+export function emptyFile(): PermissionsFile {
+  return { version: 1, presets: {}, teams: {}, people: {} };
+}

@@ -188,8 +188,11 @@ export function isKnownNode(node: string): boolean {
  * `members.read`, silently granting a tab nobody chose — the kind of bug that
  * only shows up once somebody adds a top-level branch whose name is a prefix
  * of another.
+ *
+ * Exported because the resolver asks the same question of a rule's node, and
+ * two copies of a security-critical prefix rule are two things to keep in step.
  */
-function isUnder(key: string, node: string): boolean {
+export function isUnder(key: string, node: string): boolean {
   return key === node || key.startsWith(node + ".");
 }
 

@@ -11,7 +11,7 @@ import {
 } from "./src/permissions/vocabulary";
 import type { Preset } from "./src/permissions/types";
 import { resolvePreset, presetProblems } from "./src/permissions/presets";
-import type { PermissionsFile } from "./src/permissions/types";
+import { emptyFile, type PermissionsFile } from "./src/permissions/types";
 import {
   collectRules, LAYER, decideLeaf, permissionsFor, type LayeredRule,
 } from "./src/permissions/evaluate";
@@ -285,8 +285,24 @@ console.log("\nthe answer, and why");
    * the same rule the old team check had, kept and made visible.
    */
   const owner = permissionsFor(file, { ...plain, isOrgOwner: true });
-  check("an organization owner holds everything",
-    owner.held.length === PERMISSIONS.length, owner.held.length);
+
+  /**
+   * Set equality, not a count. `held` is built by mapping over the vocabulary
+   * and `map` preserves length, so a length check would pass with 101 wrong
+   * keys — the weakest possible assertion guarding the only bypass in the
+   * system.
+   */
+  const vocabulary = new Set(PERMISSIONS.map(p => p.key));
+  const ownerHeld = new Set(owner.held);
+  const missing = [...vocabulary].filter(k => !ownerHeld.has(k));
+  const unknown = owner.held.filter(k => !vocabulary.has(k));
+  check("an organization owner holds exactly the vocabulary, key for key",
+    ownerHeld.size === vocabulary.size && missing.length === 0 && unknown.length === 0,
+    { missing, unknown, held: owner.held.length, vocabulary: vocabulary.size });
+  check("  and says yes to named leaves from across the tree",
+    owner.has("me.work.read") && owner.has("activity.read.app.actor")
+    && owner.has("aws.rules.delete") && owner.has("org.members.read")
+    && owner.has("config.export") && owner.has("admin.presets.delete"));
   check("  and is told that is why",
     owner.explain("aws.rules.delete").reason === "owner");
 
@@ -320,6 +336,122 @@ console.log("\nthe answer, and why");
   };
   check("a cyclic preset grants nothing rather than looping",
     permissionsFor(broken, { ...plain, login: "x" }).held.length === 0);
+}
+
+console.log("\nsublayer stays inside the chain it came from");
+{
+  /**
+   * `sublayer` orders a preset against the preset it inherits from. It is
+   * counted per `inherits` chain, so a rule from a two-deep chain carries 1
+   * while a rule from a flat preset carries 0 and a direct entry carries 99 —
+   * numbers that mean nothing to each other. Comparing them across chains
+   * pre-empted the revoke-wins tie-break, so a grant won where the spec says
+   * revoke. `resolvePreset` now settles it inside the chain and the resolver
+   * never sees it.
+   */
+  const presets: Record<string, Preset> = {
+    base: { name: "Base", grant: ["me.work.read"] },
+    escalated: { name: "Escalated", inherits: "base", grant: ["config.export"] },
+    limits: { name: "Limits", revoke: ["config.export"] },
+    locked: { name: "Locked", revoke: ["config.export"] },
+  };
+  const plain = { login: "somebody", teamSlugs: [], isOrgOwner: false };
+
+  check("a chain returns at most one rule per node",
+    (() => {
+      const nodes = resolvePreset(
+        { p: { name: "P", grant: ["aws"] }, c: { name: "C", inherits: "p", revoke: ["aws"] } },
+        "c", "preset",
+      ).filter(r => r.node === "aws");
+      return nodes.length === 1 && nodes[0].effect === "revoke";
+    })());
+
+  // Two presets on one person, one of them with a parent. Same node, same
+  // depth, same layer — and the grant used to win on chain position alone.
+  const siblings: PermissionsFile = {
+    version: 1, presets, teams: {},
+    people: { "somebody": { presets: ["limits", "escalated"] } },
+  };
+  check("two sibling presets disagreeing on a node: revoke wins",
+    permissionsFor(siblings, plain).has("config.export") === false,
+    permissionsFor(siblings, plain).explain("config.export"));
+
+  // The same question one layer down: a team's own entry against another
+  // team's preset. Direct entries carry 99, which beat any chain position.
+  const teamsMixed: PermissionsFile = {
+    version: 1, presets, teams: {
+      "platform": { grant: ["config.export"] },
+      "contractors": { presets: ["locked"] },
+    },
+    people: {},
+  };
+  check("two teams disagreeing, one direct and one via a preset: revoke wins",
+    permissionsFor(teamsMixed, { ...plain, teamSlugs: ["platform", "contractors"] })
+      .has("config.export") === false);
+
+  // The control that already worked: both teams writing the node themselves.
+  const teamsDirect: PermissionsFile = {
+    version: 1, presets, teams: {
+      "platform": { grant: ["config.export"] },
+      "contractors": { revoke: ["config.export"] },
+    },
+    people: {},
+  };
+  check("  and two teams both writing it directly still revoke",
+    permissionsFor(teamsDirect, { ...plain, teamSlugs: ["platform", "contractors"] })
+      .has("config.export") === false);
+
+  /**
+   * What `sublayer` is actually for, both ways round: "inherit Engineer, but
+   * not that one thing" and "inherit Auditor, but this one thing as well".
+   * Collapsing the chain must not cost this.
+   */
+  const childRevokes: PermissionsFile = {
+    version: 1,
+    presets: {
+      parent: { name: "Parent", grant: ["config.export"] },
+      child: { name: "Child", inherits: "parent", revoke: ["config.export"] },
+    },
+    teams: {}, people: { "somebody": { presets: ["child"] } },
+  };
+  check("a child preset still revokes what its parent granted",
+    permissionsFor(childRevokes, plain).has("config.export") === false);
+
+  const childGrants: PermissionsFile = {
+    version: 1,
+    presets: {
+      parent: { name: "Parent", revoke: ["config.export"] },
+      child: { name: "Child", inherits: "parent", grant: ["config.export"] },
+    },
+    teams: {}, people: { "somebody": { presets: ["child"] } },
+  };
+  check("  and still grants what its parent revoked",
+    permissionsFor(childGrants, plain).has("config.export") === true,
+    permissionsFor(childGrants, plain).explain("config.export"));
+}
+
+console.log("\nthe empty file is made fresh, not shared");
+{
+  /**
+   * Stage 2 returns this on every read failure. A shared constant would mean
+   * one caller pushing a preset into it widened access for every request the
+   * process served afterwards — the deny-everything default is exactly the
+   * object you cannot afford to have mutated.
+   */
+  const a = emptyFile();
+  const b = emptyFile();
+  check("two calls are two objects", a !== b);
+  check("  down to the nested records",
+    a.presets !== b.presets && a.teams !== b.teams && a.people !== b.people);
+
+  a.people["intruder"] = { grant: ["admin"] };
+  a.version = 999;
+  const c = emptyFile();
+  check("  so mutating one leaves the next empty",
+    Object.keys(c.people).length === 0 && c.version === 1, c);
+  check("  and it still grants nobody anything",
+    permissionsFor(emptyFile(), { login: "intruder", teamSlugs: [], isOrgOwner: false })
+      .held.length === 0);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
