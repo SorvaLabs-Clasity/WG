@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { requirePermission, requireAnyPermission, PERMISSIONS_ENABLED } from "../middleware/permissionGate";
+import { requireControlHubAdmin } from "../middleware/teamGate";
 import {
   loadPermissions, savePermissions, isFailure, unknownNodesIn, fileProblems,
   forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
@@ -24,6 +25,25 @@ import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizatio
  */
 
 const router = Router();
+
+/**
+ * The legacy team gate, in front of everything, because the permission gates
+ * below are inert until `PERMISSIONS_ENABLED` is flipped.
+ *
+ * Every other privileged router in this repo keeps its team gate *as well as*
+ * its new permission gate — `access.ts`, `alarms.ts`, `pulls.ts`, `config.ts` —
+ * precisely so the flag can ship off safely. This router shipped without one,
+ * which left every route here open to any signed-in organization member: the
+ * whole of `permissions.json`, the write that rewrites it, and a `POST
+ * /bootstrap` that creates a repository in the organization.
+ *
+ * `router.use` rather than a guard repeated on each route, so a route added
+ * later inherits it instead of having to remember it. It is also the sentence
+ * `docs/operations/setup.md` already claimed was implemented:
+ * `control-hub-admins` gates the Admin tab, which is now that team's only
+ * remaining meaning.
+ */
+router.use(requireControlHubAdmin);
 
 // People and Presets both render from this one file, so either read
 // permission has to be enough to load it — gating it on admin.people.read

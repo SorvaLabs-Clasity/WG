@@ -324,9 +324,13 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // and gated the same way.
     ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
     // The one router that can grant permissions, so it is the one whose own
-    // gating matters most: every write here names the permission it needs,
-    // inline, rather than a single team check for the whole file.
-    ["admin.ts",         /router\.(post|put|delete)\(/g, /requirePermission/],
+    // gating matters most. `requirePermission` is **not** accepted here: it is
+    // `return next()` while `PERMISSIONS_ENABLED` is unset, which is the
+    // configuration this ships in, so a router whose only guard is a
+    // permission gate is a router with no guard at all. The blanket team gate
+    // is what this names, and the behavioural check below is what proves it
+    // decides something rather than merely being spelled correctly.
+    ["admin.ts",         /router\.(post|put|delete)\(/g, /requireControlHubAdmin/],
     // Exempted as "read models over the graph" until it was read carefully.
     // PUT /config replaces the rule set the entire organization is scored
     // against, and `{"rules": []}` scores everything 100, an org-wide
@@ -398,6 +402,100 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   check("every route file with writes is either guarded or explicitly exempt",
     unlisted.length === 0, unlisted);
+}
+
+// ── a gate that decides nothing in the shipped configuration is not a gate ──
+//
+// The text check above says a guard is *named*. This one runs it.
+//
+// `permissionGate.ts` opens with `if (process.env.PERMISSIONS_ENABLED !== "true")
+// return next();`, and the flag ships unset. So a router guarded exclusively by
+// `requirePermission` / `requireAnyPermission` has, in the configuration this
+// repository actually deploys, no authorization beyond `authMiddleware` — which
+// is how the Admin router shipped with `GET /file` (the whole permissions file),
+// `PUT /file` (rewriting it) and `POST /bootstrap` (creating a repository in the
+// organization) open to every signed-in member.
+//
+// Every middleware-gated privileged router is therefore driven here with the
+// flag unset and a caller on no team, and must refuse before the handler runs.
+{
+  const before = process.env.PERMISSIONS_ENABLED;
+  delete process.env.PERMISSIONS_ENABLED;   // the shipped state, and never flipped here
+
+  type Decision = { kind: "passed" } | { kind: "refused"; status: number };
+
+  /**
+   * Drive a middleware chain against a fake request and report what it decided.
+   *
+   * "passed" means the chain called `next()` off its end — the handler would
+   * have run. A throw counts as passed too: an exception is not a refusal, and
+   * an ungated route that happens to fall over on a fake request has still not
+   * decided anything about the caller.
+   */
+  const runChain = (chain: any[], req: any): Promise<Decision> => new Promise(resolve => {
+    let done = false;
+    const settle = (d: Decision) => { if (!done) { done = true; resolve(d); } };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json() { settle({ kind: "refused", status: this.statusCode }); return this; },
+      send() { return this.json(); },
+      end() { return this.json(); },
+    };
+    let i = 0;
+    const next = () => {
+      if (done) return;
+      if (i >= chain.length) return settle({ kind: "passed" });
+      const mw = chain[i++];
+      try {
+        const out = mw(req, res, next);
+        if (out && typeof out.catch === "function") out.catch(() => settle({ kind: "passed" }));
+      } catch { settle({ kind: "passed" }); }
+    };
+    next();
+    setTimeout(() => settle({ kind: "passed" }), 5000).unref?.();
+  });
+
+  const caller = () => ({ user: { login: "on-no-team", accessToken: "a-token" }, params: {}, query: {}, body: {} });
+
+  // The premise, asserted rather than assumed: this is why naming a permission
+  // gate is not enough on its own.
+  {
+    const { requirePermission: perm } = await import("./src/middleware/permissionGate");
+    const d = await runChain([perm("admin.people.assign")], caller());
+    check("requirePermission decides nothing while PERMISSIONS_ENABLED is unset",
+      d.kind === "passed", d);
+  }
+
+  /**
+   * The routers whose gating is middleware, so a chain can be driven through
+   * it. `scanners.ts`, `widgets.ts`, `alerts.ts`, `config.ts`, `activity.ts`
+   * and `pulls.ts` decide inside their handlers instead — which the text check
+   * above covers and this cannot, since reaching the handler is the point there
+   * rather than the bug.
+   */
+  for (const file of ["admin", "access", "alarms", "awsGuardrails"]) {
+    const router: any = (await import(`./src/routes/${file}`)).default;
+    const blanket = router.stack.filter((l: any) => !l.route).map((l: any) => l.handle);
+
+    const open: string[] = [];
+    for (const layer of router.stack) {
+      if (!layer.route) continue;
+      const handlers = layer.route.stack.map((s: any) => s.handle);
+      // Everything but the handler itself: the guards, in the order express
+      // would run them, with the router-level `use` gates in front.
+      const decision = await runChain([...blanket, ...handlers.slice(0, -1)], caller());
+      if (decision.kind === "passed") {
+        open.push(`${Object.keys(layer.route.methods)[0].toUpperCase()} ${layer.route.path}`);
+      }
+    }
+
+    check(`${file}.ts: every route still refuses somebody on no team with the flag unset`,
+      open.length === 0, open);
+  }
+
+  if (before === undefined) delete process.env.PERMISSIONS_ENABLED;
+  else process.env.PERMISSIONS_ENABLED = before;
 }
 
 // ── the gate must cover everything the route acts on ──────────────────

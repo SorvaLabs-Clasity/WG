@@ -180,7 +180,17 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: (
       <RequireAuth>
-        <AdminPage />
+        {/*
+          * The same team gate `/access` and `/analytics` carry, and for a
+          * stronger reason: this screen grants permissions. `usePermissionSet`
+          * answers true to every key while enforcement is off, so without this
+          * the tab and every button inside it — including "Run the migration"
+          * and "Create the permissions repository" — were live for every
+          * signed-in member.
+          */}
+        <RequireTeam team="control-hub" title="Admin">
+          <AdminPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   }
