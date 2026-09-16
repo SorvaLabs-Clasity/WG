@@ -21,6 +21,7 @@ import {
   logActivity,
 } from "../services/activityService";
 import type { ActivityEntry } from "../services/activityService";
+import { fillPage } from "../services/activityPaging";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
@@ -281,16 +282,24 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     const { memoryLogForSearch, getChildrenFor } = await import("../services/activityService");
 
     const { usesDynamo } = await import("../utils/dynamo");
-    const page = usesDynamo()
-      ? await searchActivity(filters, limit, cursor)
-      : searchMemory(memoryLogForSearch(), filters, limit, Number(cursor) || 0);
-
-    let top = page.entries;
-
-    // Children are dropped with their parents: an undo of a GitHub change is a
-    // GitHub row whatever its own action says.
     const awsOnlyDeployment = await awsOnly();
-    if (awsOnlyDeployment) top = top.filter(e => isAwsRow(e.action));
+
+    // Redaction drops rows, so the page has to be refilled after it, not
+    // before — see `fillPage`, which carries the reasoning and is where this
+    // is actually tested. The route's job is only to say what a fetch is and
+    // what surviving redaction means.
+    const filled = await fillPage(
+      async c => usesDynamo()
+        ? await searchActivity(filters, limit, c)
+        : searchMemory(memoryLogForSearch(), filters, limit, Number(c) || 0),
+      async batch => redactFeed(
+        // Children are dropped with their parents: an undo of a GitHub change
+        // is a GitHub row whatever its own action says.
+        awsOnlyDeployment ? batch.filter(e => isAwsRow(e.action)) : batch,
+        req.user!.login, req.user!.accessToken),
+      limit, cursor);
+
+    const top = filled.entries;
 
     // Children are fetched for the rows on this page only, rather than paged
     // themselves. A page of fifty parents is fifty rows on screen however many
@@ -301,9 +310,10 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     // meant to hold GitHub data at all, which is the whole point of the split.
     if (awsOnlyDeployment) children = children.filter(e => isAwsRow(e.action));
 
-    // Before the tree is built, so a child is redacted or dropped on its own
-    // merits rather than inheriting whatever its parent was allowed to say.
-    const visible = await redactFeed([...top, ...children], req.user!.login, req.user!.accessToken);
+    // Redacted separately from their parents, and before the tree is built, so
+    // a child is judged on its own merits rather than inheriting whatever its
+    // parent was allowed to say.
+    const visible = [...top, ...await redactFeed(children, req.user!.login, req.user!.accessToken)];
     let tree = buildActivityTree(visible);
 
     const nestedSigs = collectNestedSignatures(tree);
@@ -316,10 +326,10 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     res.json({
       entries: tree,
       limit,
-      cursor: page.cursor,
+      cursor: filled.cursor,
       /** False means the budget ran out, not that there is nothing more. */
-      exhausted: page.exhausted,
-      examined: page.examined,
+      exhausted: filled.exhausted,
+      examined: filled.examined,
     });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "activity") });
