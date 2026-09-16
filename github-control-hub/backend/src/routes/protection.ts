@@ -49,7 +49,7 @@ router.get("/:repo/protection/:branch", requirePermission("repos.detail.read"), 
   }
 });
 
-router.put("/:repo/protection/:branch", requirePermission("repos.detail.read"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
+router.put("/:repo/protection/:branch", requirePermission("repos.protection.manage"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protection = req.body;
@@ -75,7 +75,7 @@ router.put("/:repo/protection/:branch", requirePermission("repos.detail.read"), 
   }
 });
 
-router.delete("/:repo/protection/:branch", requirePermission("repos.detail.read"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
+router.delete("/:repo/protection/:branch", requirePermission("repos.protection.manage"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     let protectionConfig: any;
@@ -93,7 +93,7 @@ router.delete("/:repo/protection/:branch", requirePermission("repos.detail.read"
   }
 });
 
-router.post("/:repo/rulesets/import", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/rulesets/import", requirePermission("repos.protection.manage"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const raw = req.body;
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
@@ -132,7 +132,7 @@ router.post("/:repo/rulesets/import", requirePermission("repos.detail.read"), va
   }
 });
 
-router.delete("/:repo/rulesets/:rulesetId", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
+router.delete("/:repo/rulesets/:rulesetId", requirePermission("repos.protection.manage"), validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
     // Checked rather than passed through. `parseInt("abc", 10)` is NaN, which
     // Octokit puts in the path as the literal string "NaN", GitHub answers

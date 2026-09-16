@@ -20,7 +20,7 @@ router.get("/:repo/branches", requirePermission("repos.detail.read"), validatePa
   }
 });
 
-router.post("/:repo/branches", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/branches", requirePermission("repos.branches.manage"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const { branchName, baseBranch } = req.body as {
     branchName?: string;
     baseBranch?: string;
@@ -62,7 +62,7 @@ router.post("/:repo/branches", requirePermission("repos.detail.read"), validateP
 
 router.delete(
   "/:repo/branches/:branch",
-  requirePermission("repos.detail.read"),
+  requirePermission("repos.branches.manage"),
   validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     try {
@@ -86,7 +86,7 @@ router.delete(
 
 router.patch(
   "/:repo/branches/:branch/rename",
-  requirePermission("repos.detail.read"),
+  requirePermission("repos.branches.manage"),
   validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     const { newName } = req.body as { newName?: string };
