@@ -289,14 +289,27 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     // is actually tested. The route's job is only to say what a fetch is and
     // what surviving redaction means.
     const filled = await fillPage(
-      async c => usesDynamo()
-        ? await searchActivity(filters, limit, c)
-        : searchMemory(memoryLogForSearch(), filters, limit, Number(c) || 0),
-      async batch => redactFeed(
-        // Children are dropped with their parents: an undo of a GitHub change
-        // is a GitHub row whatever its own action says.
-        awsOnlyDeployment ? batch.filter(e => isAwsRow(e.action)) : batch,
-        req.user!.login, req.user!.accessToken),
+      /**
+       * The AWS-only filter belongs to the *source*, not to redaction.
+       *
+       * It used to sit inside `keep`, which made every filtered-short page on
+       * an AWS-only install look like a redacted one and set the refill loop
+       * running on every request, flag or no flag — where the same page used
+       * to be returned as-is. An account with no GitHub half simply has fewer
+       * rows; that is what its feed is, not something withheld from the
+       * viewer, so it is applied here and `fillPage` never sees a drop for it.
+       */
+      async c => {
+        const page = usesDynamo()
+          ? await searchActivity(filters, limit, c)
+          : searchMemory(memoryLogForSearch(), filters, limit, Number(c) || 0);
+        return awsOnlyDeployment
+          ? { ...page, entries: page.entries.filter(e => isAwsRow(e.action)) }
+          : page;
+      },
+      // Children are dropped with their parents: an undo of a GitHub change
+      // is a GitHub row whatever its own action says.
+      async batch => redactFeed(batch, req.user!.login, req.user!.accessToken),
       limit, cursor);
 
     const top = filled.entries;
@@ -330,6 +343,13 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
       /** False means the budget ran out, not that there is nothing more. */
       exhausted: filled.exhausted,
       examined: filled.examined,
+      /**
+       * Present only when the redaction refill stopped short of a full page,
+       * so the client can tell a bounded page from a budget-truncated one.
+       * Absent otherwise — including always, while `PERMISSIONS_ENABLED` is
+       * unset, since nothing is redacted then and the refill never loops.
+       */
+      ...(filled.boundHit ? { boundHit: true } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "activity") });

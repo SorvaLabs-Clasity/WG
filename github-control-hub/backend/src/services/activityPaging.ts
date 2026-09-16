@@ -38,6 +38,19 @@ export interface FilledPage {
  * request into a scan of the entire table. On hitting the bound we return what
  * we have with `exhausted` false and a real cursor: short, but honest, and
  * "load more" still works.
+ *
+ * **Only redaction earns a refill.** A short page has two possible causes and
+ * they want opposite answers: `keep` dropped rows, which is this function's
+ * whole reason to exist, or the source's own read budget ran out
+ * (`MAX_EXAMINED_PER_REQUEST`), which has always meant "here is what fitted,
+ * ask again" and has always been returned as-is. Looping on the second turned
+ * one 3,000-row read into six for every viewer on a large table, flag or no
+ * flag, and moved `examined` and the cursor with it. So the batch is measured
+ * before and after `keep`: nothing removed, nothing to refill.
+ *
+ * That makes the refill inert wherever redaction is inert — which is exactly
+ * the property the flag promises — and costs an unrestricted viewer nothing
+ * when it is on, which a bound lowered to 1 by the flag would not.
  */
 export async function fillPage(
   fetchPage: (cursor: string | undefined) => Promise<SourcePage>,
@@ -59,12 +72,18 @@ export async function fillPage(
     cursor = page.cursor;
     exhausted = page.exhausted;
 
-    entries.push(...await keep(page.entries));
+    const kept = await keep(page.entries);
+    const dropped = page.entries.length - kept.length;
+    entries.push(...kept);
 
     // Deliberately not sliced back to `limit`. Slicing would discard rows this
     // cursor has already moved past — the same bug one layer down. `limit` is
     // a page-size hint, and overshooting it by less than one batch is harmless.
     if (entries.length >= limit || exhausted) break;
+    // Nothing was redacted away, so this page is short because the source's
+    // budget ran out — the pre-existing meaning of `exhausted: false`, and the
+    // answer this route gave before the refill existed.
+    if (dropped === 0) break;
     if (fetches >= maxFetches) break;
   }
 
