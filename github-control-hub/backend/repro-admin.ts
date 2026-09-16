@@ -32,12 +32,26 @@ console.log("the admin router");
   check("  behind authentication", /app\.use\("\/api\/admin",\s*authMiddleware/.test(server));
 
   /**
+   * People and Presets both render from this one file, so either read
+   * permission has to reach it — gating it on admin.people.read alone would
+   * 403 somebody who holds only admin.presets.read before they ever saw the
+   * Presets tab.
+   */
+  {
+    const at = admin.indexOf('router.get("/file"');
+    const line = at >= 0 ? admin.slice(at, admin.indexOf("\n", at)) : "";
+    check('  GET /file needs admin.people.read or admin.presets.read',
+      at >= 0 && /requireAnyPermission\(/.test(line)
+        && line.includes('"admin.people.read"') && line.includes('"admin.presets.read"'),
+      line.trim());
+  }
+
+  /**
    * Reading the file means reading who holds what across the organization —
    * the same aggregation the access map is gated on. Writing it is the most
    * privileged act in the app.
    */
   for (const [path, permission] of [
-    ['router.get("/file"', "admin.people.read"],
     ['router.get("/vocabulary"', "admin.console.open"],
     ['router.get("/person/:login"', "admin.people.read"],
     ['router.get("/preset/:id/resolved"', "admin.presets.read"],

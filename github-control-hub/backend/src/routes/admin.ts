@@ -25,7 +25,11 @@ import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizatio
 
 const router = Router();
 
-router.get("/file", requirePermission("admin.people.read"), async (_req: Request, res: Response) => {
+// People and Presets both render from this one file, so either read
+// permission has to be enough to load it — gating it on admin.people.read
+// alone would 403 somebody who holds only admin.presets.read before they
+// ever reach the Presets tab.
+router.get("/file", requireAnyPermission("admin.people.read", "admin.presets.read"), async (_req: Request, res: Response) => {
   try {
     const loaded = await loadPermissions();
 
