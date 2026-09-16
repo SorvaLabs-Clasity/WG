@@ -18,6 +18,7 @@ import { getOrgConfig } from "../services/orgConfigService";
 import {
   readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing,
 } from "../services/viewSnapshot";
+import { requirePermission } from "../middleware/permissionGate";
 
 /**
  * The app, pointed at whoever is reading it.
@@ -58,7 +59,7 @@ const router = Router();
  * this route should not be paying for, and the PR tab, which owns that walk,
  * is one click away.
  */
-router.get("/work", async (req: Request, res: Response) => {
+router.get("/work", requirePermission("me.work.read"), async (req: Request, res: Response) => {
   try {
     const snapshot = await readPrSnapshot().catch(() => null);
     if (!snapshot) {
@@ -95,7 +96,7 @@ router.get("/work", async (req: Request, res: Response) => {
  * reason for them. A team membership goes when you change teams; a
  * collaborator row added for one afternoon three years ago does not.
  */
-router.get("/access", async (req: Request, res: Response) => {
+router.get("/access", requirePermission("me.repos.read"), async (req: Request, res: Response) => {
   try {
     const me = await accessForUser(req.user!.login);
     const direct = me.repos.filter(r => r.paths.some(p => p.via === "direct"));
@@ -163,7 +164,7 @@ router.get("/access", async (req: Request, res: Response) => {
  * cannot aggregate anything. `accessForUser` is the same read `push-check`
  * already does one line below, and is cached.
  */
-router.get("/repos", async (req: Request, res: Response) => {
+router.get("/repos", requirePermission("me.repos.read"), async (req: Request, res: Response) => {
   try {
     const me = await accessForUser(req.user!.login);
     const names = me.repos.map(r => r.repo).sort((a, b) => a.localeCompare(b));
@@ -179,7 +180,7 @@ router.get("/repos", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/push-check", async (req: Request, res: Response) => {
+router.get("/push-check", requirePermission("me.push.check"), async (req: Request, res: Response) => {
   const repo = String(req.query.repo ?? "").trim();
   const branch = String(req.query.branch ?? "").trim();
   if (!repo || !branch) {
@@ -338,7 +339,7 @@ export async function buildShipped(login: string, days: number) {
   };
 }
 
-router.get("/ship", async (req: Request, res: Response) => {
+router.get("/ship", requirePermission("me.work.read"), async (req: Request, res: Response) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
     const login = String(req.query.login || req.user!.login);
@@ -371,7 +372,7 @@ router.get("/ship", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/alerts", async (req: Request, res: Response) => {
+router.get("/alerts", requirePermission("me.alerts.read"), async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
     // The address is the person's own and is shown back: unlike a webhook it is
@@ -405,7 +406,7 @@ router.get("/alerts", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/alerts", async (req: Request, res: Response) => {
+router.put("/alerts", requirePermission("me.alerts.manage"), async (req: Request, res: Response) => {
   try {
     const current = await getDevAlerts(req.user!.login);
     const body = req.body ?? {};
@@ -502,7 +503,7 @@ router.put("/alerts", async (req: Request, res: Response) => {
  * only person who would notice is the one who stops being told things. This is
  * the difference between a setting somebody trusts and one they do not.
  */
-router.post("/alerts/test", async (req: Request, res: Response) => {
+router.post("/alerts/test", requirePermission("me.alerts.test"), async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
     if (!a.teamsAddress) {

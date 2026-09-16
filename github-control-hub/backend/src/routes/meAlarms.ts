@@ -8,6 +8,7 @@ import { listWidgets, getWidget } from "../services/widgetService";
 import { addMember, removeMember, listMembers } from "../services/notifyService";
 import { isValidCondition, conditionsFor, intervalFor } from "../alarms/conditions";
 import type { AlarmCondition } from "../alarms/conditions";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -60,7 +61,7 @@ async function ownsWidget(login: string, widgetId: string): Promise<boolean> {
   return !!widget?.owner && widget.owner.toLowerCase() === login.toLowerCase();
 }
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("me.alarms.read"), async (req: Request, res: Response) => {
   try {
     const alarms = await listPersonalAlarms(req.user!.login);
     const subjects = new Map<string, any>();
@@ -75,7 +76,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", requirePermission("me.alarms.manage"), async (req: Request, res: Response) => {
   try {
     const { widgetId, name, condition, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate, notifyOnRecovery, enabled } = req.body ?? {};
@@ -118,7 +119,7 @@ router.post("/", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", requirePermission("me.alarms.manage"), async (req: Request, res: Response) => {
   try {
     const alarm = await mine(req, res);
     if (!alarm) return;
@@ -149,7 +150,7 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/:id", async (req: Request, res: Response) => {
+router.delete("/:id", requirePermission("me.alarms.manage"), async (req: Request, res: Response) => {
   try {
     const alarm = await mine(req, res);
     if (!alarm) return;
@@ -162,7 +163,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 
 // ── where they are delivered ──
 
-router.get("/destination", async (req: Request, res: Response) => {
+router.get("/destination", requirePermission("me.destination.read"), async (req: Request, res: Response) => {
   try {
     const group = await getOrCreatePersonalGroup(req.user!.login);
     // Pending invitations included, and marked: an address that has not
@@ -182,7 +183,7 @@ router.get("/destination", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/destination/email", async (req: Request, res: Response) => {
+router.post("/destination/email", requirePermission("me.destination.manage"), async (req: Request, res: Response) => {
   try {
     const email = String(req.body?.email ?? "").trim();
     if (!isValidEmail(email)) {
@@ -220,7 +221,7 @@ router.post("/destination/email", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/destination/email", async (req: Request, res: Response) => {
+router.delete("/destination/email", requirePermission("me.destination.manage"), async (req: Request, res: Response) => {
   try {
     const group = await getOrCreatePersonalGroup(req.user!.login);
     const subscriptionArn = String(req.query.subscriptionArn ?? "");
@@ -251,7 +252,7 @@ router.delete("/destination/email", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/destination/teams", async (req: Request, res: Response) => {
+router.post("/destination/teams", requirePermission("me.destination.manage"), async (req: Request, res: Response) => {
   try {
     const address = String(req.body?.address ?? "").trim();
     if (!isValidEmail(address)) {
@@ -278,7 +279,7 @@ router.post("/destination/teams", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/destination/teams/:address", async (req: Request, res: Response) => {
+router.delete("/destination/teams/:address", requirePermission("me.destination.manage"), async (req: Request, res: Response) => {
   try {
     const address = String(req.params.address ?? "");
     const group = await getOrCreatePersonalGroup(req.user!.login);
@@ -297,7 +298,7 @@ router.delete("/destination/teams/:address", async (req: Request, res: Response)
   }
 });
 
-router.put("/destination/timezone", async (req: Request, res: Response) => {
+router.put("/destination/timezone", requirePermission("me.destination.manage"), async (req: Request, res: Response) => {
   try {
     const raw = req.body?.timeZone;
     const zone = raw === null || raw === "" ? undefined : String(raw);

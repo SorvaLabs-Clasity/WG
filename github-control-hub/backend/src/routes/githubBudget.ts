@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -13,7 +14,7 @@ const router = Router();
 let cache: { at: number; hours: number; report: any } | null = null;
 const CACHE_MS = 30_000;
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("org.budget.read"), async (req: Request, res: Response) => {
   try {
     // One hour matches the allowance's own window, so headroom and usage
     // describe the same period. Twenty-four is offered for the shape of a day.
