@@ -26,7 +26,8 @@ import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
-import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
+import { requirePermission, requireAnyPermission, PERMISSIONS_ENABLED } from "../middleware/permissionGate";
+import { accessForSelf } from "../permissions";
 import {
   createBranch,
   deleteBranch,
@@ -164,13 +165,89 @@ function isAwsRow(action: string): boolean {
 }
 
 /**
+ * What an actor reads as when you may see that something changed but not who.
+ *
+ * On the wire, and deliberately not a login: no GitHub account is called
+ * `(hidden)`, so nothing downstream can mistake it for a person, look up an
+ * avatar for it or link it anywhere. The frontend renders it as "Hidden" and
+ * draws the neutral placeholder mark rather than a stranger's photograph.
+ */
+export const REDACTED_ACTOR = "(hidden)";
+
+/**
+ * The feed, narrowed to what the caller may actually see.
+ *
+ * `activity.read.app` is a branch over two leaves, and until now it decided
+ * nothing: the gate let anybody holding either one through and the handler
+ * then served full actor names to all of them. The branch is the whole
+ * redaction model, so it has to be applied where the rows are.
+ *
+ *   - `activity.read.app.actor` — who made the change. Holding it means
+ *     nothing here is redacted.
+ *   - `activity.read.app.rows`  — that *something* changed, actor blanked.
+ *   - neither                   — other people's rows are dropped, not
+ *     redacted: a row you may not see at all is not made visible by hiding
+ *     the name on it.
+ *
+ * Your own rows are never touched, whichever of these you hold. They are
+ * yours, and `activity.read.own` is the key that lets you see them.
+ *
+ * GitHub-sourced rows keep their own key. `activity.read.github` grants those
+ * rows, so they survive the drop above even without `.rows` — dropping them
+ * would empty the feed for somebody whose only reason to open it is GitHub's
+ * own audit log. Their actor is still redacted without `.actor`, because that
+ * leaf is the one that means "who", and erring the other way would hand over
+ * exactly what it guards.
+ *
+ * Inert installs skip all of it: there is no organization to hold a file, and
+ * the gate already let the request through on the same grounds.
+ */
+async function redactFeed(
+  entries: ActivityEntry[], login: string, accessToken: string,
+): Promise<ActivityEntry[]> {
+  if (!PERMISSIONS_ENABLED()) return entries;
+
+  // The same call the gate in front of this route made, and it is cached for
+  // sixty seconds — this is a second read of one answer, not a second round
+  // trip to GitHub.
+  const access = await accessForSelf(login, accessToken);
+  if (access.inert) return entries;
+
+  // A `failure` cannot reach here: the gate answers 503 before the handler
+  // runs. If one ever did, `permissions` is empty and everything below fails
+  // closed, which is the right way round.
+  const seesActor = access.permissions.has("activity.read.app.actor");
+  const seesRows = access.permissions.has("activity.read.app.rows");
+  const seesGithub = access.permissions.has("activity.read.github");
+  if (seesActor && seesRows && seesGithub) return entries;
+
+  const me = login.toLowerCase();
+  const mine = (e: ActivityEntry) =>
+    (e.actor ?? "").toLowerCase() === me || (e.triggeredBy ?? "").toLowerCase() === me;
+
+  const kept = entries.filter(e =>
+    mine(e) || (e.source === "github" ? seesGithub : seesRows));
+  if (seesActor) return kept;
+
+  // `triggeredBy` as well as `actor`. A guardrail row records the engine as the
+  // actor and the person who pressed the button in `triggeredBy`, and the feed
+  // shows that name — redacting one and not the other would hide the label and
+  // leave the identity.
+  return kept.map(e => mine(e) ? e : {
+    ...e,
+    actor: REDACTED_ACTOR,
+    ...(e.triggeredBy ? { triggeredBy: REDACTED_ACTOR } : {}),
+  });
+}
+
+/**
  * One page of the feed, filtered where the rows are.
  *
  * Everything used to be done in the browser over the newest hundred rows, which
  * made the pager stop at page two whatever the table held and made search blind
  * to anything older. Filters are query parameters now, and the cursor is opaque.
  */
-router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.actor", "activity.read.github"), async (req: Request, res: Response) => {
+router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.rows", "activity.read.app.actor", "activity.read.github"), async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const repo = req.query.repo as string | undefined;
   const cursor = req.query.cursor as string | undefined;
@@ -194,7 +271,8 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.act
     // The per-repository panel is a different question with its own bounded
     // read, and is left alone.
     if (repo) {
-      const entries = await getActivityForRepo(repo, limit + 200);
+      const entries = await redactFeed(
+        await getActivityForRepo(repo, limit + 200), req.user!.login, req.user!.accessToken);
       res.json({ entries: buildActivityTree(entries), total: entries.length, limit, exhausted: true });
       return;
     }
@@ -222,7 +300,11 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.act
     // nested under an AWS one would otherwise reach an account that is not
     // meant to hold GitHub data at all, which is the whole point of the split.
     if (awsOnlyDeployment) children = children.filter(e => isAwsRow(e.action));
-    let tree = buildActivityTree([...top, ...children]);
+
+    // Before the tree is built, so a child is redacted or dropped on its own
+    // merits rather than inheriting whatever its parent was allowed to say.
+    const visible = await redactFeed([...top, ...children], req.user!.login, req.user!.accessToken);
+    let tree = buildActivityTree(visible);
 
     const nestedSigs = collectNestedSignatures(tree);
     tree = tree.filter(entry => {

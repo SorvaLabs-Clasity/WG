@@ -37,6 +37,20 @@ const PLACEHOLDER_LOGINS = new Set([
   "unknown", "github[system]", "system", "github", "none", "n/a", "-",
 ]);
 
+/**
+ * What the server sends in place of an actor the reader may not see.
+ *
+ * Kept in step with `REDACTED_ACTOR` in the backend's `activity.ts`. It has to
+ * be recognised here or the avatar would fetch `github.com/(hidden).png`, fail,
+ * and fall back to drawing "(H" in a coloured circle — initials for a person
+ * who does not exist.
+ */
+export const REDACTED_ACTOR = "(hidden)";
+
+function isRedacted(login: string): boolean {
+  return login.trim().toLowerCase() === REDACTED_ACTOR;
+}
+
 function isPlaceholder(login: string): boolean {
   return !login.trim() || PLACEHOLDER_LOGINS.has(login.trim().toLowerCase());
 }
@@ -51,6 +65,21 @@ export default function UserAvatar({ login, avatarUrl, size = 24, className = ""
 
   const sizeStyle = { width: size, height: size, minWidth: size, minHeight: size };
   const fontSize = Math.max(8, Math.round(size * 0.4));
+
+  // Withheld, which is a different fact from "nobody did this" — so a
+  // different mark, and a title that says why rather than claiming no account
+  // was recorded.
+  if (isRedacted(login)) {
+    return (
+      <div
+        className={`rounded-full flex items-center justify-center shrink-0 bg-slate-200 dark:bg-paper-3 text-slate-500 dark:text-slate-400 ${className}`}
+        style={{ ...sizeStyle, fontSize: Math.max(9, Math.round(size * 0.55)) }}
+        title="You do not have permission to see who made this change"
+      >
+        <i className="fa-solid fa-eye-slash" aria-hidden="true"></i>
+      </div>
+    );
+  }
 
   // A neutral mark, not initials: "UN" for unknown reads as somebody's actual
   // initials, which is the same wrong claim in smaller letters.

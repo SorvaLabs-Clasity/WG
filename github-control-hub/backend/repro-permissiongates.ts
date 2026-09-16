@@ -139,6 +139,51 @@ console.log("\nthe gate is complete, in both directions");
     Object.values(EXEMPT).every(reason => reason.length > 20));
 }
 
+console.log("\nthe redaction model is applied, not merely named");
+{
+  /**
+   * `activity.read.app` is a branch over two leaves, and a branch that decides
+   * nothing is a promise the admin screen makes and the server does not keep.
+   * The gate alone cannot keep it: it answers yes or no to the whole feed,
+   * while `.rows` and `.actor` are about what each row says. So this checks
+   * both halves — that the feed accepts `.rows` at all, and that the handler
+   * reads the permission set rather than trusting the gate to have done it.
+   */
+  const src = fs.readFileSync("./src/routes/activity.ts", "utf8");
+  const feed = src.slice(src.indexOf('router.get("/"'));
+  const feedGate = feed.slice(0, feed.indexOf("async ("));
+
+  check("the feed route names activity.read.app.rows",
+    /"activity\.read\.app\.rows"/.test(feedGate),
+    "somebody granted exactly .rows would otherwise get 403 on the whole feed");
+
+  check("  and still names .own, .actor and .github alongside it",
+    ["activity.read.own", "activity.read.app.actor", "activity.read.github"]
+      .every(k => feedGate.includes(`"${k}"`)));
+
+  check("activity.ts consults the permission set itself, not just the gate",
+    /accessForSelf\(/.test(src) && /permissions\.has\("activity\.read\.app\.actor"\)/.test(src),
+    "otherwise everyone past the gate sees full actor names and the two leaves decide nothing");
+
+  check("  and it checks .rows as well, to drop rows it may not redact",
+    /permissions\.has\("activity\.read\.app\.rows"\)/.test(src));
+
+  check("  through the caller's own token, the same cached read the gate made",
+    /accessForSelf\(\s*login,\s*accessToken\s*\)/.test(src),
+    "accessForOther cannot take one, and omitting it is a GitHub call per team");
+
+  check("  and does nothing at all while the flag is off",
+    /if \(!PERMISSIONS_ENABLED\(\)\) return entries;/.test(src));
+
+  check("the redacted actor is a constant, spelled once",
+    /export const REDACTED_ACTOR = "\(hidden\)";/.test(src));
+
+  const avatar = fs.readFileSync("../frontend/src/components/UserAvatar.tsx", "utf8");
+  check("  and the frontend knows the same marker, so it renders as withheld",
+    /REDACTED_ACTOR = "\(hidden\)"/.test(avatar),
+    "otherwise the avatar fetches github.com/(hidden).png and draws initials for nobody");
+}
+
 console.log("\nthe permissions endpoint itself");
 {
   /**
