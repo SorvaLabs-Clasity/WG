@@ -180,6 +180,11 @@ globalThis.fetch = (async (input: any) => {
       // this list buys the file nothing on its own — the assertion below is what
       // holds the separation, and it is stricter than exclusion would be.
       "alarms.ts",
+      // Not a gate at all, same as `auth.ts` above: `isAwsAdmin` here is a
+      // field on `MemberSnapshot`, reporting who is on the legacy AWS team so
+      // the migration can reproduce it as a preset. Every route in this file
+      // is gated by `requirePermission`, never by team membership.
+      "admin.ts",
     ]);
 
     const offenders: string[] = [];

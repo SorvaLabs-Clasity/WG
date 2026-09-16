@@ -8,7 +8,10 @@ import {
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
 import { emptyFile, type PermissionsFile } from "../permissions/types";
 import { PERMISSIONS_REPO, PERMISSIONS_PATH } from "../permissions/store";
+import { startingFile, dryRun, type MemberSnapshot } from "../permissions/migrate";
 import { createOctokit, getSystemToken, getOrg } from "../github/client";
+import { listOrgMembers, depsFromOctokit } from "../services/orgMembersService";
+import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
 
 /**
  * The Admin tab: the one router that can grant permissions.
@@ -164,6 +167,112 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
     }
 
     res.json({ repoCreated, fileCreated });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "admin") });
+  }
+});
+
+/**
+ * Who the organization currently is, for the migration and its dry-run.
+ *
+ * Every member, plus their standing under the two legacy teams and org
+ * ownership — the same three facts `migrate.ts` needs to reproduce today's
+ * access exactly. Read with the App token, the same one every other read in
+ * this router uses, so this does not depend on the caller's own visibility
+ * into a team they may not be on.
+ */
+async function buildMemberSnapshots(): Promise<MemberSnapshot[]> {
+  const org = getOrg();
+  const octokit = createOctokit(getSystemToken(), "Permissions");
+
+  const members = await listOrgMembers(depsFromOctokit(octokit), org);
+
+  const owners = new Set<string>();
+  for (let page = 1; ; page++) {
+    const { data } = await octokit.rest.orgs.listMembers({ org, role: "admin", per_page: 100, page });
+    for (const m of data) if (m.login) owners.add(m.login.toLowerCase());
+    if (data.length < 100) break;
+  }
+
+  const teamMembers = async (slug: string): Promise<Set<string>> => {
+    const set = new Set<string>();
+    for (let page = 1; ; page++) {
+      let data: Array<{ login?: string }>;
+      try {
+        const res = await octokit.rest.teams.listMembersInOrg({ org, team_slug: slug, per_page: 100, page });
+        data = res.data;
+      } catch (err: any) {
+        if ((err?.status ?? err?.response?.status) === 404) break; // no such team
+        throw err;
+      }
+      for (const m of data) if (m.login) set.add(m.login.toLowerCase());
+      if (data.length < 100) break;
+    }
+    return set;
+  };
+
+  const [controlHubAdmins, awsAdmins] = await Promise.all([
+    teamMembers(CONTROL_HUB_ADMIN_TEAM),
+    teamMembers(AWS_ADMIN_TEAM),
+  ]);
+
+  return members.map(m => {
+    const key = m.login.toLowerCase();
+    return {
+      login: m.login,
+      isControlHubAdmin: controlHubAdmins.has(key),
+      isAwsAdmin: awsAdmins.has(key),
+      isOrgOwner: owners.has(key),
+    };
+  });
+}
+
+router.get("/dry-run", requirePermission("admin.people.read"), async (_req: Request, res: Response) => {
+  try {
+    const loaded = await loadPermissions();
+    const currentFile = isFailure(loaded) ? emptyFile() : loaded.file;
+    const members = await buildMemberSnapshots();
+    res.json(dryRun(currentFile, members));
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "admin") });
+  }
+});
+
+router.post("/migrate", requirePermission("admin.people.assign"), async (req: Request, res: Response) => {
+  try {
+    const loaded = await loadPermissions();
+    const currentFile = isFailure(loaded) ? emptyFile() : loaded.file;
+
+    // Refuse rather than clobber: regenerating a starting file over one that
+    // already names people would silently discard whatever an administrator
+    // had already curated.
+    if (Object.keys(currentFile.people ?? {}).length > 0) {
+      res.status(409).json({
+        code: "conflict",
+        error: "permissions.json already has people in it; refusing to overwrite it with a generated starting file.",
+      });
+      return;
+    }
+
+    const members = await buildMemberSnapshots();
+    const file = startingFile(members);
+    const sha = isFailure(loaded) ? null : loaded.sha;
+
+    const result = await savePermissions(file, sha, req.user!.login, "Generate the starting permissions file");
+    if (!result.ok) {
+      if (result.reason === "conflict") {
+        res.status(409).json({ code: "conflict", error: result.detail });
+        return;
+      }
+      if (result.reason === "invalid") {
+        res.status(400).json({ error: result.detail, problems: fileProblems(file) });
+        return;
+      }
+      res.status(502).json({ error: result.detail });
+      return;
+    }
+
+    res.json({ ok: true, sha: result.sha, people: Object.keys(file.people).length });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }
