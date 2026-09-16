@@ -293,11 +293,17 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
    * exactly right and is used as-is. Once it stops matching, this asks the
    * server what each *selected* preset resolves to on its own
    * (`GET /admin/preset/:id/resolved`, the same route the Presets editor
-   * uses) and unions them. That drops this person's team-derived rules from
-   * the preview for as long as the edit is in progress — a person's own
-   * teams are not being edited here, so this is a preview simplification
-   * rather than a correctness gap in what gets saved; the authoritative
-   * answer returns the moment the save succeeds and this refetches.
+   * uses) and unions them. That drops this person's **team-derived** rules
+   * from the preview for as long as the edit is in progress, because this
+   * route answers for a preset rather than for a person.
+   *
+   * That was called "a preview simplification rather than a correctness gap in
+   * what gets saved", and it was not: the tree's edits are a diff against this
+   * baseline, so an incomplete baseline is a wrong diff. A tick made against it
+   * would write rules for branches the preview had dropped. The tree is
+   * therefore read-only while the selection is dirty — save the preset change,
+   * let the server re-resolve the person, then edit — which is the honest
+   * version of the same screen and costs one save.
    */
   const presetQueries = useQueries({
     queries: (presetsChanged ? presets : []).map(id => ({
@@ -363,8 +369,16 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
             )}
 
             <Block title="Permissions">
+              {presetsChanged && (
+                <p className={`${TYPE.sub} text-ink-2 mb-3`}>
+                  The preset selection above has changed, so what {loginKey} inherits is not
+                  settled yet. Save that first — the permissions below are edited as a
+                  difference from what their presets and teams already give them, and that
+                  answer is only right once the server has re-resolved it.
+                </p>
+              )}
               <PermissionTree vocabulary={vocabulary} inherited={inherited} entry={entry}
-                onChange={setEntry} readOnly={!canOverride} />
+                onChange={setEntry} readOnly={!canOverride || presetsChanged} />
             </Block>
 
             <Block title="Note">

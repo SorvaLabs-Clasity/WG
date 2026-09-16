@@ -1,6 +1,10 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { TYPE } from "../design";
 import type { PermissionLeaf, PermissionEntry, FlatRule } from "../api/admin";
+import {
+  buildTree, collectLeafKeys, knownNodesOf, decideLeaf, ownRulesFrom, baselineOf, collapseEntry,
+  type Node,
+} from "./permissionTreeModel";
 
 /**
  * The permission tree.
@@ -19,125 +23,20 @@ import type { PermissionLeaf, PermissionEntry, FlatRule } from "../api/admin";
  * this layer never touched, and "Granted here" / "Revoked here" for something
  * it did.
  *
- * **Every click writes the shortest entry that expresses the result.** Ticking
- * a leaf never appends one more string to a list that only grows; it recomputes
- * the whole layer from the tree's structure, so a branch whose every leaf ends
- * up granted collapses to one rule (`grant: ["alarms"]`) rather than thirteen —
- * which is also what keeps a leaf added to the vocabulary later inside the
- * grant, instead of silently outside it.
+ * **Every click writes the shortest entry that expresses the *difference*.**
+ * `inherited` is the baseline; a leaf whose desired state already matches what
+ * the layers beneath decide produces no rule at all, so a branch nobody touched
+ * stays untouched and a team grant is never frozen into a person's own entry.
+ * A branch whose whole subtree differs in the same direction still collapses to
+ * one rule, which is what keeps a leaf added to the vocabulary later inside
+ * that grant. The arithmetic lives in `./permissionTreeModel`, where it can be
+ * run without React; this file is the rendering.
  */
-
-// ── the tree, derived from the vocabulary's own keys ────────────────────
-
-interface Node {
-  key: string;
-  label: string;
-  isLeaf: boolean;
-  leaf?: PermissionLeaf;
-  children: Node[];
-}
-
-/** "webhookHealth" -> "Webhook health". Branches have no label of their own to show. */
-function prettyLabel(segment: string): string {
-  const spaced = segment.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
-function buildTree(vocabulary: readonly PermissionLeaf[]): Node[] {
-  const roots: Node[] = [];
-  const branches = new Map<string, Node>();
-
-  function ensureBranch(key: string): Node {
-    const existing = branches.get(key);
-    if (existing) return existing;
-    const parts = key.split(".");
-    const node: Node = { key, label: prettyLabel(parts[parts.length - 1]), isLeaf: false, children: [] };
-    branches.set(key, node);
-    if (parts.length === 1) roots.push(node);
-    else ensureBranch(parts.slice(0, -1).join(".")).children.push(node);
-    return node;
-  }
-
-  for (const leaf of vocabulary) {
-    const parts = leaf.key.split(".");
-    const leafNode: Node = { key: leaf.key, label: leaf.label, isLeaf: true, leaf, children: [] };
-    if (parts.length === 1) roots.push(leafNode);
-    else ensureBranch(parts.slice(0, -1).join(".")).children.push(leafNode);
-  }
-  return roots;
-}
-
-function collectLeafKeys(node: Node, out: string[] = []): string[] {
-  if (node.isLeaf) { out.push(node.key); return out; }
-  for (const child of node.children) collectLeafKeys(child, out);
-  return out;
-}
-
-// ── deciding a leaf across layers, the same way the server does ─────────
-
-const depthOf = (node: string) => node.split(".").length;
-
-/** The longest, highest-layer match wins; a tie goes to revoke. Same order as `decideLeaf` server-side. */
-function decideLeaf(leafKey: string, rules: FlatRule[], knownNodes: ReadonlySet<string>): FlatRule | null {
-  let best: FlatRule | null = null;
-  for (const rule of rules) {
-    if (!knownNodes.has(rule.node)) continue;
-    if (!(leafKey === rule.node || leafKey.startsWith(rule.node + "."))) continue;
-    if (!best) { best = rule; continue; }
-    const a = [depthOf(rule.node), rule.layer, rule.effect === "revoke" ? 1 : 0];
-    const b = [depthOf(best.node), best.layer, best.effect === "revoke" ? 1 : 0];
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] === b[i]) continue;
-      if (a[i] > b[i]) best = rule;
-      break;
-    }
-  }
-  return best;
-}
-
-function ownRulesFrom(entry: PermissionEntry, layer: number): FlatRule[] {
-  return [
-    ...(entry.grant ?? []).map(node => ({ node, effect: "grant" as const, layer, origin: "Granted here" })),
-    ...(entry.revoke ?? []).map(node => ({ node, effect: "revoke" as const, layer, origin: "Revoked here" })),
-  ];
-}
 
 function originText(decision: FlatRule | null, ownLayer: number): string {
   if (!decision) return "Not granted";
   if (decision.layer === ownLayer) return decision.effect === "grant" ? "Granted here" : "Revoked here";
   return decision.origin;
-}
-
-/**
- * The minimal `{grant, revoke}` that reproduces `desired` for every leaf in the
- * tree. Post-order: a node whose whole subtree wants the same thing collapses
- * to one rule and its children write nothing; a node that disagrees with
- * itself pushes a rule for each child that *is* uniform and leaves the rest to
- * recurse, which is how a mixed `alarms` still collapses `alarms.org` alone.
- */
-function collapseEntry(desired: ReadonlyMap<string, boolean>, roots: Node[]): PermissionEntry {
-  const grant: string[] = [];
-  const revoke: string[] = [];
-
-  function visit(node: Node): boolean | null {
-    if (node.isLeaf) return desired.get(node.key) ?? false;
-    if (node.children.length === 0) return null;
-    const values = node.children.map(visit);
-    const uniform = values[0] !== null && values.every(v => v === values[0]);
-    if (uniform) return values[0];
-    node.children.forEach((child, i) => {
-      const v = values[i];
-      if (v !== null) (v ? grant : revoke).push(child.key);
-    });
-    return null;
-  }
-
-  for (const root of roots) {
-    const v = visit(root);
-    if (v !== null) (v ? grant : revoke).push(root.key);
-  }
-
-  return { grant: grant.length ? grant : undefined, revoke: revoke.length ? revoke : undefined };
 }
 
 // ── the component ─────────────────────────────────────────────────────
@@ -162,15 +61,18 @@ export default function PermissionTree({ vocabulary, inherited, entry, onChange,
 
   const tree = useMemo(() => buildTree(vocabulary), [vocabulary]);
 
-  const knownNodes = useMemo(() => {
-    const out = new Set<string>();
-    for (const leaf of vocabulary) {
-      out.add(leaf.key);
-      const parts = leaf.key.split(".");
-      for (let i = 1; i < parts.length; i++) out.add(parts.slice(0, i).join("."));
-    }
-    return out;
-  }, [vocabulary]);
+  const knownNodes = useMemo(() => knownNodesOf(vocabulary), [vocabulary]);
+
+  /**
+   * What the layers beneath this one decide on their own — the baseline every
+   * edit is a difference from. Derived from `inherited` alone, never from the
+   * resolved state, which is the distinction the whole of `collapseEntry`
+   * turns on.
+   */
+  const baseline = useMemo(
+    () => baselineOf(vocabulary, inherited, knownNodes),
+    [vocabulary, inherited, knownNodes],
+  );
 
   // One layer above the deepest inherited one, so a person's own entry always
   // outranks their presets at equal depth, the way `LAYER.person` outranks
@@ -212,8 +114,8 @@ export default function PermissionTree({ vocabulary, inherited, entry, onChange,
       for (const key of leaves) desired.set(key, next);
     }
 
-    onChange(collapseEntry(desired, tree));
-  }, [readOnly, vocabulary, held, tree, onChange]);
+    onChange(collapseEntry(desired, tree, baseline));
+  }, [readOnly, vocabulary, held, tree, baseline, onChange]);
 
   if (vocabulary.length === 0) {
     return <p className={`${TYPE.sub} text-ink-3`}>The vocabulary has not loaded yet.</p>;
