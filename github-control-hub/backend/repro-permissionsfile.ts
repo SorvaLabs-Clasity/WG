@@ -13,8 +13,11 @@ import type { PermissionsFile } from "./src/permissions/types";
 import fs from "node:fs";
 import { emptyFile } from "./src/permissions/types";
 import {
-  decodeFileContent, isFailure, forgetPermissions, commitMessageFor,
+  decodeFileContent, isFailure, forgetPermissions, commitMessageFor, loadPermissions,
 } from "./src/permissions/store";
+import { forgetSubjects, subjectFor } from "./src/permissions/subject";
+import { PERMISSIONS } from "./src/permissions/vocabulary";
+import { accessFor } from "./src/permissions/index";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -240,23 +243,71 @@ console.log("\nwho the caller is");
    * could revoke the exemption that exists to survive the file.
    */
   check("organization ownership is read from GitHub, not from the file",
-    /getMembershipForUser/.test(subject) && /role === "admin"/.test(subject));
+    /getMembershipForUser\(/.test(subject) && /role === "admin"/.test(subject));
   check("  and never from the permissions file",
     !/loadPermissions|PermissionsFile/.test(subject));
 
   /**
-   * One paginated call, not one per team. The obvious implementation — list
-   * every team in the org, then ask "is this person in it" for each — is
-   * O(teams) GitHub calls for every permission load, on every request. An org
-   * with fifty teams would spend fifty calls answering one question.
+   * The bug this shape exists to make impossible.
+   *
+   * `teams.listForAuthenticatedUser` is `GET /user/teams`. It takes no
+   * username: it answers for whoever holds the token. So a bare `userToken`
+   * parameter reads as "the token to ask with" while behaving as "the person
+   * being asked about", and the caller that gets it wrong is not hypothetical
+   * — the Admin tab's dry-run diff asks what somebody *else* would hold, with
+   * its own operator's token in hand. That granted the operator's teams to
+   * that person, and cached it under their login for a minute.
    */
-  check("the caller's teams are read in one paginated call",
+  check("subjectFor takes an options object, not a bare token",
+    /subjectFor\(login: string, opts\?: SubjectOptions/.test(subject));
+  check("  whose name says whose token it must be",
+    /ownToken\?: string/.test(subject));
+  check("  and the source does not claim GitHub narrows that call by username",
+    !/only membership that token can read/i.test(subject)
+    && /takes no username/i.test(subject),
+    "GET /user/teams answers for the token holder, whoever that is");
+
+  /**
+   * Two ways to resolve teams, because there are two questions.
+   *
+   * "What am I in" is one paginated call on the asker's own token — the
+   * per-request path, and it has to stay O(1). "What is that person in" cannot
+   * use that endpoint at all, so it costs one call per team on the App token,
+   * which is only affordable because it is the rare administrative inspection.
+   */
+  check("a caller's own teams are read in one paginated call",
     /listForAuthenticatedUser/.test(subject));
-  check("  not by asking per team",
-    !/getMembershipForUserInOrg/.test(subject),
-    "that is O(teams) calls per permission load");
   check("  paged the way the rest of this codebase pages",
     /per_page: 100/.test(subject) && /page\b/.test(subject));
+  check("  while somebody else's are resolved by name, with the App token",
+    /teams\.list\(\{ org/.test(subject) && /getMembershipForUserInOrg/.test(subject));
+  check("  and that path says why O(teams) is acceptable there and nowhere else",
+    /O\(teams\)/.test(subject) && /per-request/.test(subject));
+
+  /**
+   * And the two answers are kept apart. One inspection of somebody must not
+   * overwrite the subject they resolved for themselves a moment earlier —
+   * the App path is the weaker read, and they would spend the rest of the
+   * minute holding less than they should.
+   */
+  check("the cache is keyed by login and by how the teams were resolved",
+    /\$\{login\.toLowerCase\(\)\}:\$\{via\}/.test(subject)
+    && /"self"/.test(subject) && /"app"/.test(subject));
+  check("  and only an answer that was actually resolved is remembered",
+    /teamsResolved/.test(subject) && /if \(teamsResolved\) cache\.set/.test(subject),
+    "one tokenless internal call would otherwise leave that login with no teams");
+
+  /**
+   * The owner exemption has to survive a degraded GitHub, which is the
+   * situation it exists for. `createOctokit` disables throttle retry, so a
+   * rate-limited App token fails the file read and the ownership read
+   * together — and the caller's own grant is a different allowance.
+   */
+  check("a failed ownership read is retried on the caller's own token",
+    /readOwnership\(ownToken, org, login\)/.test(subject)
+    && /answered/.test(subject));
+  check("  and GitHub narrows that retry, because a username is passed",
+    /getMembershipForUser\(\{ org, username: login \}\)/.test(subject));
 
   /**
    * Fail closed, the same rule as the file: an unreadable membership means the
@@ -264,10 +315,56 @@ console.log("\nwho the caller is");
    * fallback to a remembered list.
    */
   check("an unreadable membership yields no teams rather than the last known set",
-    /catch/.test(subject) && !/lastKnownTeams|cachedTeams\b/.test(subject));
+    /catch/.test(subject) && !/lastKnownTeams|rememberedTeams\b/.test(subject));
 
   check("answers are cached, so a screen is not a burst of GitHub calls",
     /TTL|expires/.test(subject) && /forgetSubjects/.test(subject));
+
+  // An unset GITHUB_ORG must not reject: a throw is a fail-OPEN path, because
+  // the caller handles it somewhere other than where it handles a denial.
+  check("getOrg is inside the try, so an unset organization is an answer",
+    subject.indexOf("try {") < subject.indexOf("org = getOrg()"),
+    "a throw is handled by different code from a denial");
+}
+
+console.log("\nwhere the file came from, and what to offer about it");
+{
+  const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
+
+  /**
+   * A 404 from the contents API was three states wearing one hat: no
+   * repository, no file, and an App that lost access to the repository. The
+   * third read as `failure: null` with nobody granted anything and no error
+   * anywhere — the worst shape a broken permission system can take.
+   */
+  check("a 404 is probed rather than assumed",
+    /repos\.get\(\{ owner: getOrg\(\)/.test(store) && /probeRepository/.test(store));
+  check("  a missing repository is named as one", /"no-repo"/.test(store));
+  check("  a missing file is still the ordinary first run", /source: "absent"/.test(store));
+  check("  and a probe that fails says the App may have lost access",
+    /may have lost access/.test(store) && /reason: "unreachable"/.test(store));
+
+  // The three shapes a caller has to tell apart, as values.
+  const noRepo = { file: emptyFile(), sha: null, source: "no-repo" as const };
+  const absent = { file: emptyFile(), sha: null, source: "absent" as const };
+  const lost = { reason: "unreachable" as const, detail: "The App may have lost access." };
+  check("the three states are distinguishable by the caller",
+    !isFailure(noRepo) && !isFailure(absent) && isFailure(lost)
+    && noRepo.source !== absent.source);
+
+  check("the source and the sha reach the caller",
+    /source: loaded\.source/.test(fs.readFileSync("./src/permissions/index.ts", "utf8"))
+    && /sha: loaded\.sha/.test(fs.readFileSync("./src/permissions/index.ts", "utf8")));
+
+  /**
+   * A save that returns an empty sha disarms the next save's conflict check:
+   * the write sends the sha only when it is truthy, and `""` is not.
+   */
+  check("a save with no sha in the response is a failure, not an empty sha",
+    !/content\?\.sha \?\? ""/.test(store) && /returned no sha/.test(store));
+
+  check("getOrg and the client are inside the try in the reader too",
+    store.indexOf("try {") < store.indexOf("org = getOrg()"));
 }
 
 console.log("\nthe one question the app asks");
@@ -277,6 +374,10 @@ console.log("\nthe one question the app asks");
   check("it composes the store, the subject and the engine",
     /loadPermissions/.test(index) && /subjectFor/.test(index) && /permissionsFor/.test(index));
 
+  check("  and it passes the caller's own token as their own",
+    /subjectFor\(login, \{ ownToken: userToken \}\)/.test(index),
+    "anything else attributes one person's teams to another");
+
   /**
    * AWS-only installs have no GitHub organization and no repository to hold a
    * file, so the whole system is inert there and the app behaves as it does
@@ -285,6 +386,9 @@ console.log("\nthe one question the app asks");
    */
   check("an AWS-only install is inert rather than locked out",
     /aws-only/.test(index) && /inert/.test(index));
+  check("  and inert is the same always-true set an owner holds",
+    /allPermissions\("inert"/.test(index),
+    "a second always-true object drifts from the first the next time a permission is added");
 
   /**
    * Every other failure is closed, not open. An owner still gets in, because
@@ -298,7 +402,105 @@ console.log("\nthe one question the app asks");
 
   check("unknown nodes are surfaced rather than swallowed",
     /unknownNodesIn/.test(index));
+
+  check("nothing below accessFor may reject",
+    /} catch \(err: any\) \{/.test(index) && /reason: "unreachable"/.test(index));
 }
 
-console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
-process.exit(failures === 0 ? 0 : 1);
+(async () => {
+  console.log("\nan AWS-only install is inert, which means every check passes");
+  {
+    /**
+     * The spec says inert, and the gates are ~155 call sites in stage 3. A
+     * permission set that answers `false` beside an `inert: true` flag is one
+     * forgotten `|| inert` away from breaking every AWS install, and the
+     * forgotten one is invisible until somebody with an AWS deployment says a
+     * screen is empty.
+     */
+    const before = process.env.AWS_ONLY;
+    process.env.AWS_ONLY = "true";
+    forgetPermissions();
+    forgetSubjects();
+
+    const access = await accessFor("anybody");
+    check("it is flagged inert", access.inert === true, access.inert);
+    check("  and says why", access.failure?.reason === "aws-only", access.failure);
+    check("  and every check passes", access.permissions.has("admin.presets.delete")
+      && access.permissions.has("aws.rules.delete") && access.permissions.has("me.work.read"));
+    check("  including permissions this version has never heard of",
+      access.permissions.has("invented.later"));
+    check("  and the whole vocabulary is enumerable, for the admin screen",
+      access.permissions.held.length === PERMISSIONS.length, access.permissions.held.length);
+    check("  while saying it is inert rather than claiming an owner",
+      access.permissions.explain("aws.rules.delete").reason === "inert",
+      access.permissions.explain("aws.rules.delete"));
+
+    if (before === undefined) delete process.env.AWS_ONLY; else process.env.AWS_ONLY = before;
+    forgetPermissions();
+  }
+
+  console.log("\na failure is not cached like a success");
+  {
+    /**
+     * Sixty seconds was wrong for a failure: somebody who repairs the file by
+     * pushing to the repository would watch the app go on rejecting it, with
+     * nothing on screen to say the fix had landed. Short enough to be a
+     * stampede guard, not long enough to be a memory.
+     */
+    const before = process.env.AWS_ONLY;
+    forgetPermissions();
+    process.env.AWS_ONLY = "true";
+    const first = await loadPermissions(0);
+    process.env.AWS_ONLY = "false";
+    const soon = await loadPermissions(3_000);
+    const later = await loadPermissions(20_000);
+
+    check("a failure is reused for a moment",
+      isFailure(first) && isFailure(soon) && (soon as any).reason === "aws-only", soon);
+    check("  and then re-read rather than remembered",
+      isFailure(later) && (later as any).reason !== "aws-only", later);
+
+    if (before === undefined) delete process.env.AWS_ONLY; else process.env.AWS_ONLY = before;
+    forgetPermissions();
+  }
+
+  console.log("\nnothing rejects, whatever the environment is missing");
+  {
+    /**
+     * `getOrg()` throws when GITHUB_ORG is unset. A rejected promise is a
+     * fail-OPEN path: the caller handles it in the error middleware rather
+     * than in the branch that denies, and a gate that is never reached is a
+     * gate that never said no.
+     */
+    const org = process.env.GITHUB_ORG;
+    const awsOnly = process.env.AWS_ONLY;
+    delete process.env.GITHUB_ORG;
+    delete process.env.AWS_ONLY;
+    forgetPermissions();
+    forgetSubjects();
+
+    let rejected = false;
+    let access: Awaited<ReturnType<typeof accessFor>> | null = null;
+    try {
+      access = await accessFor("anybody", "a-token-belonging-to-anybody");
+    } catch {
+      rejected = true;
+    }
+    check("accessFor does not reject when the organization is unset", !rejected);
+    check("  it returns a closed answer instead",
+      access !== null && access.permissions.held.length === 0, access?.permissions.held);
+    check("  with a reason on it", access?.failure != null, access?.failure);
+
+    const subject = await subjectFor("anybody");
+    check("  and subjectFor answers nobody rather than throwing",
+      subject.teamSlugs.length === 0 && subject.isOrgOwner === false, subject);
+
+    if (org === undefined) delete process.env.GITHUB_ORG; else process.env.GITHUB_ORG = org;
+    if (awsOnly === undefined) delete process.env.AWS_ONLY; else process.env.AWS_ONLY = awsOnly;
+    forgetPermissions();
+    forgetSubjects();
+  }
+
+  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+  process.exit(failures === 0 ? 0 : 1);
+})();

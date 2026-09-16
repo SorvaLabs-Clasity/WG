@@ -32,12 +32,31 @@ export const PERMISSIONS_PATH = process.env.PERMISSIONS_PATH || "permissions.jso
 /** How long a successful read is reused. Matches the team-membership cache. */
 const TTL_MS = 60_000;
 
+/**
+ * How long a *failure* is reused, which is not the same number.
+ *
+ * A minute was wrong: somebody who repairs the file by pushing directly to the
+ * repository — the recovery path this whole design exists to leave open — would
+ * watch the app go on rejecting it for up to a minute afterwards, with nothing
+ * on screen to say the fix had landed. Five seconds is still enough to stop a
+ * burst of requests each re-asking GitHub the same broken question, which is
+ * the only thing caching a failure was ever for.
+ */
+const FAILURE_TTL_MS = 5_000;
+
 export interface LoadedPermissions {
   file: PermissionsFile;
   /** The blob sha, needed to write without clobbering a concurrent edit. */
   sha: string | null;
-  /** `absent` means the repo is there and the file is not — an ordinary first-run state. */
-  source: "github" | "absent";
+  /**
+   * Which first-run state this is, because they are not the same repair.
+   *
+   * `absent` means the repository is there and the file is not — offer to
+   * initialise it. `no-repo` means there is no repository to hold it — offer to
+   * create one. Reporting both as "absent" sent the admin screen to write a
+   * file into a repository that does not exist.
+   */
+  source: "github" | "absent" | "no-repo";
 }
 
 export interface LoadFailure {
@@ -68,7 +87,9 @@ export function forgetPermissions(): void {
 }
 
 export async function loadPermissions(now = Date.now()): Promise<LoadedPermissions | LoadFailure> {
-  if (cache && now - cache.at < TTL_MS) return cache.value;
+  if (cache && now - cache.at < (isFailure(cache.value) ? FAILURE_TTL_MS : TTL_MS)) {
+    return cache.value;
+  }
   const value = await read();
   cache = { at: now, value };
   return value;
@@ -87,21 +108,32 @@ async function read(): Promise<LoadedPermissions | LoadFailure> {
     return { reason: "no-token", detail: "The GitHub App's credentials are not loaded." };
   }
 
-  const octokit = createOctokit(token, "Permissions");
+  // Both inside the try: `getOrg()` throws when `GITHUB_ORG` is unset, and a
+  // throw is a fail-OPEN path here — the caller distinguishes a rejected
+  // promise from a returned failure, so an unset variable has to arrive as the
+  // second.
   let data: any;
+  let org: string;
   try {
+    org = getOrg();
+    const octokit = createOctokit(token, "Permissions");
     const res = await octokit.rest.repos.getContent({
-      owner: getOrg(), repo: PERMISSIONS_REPO, path: PERMISSIONS_PATH,
+      owner: org, repo: PERMISSIONS_REPO, path: PERMISSIONS_PATH,
     });
     data = res.data;
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status;
-    // 404 is either "no repository" or "no file". Both are ordinary first-run
-    // states and both mean nobody has been granted anything yet, which is the
-    // correct default rather than an error.
-    if (status === 404) {
-      return { file: emptyFile(), sha: null, source: "absent" };
-    }
+    /**
+     * A 404 from `getContent` is three different states wearing one hat: there
+     * is no repository, there is a repository and no file, or the App can no
+     * longer see the repository. They are three different repairs — create the
+     * repository, initialise the file, reinstall the App — and returning
+     * "absent" for all three made the third one look healthy: nobody granted
+     * anything, no error anywhere, and nothing to tell anybody to look.
+     *
+     * One probe separates them.
+     */
+    if (status === 404) return await probeRepository(token);
     return { reason: "unreachable", detail: err?.message ?? String(err) };
   }
 
@@ -126,6 +158,42 @@ async function read(): Promise<LoadedPermissions | LoadFailure> {
   }
 
   return { file: parsed, sha: data.sha ?? null, source: "github" };
+}
+
+/**
+ * Which of the three 404s this was.
+ *
+ * `repos.get` answers the only part GitHub will answer: whether this token can
+ * see the repository at all. It succeeding means the repository is there and
+ * the file is not — the ordinary first run. Anything other than a 404 means we
+ * could not ask, and the most likely reason is that the App's installation no
+ * longer covers this repository, which has to read as a failure rather than as
+ * an empty file: an empty file grants nobody anything and says nothing is
+ * wrong.
+ *
+ * A 404 from the probe is reported as `no-repo`. GitHub deliberately answers
+ * 404 rather than 403 for a repository a token may not see, so this cannot be
+ * told apart from a repository that was created and then hidden from the App —
+ * but the first run of every install passes through here, and refusing to name
+ * it would leave the admin screen unable to offer the one thing that fixes it.
+ */
+async function probeRepository(token: string): Promise<LoadedPermissions | LoadFailure> {
+  const lost = (detail: string): LoadFailure => ({
+    reason: "unreachable",
+    detail: `${detail} The App may have lost access to ${PERMISSIONS_REPO}.`,
+  });
+
+  try {
+    const octokit = createOctokit(token, "Permissions");
+    await octokit.rest.repos.get({ owner: getOrg(), repo: PERMISSIONS_REPO });
+  } catch (err: any) {
+    const status = err?.status ?? err?.response?.status;
+    if (status === 404) return { file: emptyFile(), sha: null, source: "no-repo" };
+    return lost(`${PERMISSIONS_REPO} could not be read: ${err?.message ?? String(err)}.`);
+  }
+
+  // The repository answered, so the file is simply not in it yet.
+  return { file: emptyFile(), sha: null, source: "absent" };
 }
 
 export type WriteResult =
@@ -184,7 +252,27 @@ export async function savePermissions(
     // the difference between a screen that reflects your edit and one that
     // appears to have ignored it.
     forgetPermissions();
-    return { ok: true, sha: (res.data as any)?.content?.sha ?? "" };
+
+    /**
+     * No sha is a failure, not an empty string.
+     *
+     * The write sends `...(sha ? { sha } : {})`, and `""` is falsy — so an
+     * empty sha round-tripped into the next save omits the sha entirely, and
+     * that save overwrites a concurrent edit without GitHub ever objecting.
+     * The one guard against two administrators discarding each other's work
+     * would have been switched off by the value the last successful save
+     * handed back. Saying so costs a reload; not saying so costs somebody's
+     * edit, silently.
+     */
+    const written = (res.data as any)?.content?.sha;
+    if (typeof written !== "string" || written.length === 0) {
+      return {
+        ok: false, reason: "failed",
+        detail: "The save was accepted but GitHub returned no sha for it. "
+          + "Reload before saving again, so the next save cannot overwrite a concurrent edit.",
+      };
+    }
+    return { ok: true, sha: written };
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status;
     if (status === 409 || status === 422) {
