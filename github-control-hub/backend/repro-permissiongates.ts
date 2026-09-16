@@ -64,5 +64,63 @@ console.log("the gate");
     /inert/.test(gate));
 }
 
+console.log("\nthe gate is complete, in both directions");
+{
+  const dir = "./src/routes";
+  /**
+   * Files with no permission gate, and why. `auth.ts` is how you get a session
+   * at all — gating it on a permission read that needs a session is a circle.
+   * `webhooks.ts` is not a user route: GitHub's deliveries are HMAC-verified
+   * and carry no caller.
+   */
+  const EXEMPT: Record<string, string> = {
+    "auth.ts": "how a session is obtained; gating it on a session would be a circle",
+    "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries, no caller",
+  };
+
+  const files = fs.readdirSync(dir).filter(f => f.endsWith(".ts"));
+  const named = new Set<string>();
+  const ungated: string[] = [];
+
+  for (const file of files) {
+    if (file in EXEMPT) continue;
+    const src = fs.readFileSync(path.join(dir, file), "utf8");
+    for (const m of src.matchAll(/requireAnyPermission\(([^)]*)\)|requirePermission\("([^"]+)"\)/g)) {
+      if (m[2]) named.add(m[2]);
+      for (const k of (m[1] ?? "").matchAll(/"([^"]+)"/g)) named.add(k[1]);
+    }
+
+    // A router-wide gate ahead of the first route covers the whole file.
+    const blanket = src.search(/router\.use\(\s*require(Any)?Permission\(/);
+    const firstRoute = src.search(/router\.(get|post|put|delete|patch)\(/);
+    if (blanket >= 0 && (firstRoute < 0 || blanket < firstRoute)) continue;
+
+    const starts = [...src.matchAll(/router\.(get|post|put|delete|patch)\(/g)].map(m => m.index!);
+    starts.forEach((start, i) => {
+      const end = i + 1 < starts.length ? starts[i + 1] : src.length;
+      const body = src.slice(start, end);
+      if (!/require(Any)?Permission\(/.test(body)) {
+        ungated.push(`${file}: ${body.slice(0, body.indexOf("\n")).trim()}`);
+      }
+    });
+  }
+
+  check("every route names a permission", ungated.length === 0, ungated.slice(0, 8));
+
+  // The other direction. A key nothing names is one somebody can hold and never
+  // use; a key named but absent from the vocabulary fails closed and silently.
+  const vocabulary = new Set(PERMISSIONS.map(p => p.key));
+  const invented = [...named].filter(k => !vocabulary.has(k));
+  check("every permission a route names exists in the vocabulary",
+    invented.length === 0, invented);
+
+  const unused = [...vocabulary].filter(k => !named.has(k) && !k.startsWith("admin."));
+  check("every permission is named by at least one route (admin.* excepted, stage 4)",
+    unused.length === 0, unused.slice(0, 12));
+
+  check("  and every exemption says why",
+    Object.values(EXEMPT).every(reason => reason.length > 20));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
