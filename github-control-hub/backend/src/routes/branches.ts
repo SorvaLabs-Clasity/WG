@@ -5,10 +5,11 @@ import { listBranches, createBranch, deleteBranch, renameBranch } from "../servi
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { validateParams, isValidBranchName } from "../utils/validation";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
-router.get("/:repo/branches", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/branches", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const branches = await listBranches(octokit, req.params.repo);
@@ -19,7 +20,7 @@ router.get("/:repo/branches", validateParams("repo"), async (req: Request<{ repo
   }
 });
 
-router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/branches", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const { branchName, baseBranch } = req.body as {
     branchName?: string;
     baseBranch?: string;
@@ -61,6 +62,7 @@ router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ rep
 
 router.delete(
   "/:repo/branches/:branch",
+  requirePermission("repos.detail.read"),
   validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     try {
@@ -84,6 +86,7 @@ router.delete(
 
 router.patch(
   "/:repo/branches/:branch/rename",
+  requirePermission("repos.detail.read"),
   validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     const { newName } = req.body as { newName?: string };

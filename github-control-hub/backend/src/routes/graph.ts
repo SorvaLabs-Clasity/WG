@@ -11,6 +11,7 @@ import { getOrgConfig } from "../services/orgConfigService";
 import { recrawlState, refusalReason } from "../services/recrawlWindow";
 import { createOctokit, getOrg } from "../github/client";
 import { logSync } from "../services/activityService";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -48,7 +49,7 @@ async function getEdgesForNode(nodeId: string) {
 }
 
 // 1. Expand a single node
-router.get("/node/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.get("/node/:id", requirePermission("repos.blastRadius.read"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const nodeId = req.params.id; // e.g. REPO#payments-api or USER#alice
     const edges = await getEdgesForNode(nodeId);
@@ -69,7 +70,7 @@ router.get("/node/:id", async (req: Request<{ id: string }>, res: Response) => {
 // 2. Blast Radius Analysis for a Repo
 // If a repo is compromised, what else is affected?
 // e.g. downstream dependencies, workflows, teams that own it.
-router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/blast-radius/repo/:repo", requirePermission("repos.blastRadius.read"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const repoId = `REPO#${req.params.repo}`;
     const edges = await getEdgesForNode(repoId);
@@ -122,7 +123,7 @@ router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, re
 // 3. User Impact Analysis
 // If a user account is compromised, what happens?
 // Get all teams the user is in, and all repos those teams own + direct repo access.
-router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Response) => {
+router.get("/user-impact/:user", requirePermission("repos.blastRadius.read"), async (req: Request<{ user: string }>, res: Response) => {
   try {
     const userId = `USER#${req.params.user}`;
     
@@ -185,7 +186,7 @@ router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Res
 // 4. Blast Radius Ranking
 
 // 5. Graph metadata (edge count)
-router.get("/meta", async (_req: Request, res: Response) => {
+router.get("/meta", requirePermission("repos.read"), async (_req: Request, res: Response) => {
   try {
     let count = 0;
     if (hasTable("GRAPH_EDGES_TABLE")) {
@@ -203,7 +204,7 @@ router.get("/meta", async (_req: Request, res: Response) => {
 });
 
 // 6. Query Engine
-router.get("/query", async (req: Request, res: Response) => {
+router.get("/query", requirePermission("repos.query.read"), async (req: Request, res: Response) => {
   try {
     const q = req.query.q as string;
     const param = req.query.param as string;
@@ -249,7 +250,7 @@ router.get("/query", async (req: Request, res: Response) => {
  * hours ago" on every render without that costing a request. A cached finding
  * with no date on it is a claim nobody can weigh.
  */
-router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Response) => {
+router.get("/query/:q/freshness", requireAnyPermission("repos.query.read", "overview.freshness.read"), async (req: Request<{ q: string }>, res: Response) => {
   try {
     const { listVerdicts, freshnessOf, isBatched } = await import("../services/queryCacheService");
     if (!isBatched(req.params.q)) {
@@ -277,7 +278,7 @@ router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Respo
  * so, because a button that appears to do nothing is worse than one that
  * explains why.
  */
-router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Response) => {
+router.post("/query/:q/refresh-all", requireAnyPermission("repos.query.refresh", "overview.refresh"), async (req: Request<{ q: string }>, res: Response) => {
   const login = req.user!.login;
   if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
@@ -358,7 +359,7 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
 // every repository, team and member in the organization and spends the org's
 // GitHub budget rather than the caller's. It said "admin tool" in this comment
 // and checked nothing, so any signed-in user could start one, repeatedly.
-router.post("/aggregate", async (req: Request, res: Response) => {
+router.post("/aggregate", requirePermission("repos.graph.rebuild"), async (req: Request, res: Response) => {
   try {
     if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false))) {
       return res.status(403).json({
@@ -441,7 +442,7 @@ router.post("/aggregate", async (req: Request, res: Response) => {
  * to interpret. Two copies of "is it running" and "how long must I wait" is two
  * chances for the button to disagree with the server that refuses it.
  */
-router.get("/aggregate/status", async (_req: Request, res: Response) => {
+router.get("/aggregate/status", requirePermission("repos.read"), async (_req: Request, res: Response) => {
   try {
     const { graphAggregation } = await getOrgConfig();
     res.json({

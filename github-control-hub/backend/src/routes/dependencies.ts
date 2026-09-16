@@ -18,6 +18,7 @@ import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers
 import { buildDependencyView } from "../services/dependencyView";
 import { summariseAlerts } from "../services/dependencySummary";
 import { fetchDependabotPrs, packageFromBranch } from "../services/dependabotPrs";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -68,7 +69,7 @@ function applyFilters(alerts: any[], severity?: string): any[] {
  * way the sweep does not: somebody presses a button, a pull request appears,
  * and the count is wrong within the minute.
  */
-router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
+router.get("/dependencies/fix-prs", requirePermission("deps.dependabot.read"), async (_req: Request, res: Response) => {
   try {
     const token = getSystemToken() || _req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -151,7 +152,7 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/dependencies/age", async (_req: Request, res: Response) => {
+router.get("/dependencies/age", requirePermission("deps.age.read"), async (_req: Request, res: Response) => {
   try {
     // The two scalars this needs, without pulling the payload over the wire
     // or decompressing it. This endpoint polls every minute.
@@ -172,7 +173,7 @@ router.get("/dependencies/age", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/dependencies", async (req: Request, res: Response) => {
+router.get("/dependencies", requirePermission("deps.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
@@ -297,7 +298,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/dependencies/enable", async (req: Request, res: Response) => {
+router.post("/dependencies/enable", requirePermission("deps.dependabot.manage"), async (req: Request, res: Response) => {
   try {
     // A write against a specific repo, act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
@@ -344,7 +345,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/dependencies/disable", async (req: Request, res: Response) => {
+router.post("/dependencies/disable", requirePermission("deps.dependabot.manage"), async (req: Request, res: Response) => {
   try {
     // A write against a specific repo, act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
@@ -412,7 +413,7 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
  * It also means GitHub applies that person's permissions: a repository they
  * cannot write to refuses, which is the correct answer.
  */
-router.post("/dependencies/config", async (req: Request, res: Response) => {
+router.post("/dependencies/config", requirePermission("deps.dependabot.manage"), async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
@@ -486,7 +487,7 @@ router.post("/dependencies/config", async (req: Request, res: Response) => {
  * asked for it and be authorised as them: a repository they cannot write to
  * must refuse, which is the correct answer.
  */
-router.post("/dependencies/close-prs", async (req: Request, res: Response) => {
+router.post("/dependencies/close-prs", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
@@ -540,7 +541,7 @@ router.post("/dependencies/close-prs", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/dependencies/bulk", async (req: Request, res: Response) => {
+router.post("/dependencies/bulk", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
@@ -594,7 +595,7 @@ router.post("/dependencies/bulk", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/summary", async (req: Request, res: Response) => {
+router.get("/summary", requirePermission("deps.advisories.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
@@ -657,7 +658,7 @@ router.get("/summary", async (req: Request, res: Response) => {
  * There is deliberately no route here that could merge, and repro-renovate.ts
  * asserts that no code anywhere in the backend can.
  */
-router.get("/renovate", async (req: Request, res: Response) => {
+router.get("/renovate", requirePermission("deps.renovate.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -771,7 +772,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
  * them up front: the body of a grouped update is large, and most rows are never
  * opened. So the cost is proportional to what is actually looked at.
  */
-router.get("/renovate/:repo/:number/changes", async (req: Request, res: Response) => {
+router.get("/renovate/:repo/:number/changes", requirePermission("deps.renovate.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -870,7 +871,7 @@ export async function buildRenovateDashboards(octokit: any, org: string, bot: st
  * Self-hosted Renovate has no API and no service to connect to, so this is the
  * only channel: an issue per repository that the bot writes and reads back.
  */
-router.get("/renovate/dashboards", async (req: Request, res: Response) => {
+router.get("/renovate/dashboards", requirePermission("deps.renovate.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -925,7 +926,7 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
 });
 
 /** The dependency inventory for one repository, read when somebody opens it. */
-router.get("/renovate/dashboards/:repo/:number/dependencies", async (req: Request, res: Response) => {
+router.get("/renovate/dashboards/:repo/:number/dependencies", requirePermission("deps.renovate.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -953,7 +954,7 @@ router.get("/renovate/dashboards/:repo/:number/dependencies", async (req: Reques
  * repository and instructs a bot to act, so it should carry the name of the
  * person who asked and be authorised as them.
  */
-router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res: Response) => {
+router.post("/renovate/dashboards/:repo/:number/tick", requirePermission("deps.renovate.manage"), async (req: Request, res: Response) => {
   // Read outside the try, because the refusal message below names it and a
   // `catch` cannot see a binding declared inside the block it guards.
   const repo = String(req.params.repo);
@@ -1016,7 +1017,7 @@ router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res:
 });
 
 /** Naming the bot account is org-wide configuration, so it is admin-gated. */
-router.put("/renovate/bot", async (req: Request, res: Response) => {
+router.put("/renovate/bot", requirePermission("deps.renovate.manage"), async (req: Request, res: Response) => {
   try {
     if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({

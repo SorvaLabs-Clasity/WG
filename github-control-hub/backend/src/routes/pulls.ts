@@ -13,6 +13,7 @@ import {
   fetchOpenPrs, sortByStaleness, daysSinceLastCommit, isStale,
   pendingReviewers, nudgeTargets, runNudgePass, staleSeconds,
 } from "../services/prNudgeService";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -66,7 +67,7 @@ function refreshSnapshotInBackground(token: string): void {
   })();
 }
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("pulls.read"), async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
@@ -175,7 +176,7 @@ router.get("/", async (req: Request, res: Response) => {
  * slash, `org/repo` in a path segment is two segments, and encoding it is a
  * trap the next person maintaining this would fall into.
  */
-router.put("/pause", async (req: Request, res: Response) => {
+router.put("/pause", requirePermission("pulls.pause"), async (req: Request, res: Response) => {
   const login = req.user!.login;
   if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
@@ -228,7 +229,7 @@ router.put("/pause", async (req: Request, res: Response) => {
  * replace it, and a reminder appearing to come from whoever pressed the button
  * would be misleading about who is chasing whom.
  */
-router.post("/run", async (req: Request, res: Response) => {
+router.post("/run", requirePermission("pulls.run"), async (req: Request, res: Response) => {
   const login = req.user!.login;
   if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
@@ -308,7 +309,7 @@ router.post("/run", async (req: Request, res: Response) => {
  * Per-pull-request mutes stay on /pause, which owns that pull request's row.
  * These are the wider two, which live in one shared record.
  */
-router.put("/mute", async (req: Request, res: Response) => {
+router.put("/mute", requirePermission("pulls.mute"), async (req: Request, res: Response) => {
   const login = req.user!.login;
   if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
@@ -367,7 +368,7 @@ router.put("/mute", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/mutes", async (_req: Request, res: Response) => {
+router.get("/mutes", requirePermission("pulls.mutes.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await getPrMutes());
   } catch (error: any) {
@@ -375,7 +376,7 @@ router.get("/mutes", async (_req: Request, res: Response) => {
   }
 });
 
-router.get("/settings", async (_req: Request, res: Response) => {
+router.get("/settings", requirePermission("pulls.settings.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await getPrSettings());
   } catch (error: any) {
@@ -383,7 +384,7 @@ router.get("/settings", async (_req: Request, res: Response) => {
   }
 });
 
-router.put("/settings", async (req: Request, res: Response) => {
+router.put("/settings", requirePermission("pulls.settings.manage"), async (req: Request, res: Response) => {
   const login = req.user!.login;
   if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
@@ -405,7 +406,7 @@ router.put("/settings", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/state", async (req: Request, res: Response) => {
+router.get("/state", requirePermission("pulls.state.read"), async (req: Request, res: Response) => {
   const repo = String(req.query.repo ?? "");
   const number = Number(req.query.number);
   if (!repo || !Number.isInteger(number)) {

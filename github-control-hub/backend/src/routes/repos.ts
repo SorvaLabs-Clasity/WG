@@ -3,10 +3,11 @@ import { createOctokit, getSystemToken } from "../github/client";
 import { listRepos } from "../services/repoService";
 import { getRepoDetails } from "../services/repoDetailsService";
 import { isValidRepoName } from "../utils/validation";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("repos.read"), async (req: Request, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Repository list");
     const repos = await listRepos(octokit);
@@ -18,7 +19,7 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 /** Full detail for one repo, powers the Knowledge Center panel. */
-router.get("/:repo/details", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/details", requirePermission("repos.detail.read"), async (req: Request<{ repo: string }>, res: Response) => {
   const { repo } = req.params;
   if (!isValidRepoName(repo)) {
     res.status(400).json({ error: "Invalid repository name" });

@@ -6,12 +6,13 @@ import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { validateParams } from "../utils/validation";
+import { requirePermission } from "../middleware/permissionGate";
 
 type RepoAndBranch = { repo: string; branch: string };
 
 const router = Router();
 
-router.get("/:repo/rulesets", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/rulesets", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const rulesets = await listRulesets(octokit, req.params.repo);
@@ -22,7 +23,7 @@ router.get("/:repo/rulesets", validateParams("repo"), async (req: Request<{ repo
   }
 });
 
-router.get("/:repo/protections", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/protections", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protections = await getAllProtections(octokit, req.params.repo);
@@ -33,7 +34,7 @@ router.get("/:repo/protections", validateParams("repo"), async (req: Request<{ r
   }
 });
 
-router.get("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
+router.get("/:repo/protection/:branch", requirePermission("repos.detail.read"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protection = await getProtection(octokit, req.params.repo, req.params.branch);
@@ -48,7 +49,7 @@ router.get("/:repo/protection/:branch", validateParams("repo", "branch"), async 
   }
 });
 
-router.put("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
+router.put("/:repo/protection/:branch", requirePermission("repos.detail.read"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protection = req.body;
@@ -74,7 +75,7 @@ router.put("/:repo/protection/:branch", validateParams("repo", "branch"), async 
   }
 });
 
-router.delete("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
+router.delete("/:repo/protection/:branch", requirePermission("repos.detail.read"), validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     let protectionConfig: any;
@@ -92,7 +93,7 @@ router.delete("/:repo/protection/:branch", validateParams("repo", "branch"), asy
   }
 });
 
-router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/rulesets/import", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const raw = req.body;
   try {
     const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
@@ -131,7 +132,7 @@ router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Reques
   }
 });
 
-router.delete("/:repo/rulesets/:rulesetId", validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
+router.delete("/:repo/rulesets/:rulesetId", requirePermission("repos.detail.read"), validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
     // Checked rather than passed through. `parseInt("abc", 10)` is NaN, which
     // Octokit puts in the path as the literal string "NaN", GitHub answers
