@@ -58,6 +58,7 @@ follows from them.
 | **Trust model** | The repo is the source of truth, and is locked down so only the App can commit. |
 | **Default grant** | Deny by default. A person with no entry has *nothing* — including reading, and including their own personal screens. |
 | **Granularity** | A permission for every action, reads included. Grouped into a tree so a branch can be granted in one click, with every individual leaf still togglable. |
+| **Assignment** | Presets assignable to people *and* to GitHub teams, as the lowest of three layers. |
 
 Two of these have consequences that are not optional and are designed for
 rather than discovered.
@@ -140,7 +141,8 @@ overview                        The Overview tab
 
 activity                        The Activity tab
   activity.read.own               Rows where you are the actor
-  activity.read.app               Rows where somebody else is         ← issue #5
+  activity.read.app.rows          That something happened — actor redacted
+  activity.read.app.actor         Who did it                          ← issue #5
   activity.read.github            Rows from GitHub webhooks
   activity.pulse.read             The pulse chart
   activity.undo.repo              Undo a repository action
@@ -249,6 +251,27 @@ admin                           The Admin tab
 deliberately not sufficient to change anything — a read-only auditor is a real
 role.
 
+### Redaction is a permission, not a mode
+
+`activity.read.app` is a **branch**, not a leaf. Under it:
+
+| Held | Sees |
+|---|---|
+| nothing | no rows by anybody else at all |
+| `activity.read.app.rows` | *"A scanner was deleted, 20 minutes ago"* |
+| the branch (both leaves) | *"…by some-login"* |
+
+This is why no node in this vocabulary is both a leaf and a branch. Had
+`activity.read.app` been a checkable leaf *and* the parent of `.actor`,
+granting it would have meant two different things depending on who was asking,
+and the tri-state checkbox in the UI would have had nothing coherent to show.
+The rule is now explicit: **a node is a group or a permission, never both.**
+
+The middle row is the useful one. It keeps Activity answering *"has anything
+changed here recently"* — which is most of why people open it — without
+answering *"what is my colleague doing"*, which is most of why you would
+restrict it.
+
 ### Overview must not be a side channel
 
 The Overview tab reads data belonging to seven other tabs: alarms,
@@ -307,6 +330,19 @@ because the subject is not known until the body or the stored record is read.
     }
   },
 
+  "teams": {
+    "platform-engineers": {
+      "presets": ["engineer"],
+      "grant": ["repos.graph.rebuild"],
+      "revoke": []
+    },
+    "contractors": {
+      "presets": [],
+      "grant": ["me", "pulls.read"],
+      "revoke": ["access", "org"]
+    }
+  },
+
   "people": {
     "some-login": {
       "id": 1234567,
@@ -326,13 +362,21 @@ Every string in a `grant` or `revoke` is a **node**, not necessarily a leaf.
 
 ### Effective permissions: most specific wins
 
-For each leaf in the vocabulary, collect every entry that is that leaf or an
-ancestor of it, from both the person and their presets. **The longest match
-decides.** Ties break in this order:
+Permissions come from three **layers**, in increasing authority:
 
-1. A person's entry beats a preset's entry at the same depth.
+1. **Teams** — every GitHub team the person is in, via `teams` above.
+2. **Their presets** — via `people[login].presets`.
+3. **Their own entries** — `people[login].grant` and `.revoke`.
+
+For each leaf in the vocabulary, collect every entry across all three layers
+that is that leaf or an ancestor of it. **The longest match decides.** Ties
+break in this order:
+
+1. The higher layer wins: a person's own entry beats their preset, which beats
+   a team's.
 2. Between a preset and the preset it inherits from, the child wins.
-3. At equal depth and layer, **revoke beats grant.**
+3. At equal depth and layer — including two different teams disagreeing —
+   **revoke beats grant.**
 
 A leaf matched by nothing at all is denied, because the default is deny.
 
@@ -347,6 +391,27 @@ are things somebody will want on their first afternoon:
 
 Under subtract-last the second silently yields nothing, and the person who
 wrote it has no way to tell from the file that it did not work.
+
+### What team assignment costs
+
+Two consequences worth stating rather than meeting later.
+
+**Joining a team can take access away.** `contractors` above revokes `access`
+and `org`; somebody added to it loses those unless they hold a longer-matching
+grant of their own. That is genuinely useful and genuinely surprising, so the
+person screen shows team-derived entries with the team's name attached, and the
+dry-run diff (migration, below) covers team changes as well as file changes.
+
+**Effective permissions can change without the file changing.** Team membership
+lives on GitHub. Somebody added to `platform-engineers` gains its permissions
+with no commit to `permissions.json`, which means git history is no longer the
+whole audit trail — it is the history of *policy*, not of *who held what*. The
+Admin tab's audit screen must say so, and show current team membership beside
+the commit log rather than implying the log is complete.
+
+Team membership is read with the App token, cached for the same 60 seconds as
+the file, and a team that no longer exists is ignored and surfaced — the same
+treatment as an unknown permission key.
 
 The UI must show, for every permission, *why* it is on or off: **from preset
 X**, **granted here**, **revoked here**, or **not granted**. A permission whose
@@ -438,7 +503,11 @@ The product owner asked for these to be thought through rather than discovered.
 | Two admins save at once | Second save refused on `sha` mismatch, editor re-reads, shows what changed, re-applies. No silent overwrite. |
 | An admin revokes their own `admin.console.open` | Allowed, with a confirmation naming the consequence. Owners can always restore. This is deliberate: blocking it requires the app to reason about who *else* remains, which is the next row. |
 | The last admin is removed | Allowed. Organization owners are exempt from every check and can always reach the console, so the org is never locked out. The UI warns when a save would leave zero non-owner admins. |
-| A preset is deleted while assigned | Refused. The UI lists who holds it and offers to reassign them first. |
+| A preset is deleted while assigned | Refused. The UI lists who holds it and offers to reassign them first, counting team assignments as well as people. |
+| A team named in the file is deleted on GitHub | Ignored and surfaced, like an unknown key. Its members quietly lose what it granted, which is correct and must be visible — the dry-run diff names them. |
+| Team membership cannot be read | Fail closed for the team layer: the person keeps only what their own entries and presets give. Not a fallback to last-known membership, for the same reason there is no cached file. |
+| Two teams disagree on the same leaf | Revoke wins, and the UI flags the conflict on both teams so it is fixed rather than relied on. |
+| Somebody holds `activity.read.app.actor` but not `.rows` | Coherent and strange: they can see actors on rows they can otherwise see, and there are none. Shown as odd, not refused. |
 | A person leaves the org | Their entry stays (harmless — permissions are meaningless without a session) and is flagged in the UI as "no longer in the organization" for tidying. |
 | Outside collaborators | Treated as people like any other. They have no entry, therefore nothing, which is the correct default for a contractor. |
 | Organization owners | Exempt from every permission check, always. Shown in the admin UI as such, with the reason, so their access is never mistaken for a grant — the same fix already made for `AdminStanding` in the account menu. |
@@ -532,7 +601,9 @@ implementations:
   revoke-leaf, and revoke-branch with grant-leaf); person beats preset at equal
   depth; child preset beats parent; revoke beats grant at equal depth and layer;
   inherit depth limit; cycle rejection; unknown key and unknown branch tolerated
-  and reported; owner exemption.
+  and reported; owner exemption; **the three layers** — team beaten by preset
+  beaten by person at equal depth, a longer team entry beating a shorter
+  personal one, two teams disagreeing resolving to revoke.
 - `repro-permissionsfile.ts` — the file: parse, schema-validate, `sha`
   concurrency, malformed input fails closed and does *not* use the cached copy,
   stale copy expiry.
@@ -575,12 +646,13 @@ Four pieces, each shippable and useful alone:
 
 ## Open questions
 
-None blocking. Two worth revisiting after stage 1:
+None. The two that were open — whether activity redaction should be a
+permission, and whether presets should be assignable to teams — were both
+resolved as yes and are designed above.
 
-- Whether `activity.read.app` should support the *redaction* variant discussed
-  (see the row it came from) rather than being binary. The engine supports it as
-  a third key if wanted; it is not in the vocabulary above.
-- Whether presets should be assignable to GitHub *teams* as well as people. It
-  was rejected above for resolution complexity, but an org this size may find
-  per-person assignment tedious enough to justify revisiting with a strict
-  "union, never subtract" rule for team presets.
+The team layer was initially rejected here for resolution complexity. Adopting
+it turned out to cost one rule rather than a scheme: teams are simply the
+lowest of three layers, and the longest-prefix rule that already existed
+decides the rest. What it genuinely costs is stated under *What team assignment
+costs* — the audit log stops being the whole story once membership lives
+somewhere the file cannot see.
