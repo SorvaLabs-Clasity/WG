@@ -12,7 +12,9 @@ import {
 import type { Preset } from "./src/permissions/types";
 import { resolvePreset, presetProblems } from "./src/permissions/presets";
 import type { PermissionsFile } from "./src/permissions/types";
-import { collectRules, LAYER, decideLeaf, type LayeredRule } from "./src/permissions/evaluate";
+import {
+  collectRules, LAYER, decideLeaf, permissionsFor, type LayeredRule,
+} from "./src/permissions/evaluate";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -255,6 +257,69 @@ console.log("\nresolution: the longest match decides");
     decideLeaf("activity.read.github",
       [r("activity.read.app", "grant", LAYER.person)],
     ).held === false);
+}
+
+console.log("\nthe answer, and why");
+{
+  const file: PermissionsFile = {
+    version: 1,
+    presets: { engineer: { name: "Engineer", grant: ["me"] } },
+    teams: {},
+    people: {
+      "granted-person": { presets: ["engineer"], grant: ["alarms"], revoke: ["alarms.org.delete"] },
+    },
+  };
+  const plain = { login: "stranger", teamSlugs: [], isOrgOwner: false };
+
+  const nobody = permissionsFor(file, plain);
+  check("somebody with no entry holds nothing at all",
+    nobody.held.length === 0, nobody.held.slice(0, 5));
+  check("  not even their own screens",
+    !nobody.has("me.work.read") && !nobody.has("me.alerts.read"));
+  check("  and not reading, either",
+    !nobody.has("activity.read.own") && !nobody.has("repos.read"));
+
+  /**
+   * Owners are exempt from every check, deliberately: otherwise an empty or
+   * broken file locks everybody out of the screen that would fix it. This is
+   * the same rule the old team check had, kept and made visible.
+   */
+  const owner = permissionsFor(file, { ...plain, isOrgOwner: true });
+  check("an organization owner holds everything",
+    owner.held.length === PERMISSIONS.length, owner.held.length);
+  check("  and is told that is why",
+    owner.explain("aws.rules.delete").reason === "owner");
+
+  const person = permissionsFor(file, { ...plain, login: "granted-person" });
+  check("a preset's branch grant reaches its leaves", person.has("me.work.read"));
+  check("  a direct branch grant too", person.has("alarms.org.create"));
+  check("  and a deeper revoke still bites", !person.has("alarms.org.delete"));
+  check("  while nothing else is granted", !person.has("aws.rules.read"));
+
+  const why = person.explain("alarms.org.delete");
+  check("a refusal names the rule that caused it",
+    why.held === false && why.reason === "revoked" && why.origin === "set on this person", why);
+
+  const from = person.explain("me.work.read");
+  check("  and a grant names where it came from",
+    from.held === true && from.reason === "granted" && from.origin === "preset Engineer", from);
+
+  const never = person.explain("aws.costs.read");
+  check("  and something simply not granted says so",
+    never.held === false && never.reason === "not granted" && never.origin === null, never);
+
+  check("held is sorted, so two runs give the same file",
+    person.held.join() === [...person.held].sort().join());
+
+  // A file whose presets are broken must not grant anything by accident.
+  const broken: PermissionsFile = {
+    version: 1,
+    presets: { a: { name: "A", inherits: "b" }, b: { name: "B", inherits: "a", grant: ["aws"] } },
+    teams: {},
+    people: { "x": { presets: ["a"] } },
+  };
+  check("a cyclic preset grants nothing rather than looping",
+    permissionsFor(broken, { ...plain, login: "x" }).held.length === 0);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

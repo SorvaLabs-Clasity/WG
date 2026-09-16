@@ -1,6 +1,6 @@
 import type { PermissionsFile, PermissionEntry } from "./types";
 import { resolvePreset, type Rule } from "./presets";
-import { isKnownNode } from "./vocabulary";
+import { isKnownNode, PERMISSIONS } from "./vocabulary";
 
 /**
  * Where a rule was written, in increasing authority.
@@ -107,4 +107,72 @@ export function decideLeaf(leaf: string, rules: LayeredRule[]): Decision {
   }
 
   return { held: best?.effect === "grant", rule: best };
+}
+
+export interface Subject {
+  login: string;
+  /** GitHub team slugs this person is in. Read by the caller; this is pure. */
+  teamSlugs: string[];
+  /**
+   * Organization owners are exempt from every check.
+   *
+   * Otherwise an empty file, a broken file, or an administrator who removed
+   * their own access locks everybody out of the one screen that could fix it.
+   * The old team check had the same exemption; this keeps it and makes it
+   * visible in `explain`, because access nobody can account for reads as a bug.
+   */
+  isOrgOwner: boolean;
+}
+
+export interface Explanation {
+  held: boolean;
+  reason: "owner" | "granted" | "revoked" | "not granted";
+  /** "preset Engineer", "team platform", "set on this person". Null when nothing matched. */
+  origin: string | null;
+}
+
+export interface PermissionSet {
+  has(leaf: string): boolean;
+  /** Every leaf held, sorted. */
+  held: string[];
+  explain(leaf: string): Explanation;
+}
+
+/**
+ * What this person may do.
+ *
+ * Computed once over the whole vocabulary rather than lazily per question: the
+ * vocabulary is small, the admin screen needs every answer at once anyway, and
+ * a set that cannot change under a request is one fewer thing to reason about.
+ */
+export function permissionsFor(file: PermissionsFile, subject: Subject): PermissionSet {
+  if (subject.isOrgOwner) {
+    const all = PERMISSIONS.map(p => p.key).sort();
+    return {
+      has: () => true,
+      held: all,
+      explain: () => ({ held: true, reason: "owner", origin: "organization owner" }),
+    };
+  }
+
+  const rules = collectRules(file, subject.login, subject.teamSlugs);
+  const decisions = new Map<string, Decision>();
+  for (const { key } of PERMISSIONS) decisions.set(key, decideLeaf(key, rules));
+
+  const held = [...decisions.entries()]
+    .filter(([, d]) => d.held).map(([key]) => key).sort();
+
+  return {
+    has: (leaf: string) => decisions.get(leaf)?.held === true,
+    held,
+    explain(leaf: string): Explanation {
+      const decision = decisions.get(leaf);
+      if (!decision?.rule) return { held: false, reason: "not granted", origin: null };
+      return {
+        held: decision.held,
+        reason: decision.held ? "granted" : "revoked",
+        origin: decision.rule.origin,
+      };
+    },
+  };
 }
