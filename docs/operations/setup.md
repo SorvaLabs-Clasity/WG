@@ -291,6 +291,57 @@ happens when they click it, using that person's own credentials. See
 
 Otherwise the app runs read-only and cannot be configured at all.
 
+### 5. The permissions repository — optional, and off by default
+
+Skip this on a first install. Nothing below is needed to stand the app up, and
+the app behaves exactly as described above until you deliberately turn it on.
+
+The fine-grained permission system replaces the two-team split with about 109
+individual permissions, grouped into presets and assigned per person or per
+GitHub team. Its source of truth is a JSON file in a repository you create
+here so that it exists before anyone needs it.
+
+**Organization → New repository**
+
+| Setting | Value |
+|---|---|
+| Name | `control-hub-permissions` (override with `PERMISSIONS_REPO`) |
+| Visibility | **Private** |
+| Initialize | empty — the app writes `permissions.json` itself |
+
+Then lock it down, because a file that says who may do what is worth exactly as
+much as the restrictions on who may edit it:
+
+**Repository → Settings → Rules → New ruleset**, targeting the default branch,
+with *Restrict who can push* set to the GitHub App and nobody else. Direct
+pushes by humans should be impossible. The app is the only writer; the Admin
+tab is the only way in; git history is the audit log.
+
+Grant the GitHub App **Contents: Read and write** on this repository only.
+
+**Turning it on.** `PERMISSIONS_ENABLED=true`, and not before the dry-run is
+clean:
+
+1. Open the Admin tab (`control-hub-admins` gates it, which is now that team's
+   only remaining meaning).
+2. Run **Migrate**. It writes a starting file reproducing today's access — who
+   is on which team, who owns the org — so that flipping the flag changes
+   nothing for anybody on day one.
+3. Read the **dry-run**. It lists, per person, what they can do now against
+   what they would be able to do after the flip. Anything in the "would lose"
+   column is a decision to make *before* the flip, not a support ticket after.
+4. Set `PERMISSIONS_ENABLED=true` and restart.
+
+**What the flip costs you if GitHub is unreachable:** the app cannot read the
+file, so it refuses everyone with a 503 rather than guessing. There is
+deliberately no cached fallback — serving yesterday's permissions is the wrong
+behaviour on the day somebody's access was revoked this morning. Organization
+owners are exempt and can still get in to fix it.
+
+`aws-guardrail-admins` stops being read once the flag is on. Leave the team in
+place until the flip has held for a while; deleting it is a separate decision
+and nothing in the app depends on it either way.
+
 ### Hand over
 
 Five values: **client ID**, **client secret**, **App ID**, **installation ID**,

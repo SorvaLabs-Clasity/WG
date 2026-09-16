@@ -12,7 +12,9 @@ none.
 rules and AWS guardrails are the app's concepts; GitHub has never heard of them.
 So the app gates those on membership of a team.
 
-## The two admin teams
+## The two admin teams, and what replaces them
+
+Historically there were two, and membership of one was the whole answer:
 
 | Team | Controls | Default name |
 |---|---|---|
@@ -21,9 +23,9 @@ So the app gates those on membership of a team.
 
 Both are overridable with `CONTROL_HUB_ADMIN_TEAM` and `AWS_ADMIN_TEAM`.
 
-They are deliberately separate. The person who curates branch-protection
-settings is not necessarily the person who should be able to let an
-application write to production S3 buckets.
+They were deliberately separate: the person who curates branch-protection
+settings is not necessarily the person who should be able to let an application
+write to production S3 buckets.
 
 **A config import cannot cross between them.** An export bundle carries scanners
 and widgets *and* AWS guardrails in one file, so importing it is a write to both
@@ -32,9 +34,82 @@ bundle that contains them is refused and told which sections to remove. Without
 that, the import route was a way to create an enforcing AWS guardrail while only
 ever proving membership of the GitHub team.
 
-## Organization owners pass both checks
+That rule outlived the teams that motivated it — see *every change class in the
+diff*, below, which is the same idea applied to the permission file itself.
 
-Always, whatever team they are on. Otherwise an empty, renamed or deleted team
+### What replaces them
+
+Two teams is two bits of information about a person. It cannot express "may
+read AWS findings but never move a rule into enforce", which is a real role.
+
+So team membership stops being the answer and becomes one input to it.
+`control-hub-admins` keeps exactly one meaning — who may open the Admin tab —
+and `aws-guardrail-admins` is no longer read by the app at all. Everything else
+comes from a permission file: about 109 individual permissions, assignable
+singly or by whole branches of the tree, grouped into presets, attachable to a
+person or to a GitHub team.
+
+**This is off until an operator turns it on.** With `PERMISSIONS_ENABLED`
+unset — the state this ships in — every gate falls through to the two-team
+behaviour described above and nothing changes for anyone. The Admin tab, the
+file, the dry-run and the migration all exist so that the flip can be made
+with the answer already known. Deleting `aws-guardrail-admins` on GitHub is a
+separate, later, human decision.
+
+## The permission file
+
+`permissions.json`, in a private repository in the organization
+(`control-hub-permissions` by default), committed by the App and by nothing
+else. Git is the audit log: every change is a commit with an author and a
+message, and the Admin tab's Audit screen is that history.
+
+**The dots in a key are the group tree.** `alarms.org.create` sits under
+`alarms.org`, which sits under `alarms`. A grant or a revoke may name any node
+at any depth and means every leaf beneath it. This is what makes 109
+permissions assignable without ticking 109 boxes, while leaving every
+individual box tickable. There is no separate "group" concept to keep in sync —
+the tree *is* the list, read at a different depth.
+
+Conflicts resolve in this order:
+
+1. **Longest prefix wins.** `alarms.org.create` beats `alarms`, so "everything
+   in alarms except creating org alarms" is two entries, not twelve.
+2. **Then layer:** team &lt; preset &lt; person. The specific overrides the general.
+3. **Then revoke beats grant** on an exact tie. A tie means two rules of equal
+   standing disagree, and the safe reading of a disagreement is no.
+
+Grants of a branch include leaves added by later versions of the app. That is
+the intended behaviour and the reason the Admin tab saves the shortest entry
+that expresses your intent rather than expanding it to leaves.
+
+### Every change class in the diff
+
+The Admin tab writes the whole file, so the endpoint that accepts it cannot
+know what changed. Gating that endpoint on one permission would mean whoever
+may assign a preset may also rewrite every preset and override any individual.
+
+Instead the write is compared against the stored file, the change classes are
+derived from the diff, and **every class present** must be permitted:
+assigning a preset needs `admin.people.assign`, editing one needs
+`admin.presets.edit`, and a write that does both needs both. Never "the most
+specific class". This is the `config.import` rule again, and for the same
+reason: a coarse gate on a composite write is a way around every fine one.
+
+## When GitHub is down
+
+The file is read from GitHub, so if GitHub is unreachable the app cannot
+establish what anyone is allowed to do. It **fails closed**: everyone is
+refused, with a 503 that says the permissions could not be read rather than a
+403 that says you are not allowed. There is no cached fallback and this is on
+purpose — serving yesterday's permissions is exactly what you do not want on
+the day somebody's access was revoked this morning.
+
+Organization owners are exempt, as they are from every other gate here. The
+people who can fix it can still get in.
+
+## Organization owners pass every check
+
+Always, whatever team they are on and whatever the permission file says. Otherwise an empty, renamed or deleted team
 locks everyone out of their own settings, including out of the screen that would
 let them fix it.
 
@@ -68,12 +143,39 @@ exempted as "read models over the graph", true of everything in it except
 `PUT /api/compliance/config`, which replaces the definition every repository in
 the organization is scored against. `{"rules": []}` scores everything 100.
 
-## Reading is open
+## Reading is a permission
 
-Anyone signed in can see rules, findings, the access map and the activity log.
-Knowing who can write to which repository is not privileged information inside
-an organization. It is the thing people most often get wrong because nobody
-could see it.
+It did not used to be. This document said *"reading is open — anyone signed in
+can see rules, findings, the access map and the activity log"*, on the argument
+that knowing who can write to which repository is not privileged information
+inside an organization.
+
+That argument still holds for the organizations it was written for. It stopped
+being the app's decision to make. Under the permission file every read is a
+permission like every write: `overview.read`, `aws.findings.read`,
+`activity.read.app.rows`. Somebody with no entry sees nothing — not the
+Activity log, not the access map, not their own queue.
+
+**Nothing at all until granted** is the deliberate shape. The alternative —
+everyone starts with reads and an administrator takes things away — means the
+day a new tab ships, everybody can read it before anyone has decided they
+should.
+
+### Overview is not a side channel
+
+The Overview tab draws on seven other tabs' data. A dashboard that aggregates
+everything is the classic way a permission system leaks: you cannot open the
+Vulnerabilities tab, but a card on Overview shows you its numbers.
+
+So `overview.read` opens the tab and nothing more. Every card additionally
+requires the read permission for the data it displays, and a card whose data
+you may not read is **absent, not empty**. An empty card invites somebody to
+report a bug; an absent one tells the truth.
+
+The same rule applies anywhere one screen surfaces another's data. It is why
+the Activity feed refills its page after redaction rather than reporting how
+many rows it hid — a count of hidden rows is itself the fact the permission
+withholds.
 
 ## Undo is gated as hard as the original action
 
