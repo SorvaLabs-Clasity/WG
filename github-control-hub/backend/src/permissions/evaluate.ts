@@ -129,7 +129,7 @@ export interface Subject {
 
 export interface Explanation {
   held: boolean;
-  reason: "owner" | "granted" | "revoked" | "not granted";
+  reason: "owner" | "inert" | "granted" | "revoked" | "not granted";
   /** "preset Engineer", "team platform", "set on this person". Null when nothing matched. */
   origin: string | null;
 }
@@ -142,6 +142,29 @@ export interface PermissionSet {
 }
 
 /**
+ * Everything, held.
+ *
+ * Two situations need exactly this set and must not drift apart: an
+ * organization owner, exempt from every check below, and an install with no
+ * GitHub organization at all, where there is no file, nothing to decide, and
+ * every check passes. Writing the second as its own always-true object is how
+ * the two quietly stop agreeing about what "everything" is after a permission
+ * is added.
+ *
+ * It answers `has` without consulting the vocabulary on purpose: a leaf this
+ * version does not know about is still held by somebody exempt from the
+ * question, and `held` is the enumerable form for the admin screen.
+ */
+export function allPermissions(reason: Explanation["reason"], origin: string): PermissionSet {
+  const all = PERMISSIONS.map(p => p.key).sort();
+  return {
+    has: () => true,
+    held: all,
+    explain: () => ({ held: true, reason, origin }),
+  };
+}
+
+/**
  * What this person may do.
  *
  * Computed once over the whole vocabulary rather than lazily per question: the
@@ -149,14 +172,7 @@ export interface PermissionSet {
  * a set that cannot change under a request is one fewer thing to reason about.
  */
 export function permissionsFor(file: PermissionsFile, subject: Subject): PermissionSet {
-  if (subject.isOrgOwner) {
-    const all = PERMISSIONS.map(p => p.key).sort();
-    return {
-      has: () => true,
-      held: all,
-      explain: () => ({ held: true, reason: "owner", origin: "organization owner" }),
-    };
-  }
+  if (subject.isOrgOwner) return allPermissions("owner", "organization owner");
 
   const rules = collectRules(file, subject.login, subject.teamSlugs);
   const decisions = new Map<string, Decision>();

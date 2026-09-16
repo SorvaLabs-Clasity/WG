@@ -432,6 +432,31 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
     scalesWith: "how often it is asked",
     note: "Runs on the asker's own token, so it draws on their allowance.",
   },
+  "Permissions": {
+    trigger: "Any request that needs a permission decision, at most once every "
+      + "60 seconds because the answer is cached",
+    endpoints: [
+      "GET /repos/{o}/{r}/contents/{path}", "PUT /repos/{o}/{r}/contents/{path}",
+      "GET /repos/{o}/{r}",
+      "GET /orgs/{org}/memberships/{username}", "GET /user/teams",
+      "GET /orgs/{org}/teams", "GET /orgs/{org}/teams/{slug}/memberships/{username}",
+    ],
+    files: ["permissions/store.ts", "permissions/subject.ts"],
+    scalesWith: "distinct signed-in people per minute",
+    note: "Reads permissions.json from the private permissions repository, "
+      + "with the App's own token rather than the caller's. One request "
+      + "however large the organization is, and one cached answer shared by "
+      + "everybody. Who the caller is costs two more, cached per person for "
+      + "the same minute: their organization role, and their teams — the "
+      + "latter on their own token, which spends their allowance rather than "
+      + "the App's. So the whole feature is a handful of requests per minute "
+      + "per person signed in, not per request. Two exceptions, both rare: a "
+      + "404 on the file costs one extra request to tell \"no repository\" "
+      + "from \"no file\", and asking about somebody *else* — the Admin tab "
+      + "previewing what a person would hold — cannot use their token, so it "
+      + "lists the organization's teams and checks each one, which is a "
+      + "request per team. Writes happen only from the Admin tab.",
+  },
   "Reading this page": {
     trigger: "Opening this tab",
     endpoints: ["GET /rate_limit"],
