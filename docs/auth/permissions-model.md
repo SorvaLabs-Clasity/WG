@@ -95,6 +95,45 @@ assigning a preset needs `admin.people.assign`, editing one needs
 specific class". This is the `config.import` rule again, and for the same
 reason: a coarse gate on a composite write is a way around every fine one.
 
+### And no write may widen the writer
+
+Change classes say what a write *does*. They say nothing about who it is done
+*to*, and that gap collapsed the five-way split back into one: a holder of
+`admin.people.assign` alone could add the `control-hub-admin` preset — which
+grants the whole `admin` branch — to their own entry. The diff is exactly one
+preset assignment, so it was permitted, and afterwards they held all five. The
+same trick worked from the other side: edit a preset you already hold to add
+`grant: ["admin"]`, which classifies as `admin.presets.edit` and nothing more.
+
+So the question is asked directly rather than enumerated as a list of forbidden
+routes. What does the caller hold under the stored file, and what would they
+hold under the one being submitted — computed by `permissionsFor`, the same
+evaluator every gate uses, over the caller's real teams and presets. If the
+second set contains anything the first does not, the write is refused with a
+403 naming what would have been gained.
+
+This is deliberately narrower than "you may not edit your own entry". Narrowing
+yourself is exactly what an administrator handing over should be able to do,
+and editing a preset you hold is ordinary work as long as it does not widen
+you. It is also wider than any list of known escalations, because it closes the
+ones nobody has thought of yet.
+
+Organization owners are exempt, as they are everywhere else: they already hold
+everything, so there is nothing to widen into.
+
+### A section you may not read is one you may not write blind
+
+`GET /api/admin/file` is reachable with either `admin.people.read` or
+`admin.presets.read`, because People and Presets render from one file. It
+returns only the halves the caller holds the read for — the other is **absent
+from the response**, with its name in a `withheld` list, per the rule below.
+
+The Admin tab submits the file it was given, so the write path puts a withheld
+section back from the stored file before diffing or saving it. Without that, a
+presets-only editor's next save would delete every person in the organization.
+A section the caller *did* submit is judged normally by the diff, whatever they
+may read: quietly reverting somebody's edit is worse than refusing it.
+
 ## When GitHub is down
 
 The file is read from GitHub, so if GitHub is unreachable the app cannot
@@ -175,7 +214,15 @@ report a bug; an absent one tells the truth.
 The same rule applies anywhere one screen surfaces another's data. It is why
 the Activity feed refills its page after redaction rather than reporting how
 many rows it hid — a count of hidden rows is itself the fact the permission
-withholds.
+withholds, and why the Admin tab's own file arrives with the sections you may
+not read missing rather than empty.
+
+That refill is a response to redaction and to nothing else. A page that comes
+back short because the store's own read budget ran out has always meant "here
+is what fitted, ask again", and is still returned exactly as it was: the batch
+is measured before and after redaction, and a batch nothing was taken from is
+not refetched. Otherwise every viewer on a large table would pay six reads for
+one, whether or not anything was being withheld from them.
 
 ## Undo is gated as hard as the original action
 

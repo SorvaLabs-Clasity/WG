@@ -328,8 +328,12 @@ clean:
    is on which team, who owns the org — so that flipping the flag changes
    nothing for anybody on day one.
 3. Read the **dry-run**. It lists, per person, what they can do now against
-   what they would be able to do after the flip. Anything in the "would lose"
-   column is a decision to make *before* the flip, not a support ticket after.
+   what they would be able to do after the flip. "Now" is that person's *own*
+   current standing — their teams and org ownership as GitHub has them — not a
+   plain-member baseline, so an administrator or an AWS operator narrowed by
+   the file shows up here rather than reading as unchanged. Anything in the
+   "would lose" column is a decision to make *before* the flip, not a support
+   ticket after.
 4. Set `PERMISSIONS_ENABLED=true` and restart.
 
 **What the flip costs you if GitHub is unreachable:** the app cannot read the
