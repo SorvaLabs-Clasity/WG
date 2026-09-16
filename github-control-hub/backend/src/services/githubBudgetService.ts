@@ -436,7 +436,7 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
     trigger: "Any request that needs a permission decision, at most once every "
       + "60 seconds because the answer is cached",
     endpoints: ["GET /repos/{o}/{r}/contents/{path}"],
-    files: ["permissions/store.ts"],
+    files: ["permissions/store.ts", "permissions/subject.ts"],
     scalesWith: "nothing",
     note: "Reads permissions.json from the private permissions repository, "
       + "with the App's own token rather than the caller's. One request "

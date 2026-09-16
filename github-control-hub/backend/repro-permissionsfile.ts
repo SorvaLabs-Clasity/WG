@@ -270,5 +270,35 @@ console.log("\nwho the caller is");
     /TTL|expires/.test(subject) && /forgetSubjects/.test(subject));
 }
 
+console.log("\nthe one question the app asks");
+{
+  const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
+
+  check("it composes the store, the subject and the engine",
+    /loadPermissions/.test(index) && /subjectFor/.test(index) && /permissionsFor/.test(index));
+
+  /**
+   * AWS-only installs have no GitHub organization and no repository to hold a
+   * file, so the whole system is inert there and the app behaves as it does
+   * today. Anything else would make an AWS deployment depend on a GitHub
+   * feature it does not have.
+   */
+  check("an AWS-only install is inert rather than locked out",
+    /aws-only/.test(index) && /inert/.test(index));
+
+  /**
+   * Every other failure is closed, not open. An owner still gets in, because
+   * the engine exempts them and the subject is read from GitHub rather than
+   * from the file that just failed to load.
+   */
+  check("every other failure grants an empty file, not a bypass",
+    /emptyFile\(\)/.test(index));
+  check("  and the reason travels with it, for the screen to show",
+    /failure/.test(index));
+
+  check("unknown nodes are surfaced rather than swallowed",
+    /unknownNodesIn/.test(index));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
