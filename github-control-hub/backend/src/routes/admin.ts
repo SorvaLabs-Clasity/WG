@@ -5,8 +5,9 @@ import { requireControlHubAdmin } from "../middleware/teamGate";
 import {
   loadPermissions, savePermissions, isFailure, unknownNodesIn, fileProblems,
   forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
-  changeClasses, explainPreset,
+  changeClasses, explainPreset, subjectFor,
 } from "../permissions";
+import { permissionsFor } from "../permissions/evaluate";
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
 import { emptyFile, type PermissionsFile } from "../permissions/types";
 import { PERMISSIONS_REPO, PERMISSIONS_PATH } from "../permissions/store";
@@ -49,7 +50,7 @@ router.use(requireControlHubAdmin);
 // permission has to be enough to load it — gating it on admin.people.read
 // alone would 403 somebody who holds only admin.presets.read before they
 // ever reach the Presets tab.
-router.get("/file", requireAnyPermission("admin.people.read", "admin.presets.read"), async (_req: Request, res: Response) => {
+router.get("/file", requireAnyPermission("admin.people.read", "admin.presets.read"), async (req: Request, res: Response) => {
   try {
     const loaded = await loadPermissions();
 
@@ -61,17 +62,66 @@ router.get("/file", requireAnyPermission("admin.people.read", "admin.presets.rea
       return;
     }
 
+    const { file, withheld } = await readableSections(req, loaded.file);
+
     res.json({
-      file: loaded.file,
+      file,
       sha: loaded.sha,
       source: loaded.source,
-      unknownNodes: unknownNodesIn(loaded.file),
-      problems: fileProblems(loaded.file),
+      // Derived from what this caller may see, not from the whole file: a
+      // problem reads `people.someone`, which names a login, and an unknown
+      // node names what somebody wrote against it.
+      unknownNodes: unknownNodesIn(file),
+      problems: fileProblems(file),
+      ...(withheld.length ? { withheld } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }
 });
+
+/**
+ * Which halves of the file this caller may see.
+ *
+ * `GET /file` is reachable with either read permission because People and
+ * Presets render from the one file — and it used to answer with the whole of
+ * it, so a holder of `admin.presets.read` alone received every person's
+ * grants, revokes and free-text notes ("Why does this person hold what they
+ * hold?"). Hiding the People *tab* in the client is not the same thing: the
+ * data had already crossed the wire. `docs/auth/permissions-model.md` states
+ * the rule twice — "a card whose data you may not read is **absent, not
+ * empty**", and "the same rule applies anywhere one screen surfaces
+ * another's data".
+ *
+ * A withheld section is left off the object rather than blanked, and named in
+ * `withheld`, so the screen can say "not shown to you" instead of "nobody".
+ *
+ * Inert with `PERMISSIONS_ENABLED` unset, like every other permission decision
+ * in this router: the legacy team gate above is what is deciding then, and it
+ * admits nobody who is not a Control Hub administrator.
+ */
+async function readableSections(
+  req: Request, file: PermissionsFile,
+): Promise<{ file: PermissionsFile; withheld: string[] }> {
+  if (!PERMISSIONS_ENABLED()) return { file, withheld: [] };
+
+  const access = await accessForSelf(req.user!.login, req.user!.accessToken);
+  if (access.inert) return { file, withheld: [] };
+
+  const out: PermissionsFile = { ...file };
+  const withheld: string[] = [];
+
+  // `failure` cannot reach here — the gate answers 503 first — and if one ever
+  // did, `permissions` is empty and both sections are withheld, which is the
+  // right way round.
+  for (const [section, key] of [["people", "admin.people.read"], ["presets", "admin.presets.read"]] as const) {
+    if (access.permissions.has(key)) continue;
+    delete (out as unknown as Record<string, unknown>)[section];
+    withheld.push(section);
+  }
+
+  return { file: out, withheld };
+}
 
 /**
  * This receives a whole file, the same shape whether the caller only meant to
@@ -100,6 +150,8 @@ router.put(
   }
 
   try {
+    let toSave = file as PermissionsFile;
+
     /**
      * Off by default, exactly like the gate above: with `PERMISSIONS_ENABLED`
      * unset this has to stay inert, or an install that never turned the
@@ -120,8 +172,54 @@ router.put(
         }
 
         const loadedBefore = await loadPermissions();
-        const before = isFailure(loadedBefore) ? emptyFile() : loadedBefore.file;
-        const required = changeClasses(before, file as PermissionsFile);
+
+        /**
+         * A store failure is not an empty file.
+         *
+         * This used to fall back to `emptyFile()`, which made the diff below
+         * run against nothing: a submission that wipes every preset and every
+         * person requires `["admin.people.assign", "admin.presets.delete"]`
+         * against the stored file and `[]` against an empty one, so the 403
+         * was skipped and the wipe was written — and deny-by-default then
+         * means the organization has locked itself out. Closed, and said as an
+         * outage, which is what the gate above already answers.
+         */
+        if (isFailure(loadedBefore)) {
+          res.status(503).json({
+            code: "PERMISSIONS_UNAVAILABLE",
+            error: "The stored permissions file could not be read, so this change cannot be "
+              + `checked against it and will not be written. ${loadedBefore.detail}`,
+          });
+          return;
+        }
+
+        const before = loadedBefore.file;
+
+        /**
+         * A section withheld on the way out comes back on the way in.
+         *
+         * `GET /file` gives somebody holding only `admin.presets.read` a file
+         * with no `people` in it, and the screen submits the file it was
+         * given — so taking that at face value would delete every person in
+         * the organization on the next preset edit. The stored section is put
+         * back before anything is diffed or saved.
+         *
+         * Only when the section is genuinely **absent**, and only when this
+         * caller could not read it. A section they submitted is judged
+         * normally, by the diff, whatever they may read: quietly reverting an
+         * edit somebody made is worse than refusing it, and a deliberate wipe
+         * by somebody who *can* see what they are wiping is a real change that
+         * must ask for the permission it needs.
+         */
+        toSave = { ...toSave };
+        if (toSave.people === undefined && !access.permissions.has("admin.people.read")) {
+          toSave.people = before.people;
+        }
+        if (toSave.presets === undefined && !access.permissions.has("admin.presets.read")) {
+          toSave.presets = before.presets;
+        }
+
+        const required = changeClasses(before, toSave);
         const missing = required.find(key => !access.permissions.has(key));
         if (missing) {
           res.status(403).json({
@@ -131,12 +229,54 @@ router.put(
           });
           return;
         }
+
+        /**
+         * **No write may widen the writer.**
+         *
+         * `changeClasses` derives what a write *does*; nothing derived who it
+         * was done *to*. A holder of `admin.people.assign` alone could add the
+         * shipped `control-hub-admin` preset — which grants the whole `admin`
+         * branch — to their own entry: the diff classifies as exactly
+         * `admin.people.assign`, so it was permitted, and afterwards they held
+         * all five admin write permissions. The symmetric path existed for
+         * `admin.presets.edit`: edit a preset you hold to add `grant:
+         * ["admin"]`. The five-way split is this stage's headline deliverable
+         * and both paths collapse it back into one.
+         *
+         * Enumerating the routes would be a list to keep complete. This asks
+         * the question directly instead — what do *I* hold before, and what
+         * would I hold after — with `permissionsFor`, the same evaluator the
+         * gates use, over the caller's real subject. It permits an
+         * administrator to narrow themselves and to edit a preset they hold in
+         * ways that do not widen them, and it closes every escalation path
+         * including ones nobody has thought of yet.
+         *
+         * Organization owners are exempt, as they are everywhere else here:
+         * they already hold everything, so there is nothing to widen into.
+         */
+        const subject = await subjectFor(req.user!.login, { ownToken: req.user!.accessToken });
+        if (!subject.isOrgOwner) {
+          const nowHeld = permissionsFor(before, subject);
+          const wouldHold = permissionsFor(toSave, subject);
+          const gained = wouldHold.held.filter(leaf => !nowHeld.has(leaf));
+
+          if (gained.length > 0) {
+            res.status(403).json({
+              code: "SELF_WIDENING",
+              gained,
+              error: "This change would give you permissions you do not hold: "
+                + `${gained.slice(0, 6).join(", ")}${gained.length > 6 ? `, and ${gained.length - 6} more` : ""}. `
+                + "Nobody may widen their own access; ask another administrator to make this change.",
+            });
+            return;
+          }
+        }
       }
     }
 
     // sha is the blob the editor loaded; savePermissions refuses rather than
     // clobbering a concurrent edit if it has moved on.
-    const result = await savePermissions(file as PermissionsFile, sha ?? null, req.user!.login, summary);
+    const result = await savePermissions(toSave, sha ?? null, req.user!.login, summary);
 
     if (result.ok) {
       res.json({ ok: true, sha: result.sha });
@@ -149,7 +289,7 @@ router.put(
     }
 
     if (result.reason === "invalid") {
-      res.status(400).json({ error: result.detail, problems: fileProblems(file) });
+      res.status(400).json({ error: result.detail, problems: fileProblems(toSave) });
       return;
     }
 
@@ -350,13 +490,28 @@ router.post("/migrate", requirePermission("admin.people.assign"), async (req: Re
     const loaded = await loadPermissions();
     const currentFile = isFailure(loaded) ? emptyFile() : loaded.file;
 
-    // Refuse rather than clobber: regenerating a starting file over one that
-    // already names people would silently discard whatever an administrator
-    // had already curated.
-    if (Object.keys(currentFile.people ?? {}).length > 0) {
+    /**
+     * Refuse rather than clobber.
+     *
+     * This checked `people` and not `presets`, while `startingFile` replaces
+     * the preset table wholesale — so a file holding curated presets and no
+     * people passed the guard and had those presets destroyed and three new
+     * ones created, by a caller holding only `admin.people.assign`. The
+     * identical write through `PUT /file` would have required
+     * `admin.presets.delete` and `admin.presets.create` as well, which is
+     * exactly the laundering this route's own comment says cannot happen here.
+     *
+     * Either table being non-empty means there is something to discard, so
+     * either one refuses.
+     */
+    const existingPeople = Object.keys(currentFile.people ?? {}).length;
+    const existingPresets = Object.keys(currentFile.presets ?? {}).length;
+    if (existingPeople > 0 || existingPresets > 0) {
+      const what = existingPeople > 0 && existingPresets > 0 ? "people and presets"
+        : existingPeople > 0 ? "people" : "presets";
       res.status(409).json({
         code: "conflict",
-        error: "permissions.json already has people in it; refusing to overwrite it with a generated starting file.",
+        error: `permissions.json already has ${what} in it; refusing to overwrite it with a generated starting file.`,
       });
       return;
     }
