@@ -437,11 +437,13 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "60 seconds because the answer is cached",
     endpoints: [
       "GET /repos/{o}/{r}/contents/{path}", "PUT /repos/{o}/{r}/contents/{path}",
-      "GET /repos/{o}/{r}",
+      "GET /repos/{o}/{r}", "POST /orgs/{org}/repos",
       "GET /orgs/{org}/memberships/{username}", "GET /user/teams",
       "GET /orgs/{org}/teams", "GET /orgs/{org}/teams/{slug}/memberships/{username}",
+      "GET /orgs/{org}/teams/{slug}/members", "GET /orgs/{org}/members",
+      "GET /repos/{o}/{r}/commits",
     ],
-    files: ["permissions/store.ts", "permissions/subject.ts"],
+    files: ["permissions/store.ts", "permissions/subject.ts", "routes/admin.ts"],
     scalesWith: "distinct signed-in people per minute",
     note: "Reads permissions.json from the private permissions repository, "
       + "with the App's own token rather than the caller's. One request "
@@ -455,7 +457,11 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "from \"no file\", and asking about somebody *else* — the Admin tab "
       + "previewing what a person would hold — cannot use their token, so it "
       + "lists the organization's teams and checks each one, which is a "
-      + "request per team. Writes happen only from the Admin tab.",
+      + "request per team. Writes happen only from the Admin tab, which also "
+      + "reads the commit history of the file (the audit log), can create the "
+      + "permissions repository on first run, and, for the dry-run and "
+      + "migration, walks the organization's members and the two legacy "
+      + "teams to see who holds what today.",
   },
   "Reading this page": {
     trigger: "Opening this tab",

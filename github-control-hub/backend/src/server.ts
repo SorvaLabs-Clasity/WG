@@ -22,6 +22,7 @@ import meAlarmRoutes from "./routes/meAlarms";
 import widgetRoutes from "./routes/widgets";
 import configRoutes from "./routes/config";
 import githubBudgetRoutes from "./routes/githubBudget";
+import adminRoutes from "./routes/admin";
 import { githubGateMiddleware } from "./middleware/githubGate";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
@@ -170,6 +171,7 @@ app.use("/api/config", authMiddleware, githubGateMiddleware, configRoutes);
 // Behind the gate: an AWS-only install has no GitHub allowance to report on,
 // and the lens that reads this is hidden there for the same reason.
 app.use("/api/github-budget", authMiddleware, githubGateMiddleware, githubBudgetRoutes);
+app.use("/api/admin", authMiddleware, githubGateMiddleware, adminRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 // Not gated, unlike the rest of this block.
 //

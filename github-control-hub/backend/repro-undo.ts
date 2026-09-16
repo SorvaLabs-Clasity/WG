@@ -323,6 +323,10 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // pull request, not just for the person clicking, so it is an org-wide act
     // and gated the same way.
     ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
+    // The one router that can grant permissions, so it is the one whose own
+    // gating matters most: every write here names the permission it needs,
+    // inline, rather than a single team check for the whole file.
+    ["admin.ts",         /router\.(post|put|delete)\(/g, /requirePermission/],
     // Exempted as "read models over the graph" until it was read carefully.
     // PUT /config replaces the rule set the entire organization is scored
     // against, and `{"rules": []}` scores everything 100, an org-wide
