@@ -4,6 +4,7 @@ import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -35,7 +36,7 @@ async function refusedAlertChange(res: Response, login: string, verb: string, us
  * The response says whether it is complete, so the page can state what it is
  * showing rather than drawing a truncated list as if it were everything.
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("activity.read.app.rows"), async (req: Request, res: Response) => {
   try {
     const weeks = DEFAULT_WINDOW_WEEKS;
     const since = typeof req.query.since === "string" && req.query.since

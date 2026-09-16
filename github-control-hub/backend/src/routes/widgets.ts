@@ -2,6 +2,7 @@ import { Router } from "express";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import type { Request, Response } from "express";
 import { listWidgets, createWidget, updateWidget, deleteWidget, type WidgetConfig } from "../services/widgetService";
+import { requireAnyPermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -48,7 +49,7 @@ async function refusedWidgetChange(res: Response, login: string, verb: string, u
  * break My work. What the gate protects is the organization's *curated* board —
  * which checks somebody thought worth watching — not the ability to run one.
  */
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requireAnyPermission("me.widgets.read", "overview.read", "overview.cards.read"), async (req: Request, res: Response) => {
   const mine = req.query.scope === "personal";
   const login = req.user!.login.toLowerCase();
 
@@ -78,7 +79,7 @@ router.get("/", async (req: Request, res: Response) => {
  * An empty list is a normal answer: the scheduled pass may not have run yet, or
  * a widget may have been added since. The caller computes live in that case.
  */
-router.get("/snapshots", async (req: Request, res: Response) => {
+router.get("/snapshots", requireAnyPermission("me.widgets.read", "overview.freshness.read"), async (req: Request, res: Response) => {
   const { readWidgetSnapshots } = await import("../services/alarmService");
   const all = await readWidgetSnapshots();
 
@@ -131,7 +132,16 @@ function cleanFilters(raw: unknown): WidgetConfig["filters"] | undefined {
   return out.length ? out : undefined;
 }
 
-router.post("/", async (req: Request, res: Response) => {
+/**
+ * Two boards behind one route, so two keys.
+ *
+ * `me.widgets.manage` is somebody's own page; `widgets.org.create` is the
+ * shared dashboard. This used to name `overview.cards.read`, which only ever
+ * meant "you may look at the Overview cards" — a read key standing in front of
+ * a write, because no key for changing the shared board existed. The admin
+ * team gate below is unchanged: a permission is necessary, never sufficient.
+ */
+router.post("/", requireAnyPermission("me.widgets.manage", "widgets.org.create"), async (req: Request, res: Response) => {
   const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, personal } = req.body;
 
   // The admin gate is about the *shared* dashboard, which is why it exists:
@@ -175,7 +185,7 @@ async function refusedWidgetEdit(
   return true;
 }
 
-router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.put("/:id", requireAnyPermission("me.widgets.manage", "widgets.org.edit"), async (req: Request<{ id: string }>, res: Response) => {
   if (await refusedWidgetEdit(res, req.params.id, req.user!.login, "edit", req.user!.accessToken)) return;
 
   /**
@@ -205,7 +215,7 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   res.json(updated);
 });
 
-router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.delete("/:id", requireAnyPermission("me.widgets.manage", "widgets.org.delete"), async (req: Request<{ id: string }>, res: Response) => {
   if (await refusedWidgetEdit(res, req.params.id, req.user!.login, "delete", req.user!.accessToken)) return;
 
   const deleted = await deleteWidget(req.params.id, req.user!.login);

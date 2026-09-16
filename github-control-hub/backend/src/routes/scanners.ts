@@ -13,6 +13,7 @@ import { createOctokit, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync } from "../services/activityService";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -35,11 +36,11 @@ async function refusedScannerChange(res: Response, login: string, verb: string, 
   return true;
 }
 
-router.get("/", async (req: Request, res: Response) => {
+router.get("/", requirePermission("scanners.read"), async (req: Request, res: Response) => {
   res.json(await listScanners());
 });
 
-router.post("/", async (req: Request, res: Response) => {
+router.post("/", requirePermission("scanners.manage"), async (req: Request, res: Response) => {
   if (await refusedScannerChange(res, req.user!.login, "create", req.user!.accessToken)) return;
 
   const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
@@ -47,7 +48,7 @@ router.post("/", async (req: Request, res: Response) => {
   res.status(201).json(scanner);
 });
 
-router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
+router.put("/:id", requirePermission("scanners.manage"), async (req: Request<{id: string}>, res: Response) => {
   if (await refusedScannerChange(res, req.user!.login, "edit", req.user!.accessToken)) return;
 
   const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
@@ -59,7 +60,7 @@ router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
   res.json(scanner);
 });
 
-router.delete("/:id", async (req: Request<{id: string}>, res: Response) => {
+router.delete("/:id", requirePermission("scanners.manage"), async (req: Request<{id: string}>, res: Response) => {
   if (await refusedScannerChange(res, req.user!.login, "delete", req.user!.accessToken)) return;
 
   const success = await deleteScanner(req.params.id, req.user!.login);
@@ -70,7 +71,7 @@ router.delete("/:id", async (req: Request<{id: string}>, res: Response) => {
   res.status(204).send();
 });
 
-router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => {
+router.get("/:id/results", requirePermission("scanners.read"), async (req: Request<{id: string}>, res: Response) => {
   const result = await getScanResult(req.params.id);
   if (!result) {
     res.status(404).json({ error: "Scan results not found" });
@@ -79,7 +80,7 @@ router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => 
   res.json(result);
 });
 
-router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
+router.post("/:id/run", requirePermission("scanners.run"), async (req: Request<{id: string}>, res: Response) => {
   if (await refusedScannerChange(res, req.user!.login, "run", req.user!.accessToken)) return;
 
   try {

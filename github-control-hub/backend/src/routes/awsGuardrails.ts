@@ -16,6 +16,7 @@ import { callerMayRemediate, liveProbe, type ResourceRef, type WriteIntent } fro
 import type { Guardrail, AwsExclusionList, GuardrailMode, GuardrailKind, AwsAccount } from "../aws-guardrails/types";
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 import { requireAwsAdmin } from "../middleware/teamGate";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -57,7 +58,7 @@ const requireAdmin = requireAwsAdmin;
 let costCache: { at: number; days: number; report: any } | null = null;
 const COST_CACHE_MS = 60 * 60_000;
 
-router.get("/costs", async (req: Request, res: Response) => {
+router.get("/costs", requirePermission("aws.costs.read"), async (req: Request, res: Response) => {
   try {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
     if (costCache && costCache.days === days && Date.now() - costCache.at < COST_CACHE_MS) {
@@ -73,7 +74,7 @@ router.get("/costs", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/catalog", (_req: Request, res: Response) => {
+router.get("/catalog", requirePermission("aws.read"), (_req: Request, res: Response) => {
   res.json(CATALOG.map(k => ({
     kind: k.kind,
     title: k.title,
@@ -89,7 +90,7 @@ router.get("/catalog", (_req: Request, res: Response) => {
   })));
 });
 
-router.get("/guardrails", async (_req: Request, res: Response) => {
+router.get("/guardrails", requirePermission("aws.rules.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await listGuardrails());
   } catch (err) {
@@ -97,7 +98,7 @@ router.get("/guardrails", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => {
+router.post("/guardrails", requireAdmin, requirePermission("aws.rules.create"), async (req: Request, res: Response) => {
   try {
     const { name, description, kind, mode, enabled, applyOnCreate, params, exclusionLists, accounts } = req.body ?? {};
     if (!name || !kind) {
@@ -152,7 +153,7 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
-router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
+router.put("/guardrails/:id", requireAdmin, requireAnyPermission("aws.rules.edit", "aws.rules.enforce"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const existing = await getGuardrail(req.params.id);
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
@@ -196,7 +197,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
   }
 });
 
-router.delete("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
+router.delete("/guardrails/:id", requireAdmin, requirePermission("aws.rules.delete"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const existing = await getGuardrail(req.params.id);
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
@@ -211,7 +212,7 @@ router.delete("/guardrails/:id", requireAdmin, async (req: Request<{ id: string 
   }
 });
 
-router.get("/findings", async (_req: Request, res: Response) => {
+router.get("/findings", requirePermission("aws.findings.read"), async (_req: Request, res: Response) => {
   try {
     const findings = await listFindings();
     findings.sort((a, b) => {
@@ -293,7 +294,7 @@ async function refuseIfCallerCannotWrite(
   return true;
 }
 
-router.post("/run", requireAdmin, async (req: Request, res: Response) => {
+router.post("/run", requireAdmin, requirePermission("aws.sweep.run"), async (req: Request, res: Response) => {
   const { ruleIds, resourceIds, accountIds } = req.body ?? {};
   const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
@@ -327,7 +328,7 @@ router.post("/run", requireAdmin, async (req: Request, res: Response) => {
  * `resourceId` is required, and the engine refuses without it. Omitting it
  * would turn this into enforcing the entire rule.
  */
-router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
+router.post("/remediate", requireAdmin, requirePermission("aws.remediate"), async (req: Request, res: Response) => {
   const { ruleId, resourceId, accountId } = req.body ?? {};
   if (!ruleId || !resourceId) {
     res.status(400).json({ error: "ruleId and resourceId are both required" });
@@ -413,7 +414,7 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
 });
 
 /** Evaluate without writing, whatever mode the rules are in. */
-router.post("/preview", requireAdmin, async (req: Request, res: Response) => {
+router.post("/preview", requireAdmin, requirePermission("aws.preview"), async (req: Request, res: Response) => {
   const { ruleIds, resourceIds, accountIds } = req.body ?? {};
   const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
@@ -465,7 +466,7 @@ function badExclusionShape(b: { resources?: unknown; patterns?: unknown; whiteli
   return null;
 }
 
-router.get("/exclusions", async (_req: Request, res: Response) => {
+router.get("/exclusions", requirePermission("aws.exclusions.read"), async (_req: Request, res: Response) => {
   try {
     res.json(await listAwsExclusions());
   } catch (err) {
@@ -473,7 +474,7 @@ router.get("/exclusions", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/exclusions", requireAdmin, async (req: Request, res: Response) => {
+router.post("/exclusions", requireAdmin, requirePermission("aws.exclusions.manage"), async (req: Request, res: Response) => {
   try {
     const { name, description, resources, patterns, whitelist } = req.body ?? {};
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
@@ -492,7 +493,7 @@ router.post("/exclusions", requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
-router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
+router.put("/exclusions/:id", requireAdmin, requirePermission("aws.exclusions.manage"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const all = await listAwsExclusions();
     const existing = all.find(l => l.id === req.params.id);
@@ -538,7 +539,7 @@ router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>,
  * so the fix is obvious. Unlinking them automatically would be the same silent
  * widening with an extra step.
  */
-router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
+router.delete("/exclusions/:id", requireAdmin, requirePermission("aws.exclusions.manage"), async (req: Request<{ id: string }>, res: Response) => {
   try {
     const inUse = (await listGuardrails())
       .filter(r => r.exclusionLists?.includes(req.params.id))
@@ -570,7 +571,7 @@ router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string 
  * tab can name the account and the regions being swept, rather than showing
  * findings with no indication of where they came from.
  */
-router.get("/accounts", async (_req: Request, res: Response) => {
+router.get("/accounts", requirePermission("aws.accounts.read"), async (_req: Request, res: Response) => {
   try {
     const accounts = await resolveAccounts();
     res.json({ accounts, regions: scopesFor(accounts).map(s => s.region) });

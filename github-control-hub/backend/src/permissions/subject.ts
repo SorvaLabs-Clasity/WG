@@ -1,5 +1,6 @@
 import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import type { Subject } from "./evaluate";
+import { testHooks } from "./testing";
 
 /**
  * Who somebody is, as far as GitHub is concerned: the teams they are in, and
@@ -74,6 +75,33 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
   const subject: Subject = { login, teamSlugs: [], isOrgOwner: false };
 
   /**
+   * The test seam, consulted before any GitHub call — a test that installs
+   * hooks must not need `GITHUB_ORG` or a network call to get an answer. Each
+   * hook answers one of the three questions below independently; whatever a
+   * hook leaves unanswered still falls through to the real GitHub calls
+   * beneath it, so installing one hook does not require mocking every path.
+   */
+  const hooks = testHooks();
+  const ownerHooked = hooks?.ownerOf !== undefined;
+  if (ownerHooked) subject.isOrgOwner = hooks!.ownerOf!(login);
+
+  const ownTeamsHooked = !!ownToken && hooks?.ownTeams !== undefined;
+  const teamsOfHooked = !ownToken && hooks?.teamsOf !== undefined;
+  let teamsResolved = false;
+  if (ownTeamsHooked) {
+    subject.teamSlugs = hooks!.ownTeams!(ownToken!);
+    teamsResolved = true;
+  } else if (teamsOfHooked) {
+    subject.teamSlugs = hooks!.teamsOf!(login);
+    teamsResolved = true;
+  }
+
+  if (ownerHooked && teamsResolved) {
+    cache.set(key, { at: now, subject });
+    return subject;
+  }
+
+  /**
    * Inside the try, deliberately. `getOrg()` throws when `GITHUB_ORG` is unset,
    * and a throw here is a fail-*OPEN* path rather than "a rejection with extra
    * steps": the caller treats a rejected promise differently from an answer,
@@ -87,10 +115,14 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
     appToken = getSystemToken();
   } catch (err: any) {
     console.warn(`[permissions] Could not read the subject for "${login}":`, err?.message ?? err);
+    if (teamsResolved) cache.set(key, { at: now, subject });
     return subject;
   }
 
-  if (!appToken && !ownToken) return subject;
+  if (!appToken && !ownToken) {
+    if (teamsResolved) cache.set(key, { at: now, subject });
+    return subject;
+  }
 
   /**
    * Ownership, with the App token — and once more with the caller's own if the
@@ -103,25 +135,28 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
    * grant draws on a separate allowance, and GitHub narrows it for us because
    * `username` is passed, so the retry can only ever answer about `login`.
    */
-  const first = await readOwnership(appToken || ownToken!, org, login);
-  if (first.answered) {
-    subject.isOrgOwner = first.isOwner;
-  } else if (ownToken && ownToken !== appToken) {
-    const retry = await readOwnership(ownToken, org, login);
-    if (retry.answered) subject.isOrgOwner = retry.isOwner;
+  if (!ownerHooked) {
+    const first = await readOwnership(appToken || ownToken!, org, login);
+    if (first.answered) {
+      subject.isOrgOwner = first.isOwner;
+    } else if (ownToken && ownToken !== appToken) {
+      const retry = await readOwnership(ownToken, org, login);
+      if (retry.answered) subject.isOrgOwner = retry.isOwner;
+    }
   }
 
-  let teamsResolved = false;
-  try {
-    if (ownToken) {
-      subject.teamSlugs = await ownTeams(ownToken, org);
-      teamsResolved = true;
-    } else if (appToken) {
-      subject.teamSlugs = await teamsOfSomebodyElse(appToken, org, login);
-      teamsResolved = true;
+  if (!teamsResolved) {
+    try {
+      if (ownToken) {
+        subject.teamSlugs = await ownTeams(ownToken, org);
+        teamsResolved = true;
+      } else if (appToken) {
+        subject.teamSlugs = await teamsOfSomebodyElse(appToken, org, login);
+        teamsResolved = true;
+      }
+    } catch (err: any) {
+      console.warn(`[permissions] Could not read teams for "${login}":`, err?.message ?? err);
     }
-  } catch (err: any) {
-    console.warn(`[permissions] Could not read teams for "${login}":`, err?.message ?? err);
   }
 
   /**

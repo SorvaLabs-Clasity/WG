@@ -17,7 +17,7 @@ import { ColumnResizeHandle } from "../design";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { activityColumns, activityWidths, activityLayoutId } from "../lib/activityColumns";
 import { ACTION_CONFIG, actionLabel } from "../lib/activityActions";
-import UserAvatar from "../components/UserAvatar";
+import UserAvatar, { REDACTED_ACTOR } from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { useActivity, useActivityPulse, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
@@ -184,9 +184,15 @@ function WebhookPulse() {
  * Audit events GitHub raises itself carry no actor, a vulnerability alert being
  * created is not something a person did. Older rows say "unknown", which claims
  * the actor could not be identified rather than that there was none.
+ *
+ * `(hidden)` is the server's redaction marker, sent when the reader may see
+ * that something changed but not who changed it. It is spelled out as "Hidden"
+ * rather than left as a parenthesised token, so the column reads as a withheld
+ * name and not as a login somebody actually has.
  */
 function actorLabel(actor: string): string {
   const a = (actor || "").trim().toLowerCase();
+  if (a === REDACTED_ACTOR) return "Hidden";
   if (!a || a === "unknown" || a === "github[system]" || a === "system") return "GitHub (automatic)";
   return actor;
 }

@@ -13,7 +13,9 @@ import MyWorkPage from "./pages/MyWorkPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import { isAuthenticated } from "./api/client";
 import RequireTeam from "./components/RequireTeam";
+import NoAccess from "./components/NoAccess";
 import { usePermissions } from "./hooks/usePermissions";
+import { usePermissionSet } from "./hooks/usePermissionSet";
 
 /**
  * Where the app opens.
@@ -32,11 +34,35 @@ function Home() {
   return <Navigate to={perms?.isControlHubAdmin ? "/analytics" : "/my-work"} replace />;
 }
 
+/**
+ * The door for somebody deny-by-default has not reached yet.
+ *
+ * `NoAccess` existed and nothing rendered it, so under enforcement a new hire
+ * holding nothing would get an empty section line over whichever page they
+ * landed on, and every panel on it answering 403 — the app looking broken
+ * rather than the app saying it has not been opened to them yet.
+ *
+ * Only when the server has actually said so: the file was read (`!failure`),
+ * there is an organization to read it from (`!inert`), the flag is on
+ * (`enforced`) and it names them nowhere (`held.length === 0`). While the flag
+ * is off, or while the answer is still loading, `noAccess` is false and this
+ * component is not in the way of anything.
+ *
+ * Wrapped around the routed page rather than around the whole app, because
+ * `NoAccess` renders inside `<Page>` and needs the navigation — the one way
+ * out of a screen where nothing else is reachable.
+ */
+function RequirePermissions({ children }: { children: React.ReactNode }) {
+  const { noAccess } = usePermissionSet();
+  if (noAccess) return <NoAccess />;
+  return <>{children}</>;
+}
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace />;
   }
-  return <>{children}</>;
+  return <RequirePermissions>{children}</RequirePermissions>;
 }
 
 export const router = createBrowserRouter([

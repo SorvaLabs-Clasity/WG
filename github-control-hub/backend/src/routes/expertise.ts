@@ -5,6 +5,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import {
   expertsForRepo, expertsForPath, expertsForLibrary, type GithubReader,
 } from "../services/expertiseService";
+import { requireAnyPermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -72,7 +73,7 @@ function badName(value: string): string | null {
   return null;
 }
 
-router.get("/repo/:repo", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/repo/:repo", requireAnyPermission("expertise.repo.read", "expertise.read"), async (req: Request<{ repo: string }>, res: Response) => {
   const repo = String(req.params.repo);
   const problem = badName(repo);
   if (problem) return res.status(400).json({ error: problem });
@@ -86,7 +87,7 @@ router.get("/repo/:repo", async (req: Request<{ repo: string }>, res: Response) 
   }
 });
 
-router.get("/path/:repo", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/path/:repo", requireAnyPermission("expertise.path.read", "expertise.read"), async (req: Request<{ repo: string }>, res: Response) => {
   const repo = String(req.params.repo);
   const path = String(req.query.path ?? "");
   const problem = badName(repo) || badName(path);
@@ -101,7 +102,7 @@ router.get("/path/:repo", async (req: Request<{ repo: string }>, res: Response) 
   }
 });
 
-router.get("/library/:name", async (req: Request<{ name: string }>, res: Response) => {
+router.get("/library/:name", requireAnyPermission("expertise.library.read", "expertise.read"), async (req: Request<{ name: string }>, res: Response) => {
   const name = String(req.params.name);
   const problem = badName(name);
   if (problem) return res.status(400).json({ error: problem });

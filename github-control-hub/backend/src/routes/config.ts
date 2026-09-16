@@ -8,6 +8,7 @@ import { listScanners, putScannerRaw } from "../services/scannerService";
 import { listGuardrails, putGuardrail, listAwsExclusions, putAwsExclusion } from "../aws-guardrails/store";
 import { CATALOG } from "../aws-guardrails/catalog";
 import { canRemediate } from "../aws-guardrails/remediators";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ async function refuseAwsSections(
   return false;
 }
 
-router.get("/export", async (req: Request, res: Response) => {
+router.get("/export", requirePermission("config.export"), async (req: Request, res: Response) => {
   if (await refuseUnlessAdmin(res, req.user!.login, "export", req.user!.accessToken)) return;
   try {
     const [scanners, widgets, awsGuardrails, awsExclusions] =
@@ -207,7 +208,7 @@ export async function applyBundle(
  * `dryRun` reports what would change without writing, since the honest answer
  * to "what will this do to my production account" is a list, not a promise.
  */
-router.post("/import", async (req: Request, res: Response) => {
+router.post("/import", requirePermission("config.import"), async (req: Request, res: Response) => {
   if (await refuseUnlessAdmin(res, req.user!.login, "import", req.user!.accessToken)) return;
   try {
     const bundle = req.body as Partial<ConfigBundle>;

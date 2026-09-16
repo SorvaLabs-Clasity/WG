@@ -3,6 +3,7 @@ import { getOrgConfig } from "../services/orgConfigService";
 import { createOctokit, getOrg } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
+import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const router = Router();
  * Silence is the failure mode: a broken webhook looks exactly like a quiet
  * week. Reporting when GitHub last got through lets the difference be seen.
  */
-router.get("/webhook-health", async (_req: Request, res: Response) => {
+router.get("/webhook-health", requirePermission("org.webhookHealth.read"), async (_req: Request, res: Response) => {
   try {
     const { lastGitHubEvent, webhookHealth } = await import("../services/activityService");
     const { at, action } = await lastGitHubEvent();
@@ -29,7 +30,7 @@ router.get("/webhook-health", async (_req: Request, res: Response) => {
  * looking cannot otherwise see, and this exists to fill a name box, not to
  * widen what somebody knows about the org.
  */
-router.get("/members", async (req: Request, res: Response) => {
+router.get("/members", requirePermission("org.members.read"), async (req: Request, res: Response) => {
   try {
     const { listOrgMembers, depsFromOctokit } = await import("../services/orgMembersService");
     const octokit = createOctokit(req.user!.accessToken, "Organization tab");
@@ -40,7 +41,7 @@ router.get("/members", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/config", async (req: Request, res: Response) => {
+router.get("/config", requirePermission("org.config.read"), async (req: Request, res: Response) => {
   try {
     const config = await getOrgConfig();
     res.json(config);
@@ -51,7 +52,7 @@ router.get("/config", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/actors", async (req: Request, res: Response) => {
+router.get("/actors", requirePermission("org.config.read"), async (req: Request, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken, "Organization tab");
     const org = getOrg();

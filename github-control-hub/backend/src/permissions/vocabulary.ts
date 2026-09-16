@@ -27,7 +27,7 @@ export interface PermissionLeaf {
 }
 
 /** Bump when leaves are added. Never reuse a number. */
-export const VOCABULARY_VERSION = 1;
+export const VOCABULARY_VERSION = 3;
 
 const L = (key: string, label: string, addedIn = 1): PermissionLeaf => ({ key, label, addedIn });
 
@@ -121,6 +121,26 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("repos.query.read", "Saved graph queries"),
   L("repos.query.refresh", "Refresh a saved query"),
   L("repos.graph.rebuild", "Rebuild the whole access graph"),
+  //
+  // Missing from v1 and v2: `branches.ts` and `protection.ts` change what a
+  // repository *is* — a deleted branch, a stripped protection rule — and the
+  // only key that came close was `repos.detail.read`, which means "look at one
+  // repository". Reading a repository's detail is not consent to rewrite its
+  // refs, so the destructive half gets keys of its own rather than borrowing
+  // the read one.
+  L("repos.branches.manage", "Create, delete or rename a branch", 3),
+  L("repos.protection.manage", "Change branch protection or rulesets", 3),
+
+  // ── Scanners ───────────────────────────────────────────────────────
+  //
+  // Missing from v1: scanners.ts already existed and was written against a
+  // "scanners.*" branch that was never added here, so every route in it was
+  // unnameable without inventing a key. Added now, in v2, rather than left for
+  // a route to invent one, which is exactly what this vocabulary exists to
+  // prevent.
+  L("scanners.read", "Scanner definitions and their past results", 2),
+  L("scanners.manage", "Create, edit and delete scanners", 2),
+  L("scanners.run", "Run a scanner now", 2),
 
   // ── Pull requests ──────────────────────────────────────────────────
   L("pulls.read", "Open the Pull requests tab"),
@@ -137,6 +157,16 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("expertise.repo.read", "Who knows a repository"),
   L("expertise.path.read", "Who knows a path"),
   L("expertise.library.read", "Who knows a library"),
+
+  // ── The shared dashboard ───────────────────────────────────────────
+  //
+  // Separate from `me.widgets.*`, which is somebody's own board. There is one
+  // Overview dashboard and everybody reads it, so changing it is a change to
+  // shared configuration — `overview.cards.read`, which merely means seeing
+  // those cards, said nothing about that and should never have gated a write.
+  L("widgets.org.create", "Add a card to the shared dashboard", 3),
+  L("widgets.org.edit", "Change a card on the shared dashboard", 3),
+  L("widgets.org.delete", "Remove a card from the shared dashboard", 3),
 
   // ── Organization-level reads ───────────────────────────────────────
   L("org.members.read", "The organization's members"),

@@ -10,6 +10,7 @@ import ThemePicker from "./ThemePicker";
 import { themeEntry, isRail, type Skin } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
 import { usePermissions } from "../hooks/usePermissions";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { fetchAuthStatus } from "../api/auth";
 
 interface NavbarProps {
@@ -44,19 +45,56 @@ interface NavbarProps {
  */
 const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
 
+/**
+ * Which permissions open each tab, for the section line to filter by.
+ *
+ * **One or more, and the tab shows if any is held.** One key per tab was wrong
+ * wherever a tab is the only route to data gated on other keys: "Alarms" named
+ * `alarms.org.read`, but personal alarms and the notification destination
+ * (`me.alarms.*`, `me.destination.*`) are reachable nowhere else, so somebody
+ * holding those and not the organization-wide ones lost the only door to their
+ * own settings. Activity is the same shape — three keys reach the feed, and it
+ * named one of them.
+ *
+ * Read keys rather than write ones: the narrowest permission that actually
+ * opens the tab, never one row within it. `repro-permissiongates.ts` checks
+ * every key named here against the real vocabulary, so a typo fails the build
+ * instead of quietly hiding a tab under enforcement.
+ */
 const ITEMS = [
   // First, because it is the one somebody opens without being sent there.
-  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work") },
-  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
-  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws") },
-  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms") },
-  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access") },
-  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
-  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph") },
-  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls") },
-  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows") },
-  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity") },
+  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work"), permissions: ["me.work.read", "me.repos.read"] },
+  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics"), permissions: ["overview.read", "overview.cards.read"] },
+  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws"), permissions: ["aws.read"] },
+  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms"), permissions: ["alarms.org.read", "me.alarms.read", "me.destination.read"] },
+  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access"), permissions: ["access.read"] },
+  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies"), permissions: ["deps.read"] },
+  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph"), permissions: ["repos.read"] },
+  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls"), permissions: ["pulls.read"] },
+  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows"), permissions: ["expertise.read"] },
+  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity"), permissions: ["activity.read.own", "activity.read.app.rows", "activity.read.github"] },
 ];
+
+/**
+ * Said, rather than left to be inferred from an empty line.
+ *
+ * The server answers 503 `PERMISSIONS_UNAVAILABLE` when it cannot read the
+ * file, which is "we could not ask", not "you may not". Filtering the section
+ * line on that would make a GitHub outage look like a mass revocation — every
+ * tab gone, no reason given. So the tabs stay and this sits beside them: the
+ * pages behind them may still refuse, and the refusal will say why.
+ */
+function PermissionsUnavailable({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`caps text-crimson whitespace-nowrap ${className}`}
+      title="Permissions could not be read just now, so every section is shown. Some pages may still refuse."
+    >
+      <i className="ph-bold ph-warning-circle mr-1.5" aria-hidden="true" />
+      Permissions unavailable
+    </span>
+  );
+}
 
 /** The edition's date, set the way a paper dates itself. */
 function today() {
@@ -75,11 +113,13 @@ function today() {
  * holds no state of its own, but the next thing added to it would have lost it
  * silently.
  */
-function SectionSheet({ items, pathname, login, skin, onGo, onTheme, onSignOut }: {
+function SectionSheet({ items, pathname, login, skin, unavailable, onGo, onTheme, onSignOut }: {
   items: { label: string; path: string; match: (p: string) => boolean }[];
   pathname: string;
   login?: string;
   skin: Skin;
+  /** Permissions could not be read, so the list below is everything, not a filter. */
+  unavailable?: boolean;
   onGo: (path: string) => void;
   onTheme: () => void;
   onSignOut: () => void;
@@ -100,6 +140,10 @@ function SectionSheet({ items, pathname, login, skin, onGo, onTheme, onSignOut }
           </button>
         );
       })}
+
+      {unavailable && (
+        <div className="py-3.5 border-b border-rule"><PermissionsUnavailable /></div>
+      )}
 
       <button
         onClick={onTheme}
@@ -296,7 +340,21 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   // Undefined while the status loads: show everything rather than flashing a
   // one-section line at every launch and then filling it in.
   const githubBlocked = status?.githubAccess?.allowed === false;
-  const items = githubBlocked ? ITEMS.filter(i => ALWAYS_AVAILABLE.has(i.path)) : ITEMS;
+
+  /**
+   * The other filter alongside `githubBlocked`: what the permission system
+   * says this account may open. `can()` answers true for everything while the
+   * flag is off or the data is still loading, so this changes nothing until
+   * enforcement is actually on — same as `githubBlocked` changes nothing on an
+   * install with no AWS confinement.
+   */
+  const { canAny, unavailable } = usePermissionSet();
+  const items = ITEMS
+    .filter(i => !githubBlocked || ALWAYS_AVAILABLE.has(i.path))
+    // Every tab, when the answer could not be fetched at all. Hiding them on a
+    // failed read is the one case where the section line would lie, and the
+    // notice beside it says so rather than leaving an empty rule.
+    .filter(i => unavailable || canAny(...i.permissions));
 
   /**
    * Leave a section the account you just switched into cannot serve.
@@ -402,6 +460,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                 </button>
               );
             })}
+            {unavailable && <div className="px-4 py-3"><PermissionsUnavailable /></div>}
           </div>
 
           <div className="shrink-0 border-t border-rule px-4 py-3.5 flex flex-col items-start gap-3">
@@ -444,7 +503,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
         {menuOpen && (
           <SectionSheet
-            items={items} pathname={pathname} login={login} skin={skin}
+            items={items} pathname={pathname} login={login} skin={skin} unavailable={unavailable}
             onGo={(path) => { navigate(path); setMenuOpen(false); }}
             onTheme={() => { setMenuOpen(false); setThemeOpen(true); }}
             onSignOut={() => { setMenuOpen(false); logout(); }} />
@@ -509,6 +568,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                   </button>
                 );
               })}
+              {unavailable && <PermissionsUnavailable className="self-center pl-4" />}
             </div>
 
             <button className="xl:hidden caps flex items-center gap-2 text-ink"
@@ -522,7 +582,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
       {menuOpen && (
           <SectionSheet
-            items={items} pathname={pathname} login={login} skin={skin}
+            items={items} pathname={pathname} login={login} skin={skin} unavailable={unavailable}
             onGo={(path) => { navigate(path); setMenuOpen(false); }}
             onTheme={() => { setMenuOpen(false); setThemeOpen(true); }}
             onSignOut={() => { setMenuOpen(false); logout(); }} />

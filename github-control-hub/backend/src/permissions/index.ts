@@ -1,6 +1,6 @@
 import { loadPermissions, isFailure, type LoadFailure, type LoadedPermissions } from "./store";
 import { subjectFor } from "./subject";
-import { permissionsFor, allPermissions, type PermissionSet } from "./evaluate";
+import { permissionsFor, allPermissions, type PermissionSet, type Subject } from "./evaluate";
 import { unknownNodesIn } from "./validate";
 import { emptyFile } from "./types";
 
@@ -48,23 +48,19 @@ export interface Access {
   sha: string | null;
 }
 
-export async function accessFor(
-  login: string,
-  /**
-   * A token belonging to `login` **itself**, if the caller holds one.
-   *
-   * Never somebody else's: it is used for `GET /user/teams`, which answers for
-   * whoever holds the token rather than for the login passed alongside it.
-   * Asking about another person — the admin screen's dry-run diff does exactly
-   * that — means omitting this, and the App token answers by name instead.
-   */
-  userToken?: string,
-): Promise<Access> {
+/**
+ * Shared machinery behind both `accessForSelf` and `accessForOther`.
+ *
+ * Neither of those calls the other, and neither takes a token it could
+ * forward to the wrong place. This is where the two answers are actually
+ * assembled, once the caller above has already committed — by which function
+ * it called — to whose token, if any, is in play. `subject` is already the
+ * in-flight `subjectFor(...)` promise from that caller, so it runs concurrently
+ * with `loadPermissions()` exactly as before.
+ */
+async function access(login: string, subject: Promise<Subject>): Promise<Access> {
   try {
-    const [loaded, subject] = await Promise.all([
-      loadPermissions(),
-      subjectFor(login, { ownToken: userToken }),
-    ]);
+    const [loaded, resolvedSubject] = await Promise.all([loadPermissions(), subject]);
 
     if (isFailure(loaded)) {
       const inert = loaded.reason === "aws-only";
@@ -75,7 +71,7 @@ export async function accessFor(
         // so the two cannot drift apart as the vocabulary grows.
         permissions: inert
           ? allPermissions("inert", "this deployment has no GitHub organization")
-          : permissionsFor(emptyFile(), subject),
+          : permissionsFor(emptyFile(), resolvedSubject),
         inert,
         failure: loaded,
         unknownNodes: [],
@@ -85,7 +81,7 @@ export async function accessFor(
     }
 
     return {
-      permissions: permissionsFor(loaded.file, subject),
+      permissions: permissionsFor(loaded.file, resolvedSubject),
       inert: false,
       failure: null,
       unknownNodes: unknownNodesIn(loaded.file),
@@ -109,4 +105,26 @@ export async function accessFor(
       sha: null,
     };
   }
+}
+
+/**
+ * What the signed-in caller may do, on their own request.
+ *
+ * `ownToken` must belong to `login` **itself**: it is used for `GET
+ * /user/teams`, which answers for whoever holds the token rather than for the
+ * login passed alongside it. There is no way to call this about somebody
+ * else — that is `accessForOther`, below, which takes no token at all.
+ */
+export async function accessForSelf(login: string, ownToken: string): Promise<Access> {
+  return access(login, subjectFor(login, { ownToken }));
+}
+
+/**
+ * What somebody *else* may do — the admin screen's dry-run diff, and nowhere
+ * on the request path. Takes no token, so there is nothing to misuse: their
+ * teams are resolved by name, with the App token, not attributed from
+ * whatever token the caller happens to be holding.
+ */
+export async function accessForOther(login: string): Promise<Access> {
+  return access(login, subjectFor(login));
 }

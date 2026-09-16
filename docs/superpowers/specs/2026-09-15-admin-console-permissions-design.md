@@ -247,7 +247,7 @@ admin                           The Admin tab
   admin.audit.read                The change history of the file
 ```
 
-**101 leaves, 13 top-level branches.** `admin.console.open` is
+**109 leaves, 15 top-level branches.** `admin.console.open` is
 deliberately not sufficient to change anything — a read-only auditor is a real
 role.
 
