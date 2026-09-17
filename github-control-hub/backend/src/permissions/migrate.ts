@@ -1,6 +1,7 @@
 import type { PermissionsFile, Preset } from "./types";
 import { emptyFile } from "./types";
 import { permissionsFor, type Subject } from "./evaluate";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 /**
  * The starting file, and the diff that proves it changes nothing.
@@ -121,6 +122,17 @@ export function startingFile(members: MemberSnapshot[]): PermissionsFile {
   const file = emptyFile();
   file.presets = clonePresets();
   for (const member of members) {
+    /**
+     * Control Hub admins get no entry. They hold every permission on the
+     * strength of their team membership, so an entry naming one of them would
+     * decide nothing — and the write path refuses such an entry precisely
+     * because a restriction that cannot take effect reads, to whoever finds it
+     * next, as one that has.
+     *
+     * Their access is unchanged by this: the dry-run reports them keeping
+     * everything, because the exemption is what grants it.
+     */
+    if (member.isControlHubAdmin) continue;
     file.people[member.login.toLowerCase()] = { presets: presetsFor(member) };
   }
   return file;
@@ -136,8 +148,21 @@ export interface DryRunRow {
   isOrgOwner: boolean;
 }
 
-function subjectOf(login: string, isOrgOwner: boolean): Subject {
-  return { login, teamSlugs: [], isOrgOwner };
+function subjectOf(member: MemberSnapshot): Subject {
+  /**
+   * The team slug has to be here, not just the flag.
+   *
+   * `permissionsFor` exempts Control Hub admins by looking for the slug in
+   * `teamSlugs`, so a subject built without it evaluates an administrator as
+   * though they were on no teams at all — reporting them holding nothing,
+   * before *and* after, and therefore losing nothing. An operator reads a
+   * clean row for the very people who hold the most.
+   */
+  return {
+    login: member.login,
+    teamSlugs: member.isControlHubAdmin ? [CONTROL_HUB_ADMIN_TEAM] : [],
+    isOrgOwner: member.isOrgOwner,
+  };
 }
 
 /**
@@ -164,7 +189,7 @@ function subjectOf(login: string, isOrgOwner: boolean): Subject {
  */
 export function dryRun(file: PermissionsFile, members: MemberSnapshot[]): DryRunRow[] {
   return members.map(member => {
-    const subject = subjectOf(member.login, member.isOrgOwner);
+    const subject = subjectOf(member);
 
     const baseline = permissionsFor(startingFile([member]), subject);
     const actual = permissionsFor(file, subject);

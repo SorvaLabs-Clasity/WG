@@ -149,11 +149,20 @@ export interface PersonAccess {
    * rather than diff against it.
    */
   teamsUnavailable?: boolean;
+
+  /**
+   * On the Control Hub admin team. They hold every permission by membership,
+   * so an entry here would decide nothing — the screen says so instead of
+   * accepting an edit that would quietly not apply.
+   */
+  exempt?: boolean;
 }
 
 export interface OrgMember {
   login: string;
   avatarUrl: string | null;
+  /** On the Control Hub admin team: holds everything, not configurable here. */
+  exempt?: boolean;
 }
 
 /**

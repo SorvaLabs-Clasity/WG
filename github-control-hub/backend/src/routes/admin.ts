@@ -44,7 +44,29 @@ const router = Router();
  * `control-hub-admins` gates the Admin tab, which is now that team's only
  * remaining meaning.
  */
-router.use(requireControlHubAdmin);
+router.use((req, res, next) => {
+  /**
+   * Two gates, one at a time, because they answer in different worlds.
+   *
+   * With enforcement **off** the permission gates below are `return next()`,
+   * so this team check is the only thing standing in front of a router that
+   * rewrites `permissions.json` and creates repositories. Without it the tab
+   * is live for every signed-in member.
+   *
+   * With enforcement **on** the permission gates decide, and this one must
+   * step aside — otherwise only the admin team can reach the router, and every
+   * member of that team holds every permission by membership, which would make
+   * `admin.people.assign` and `admin.presets.edit` distinctions nobody can
+   * ever be on the wrong side of. The five-way split exists so that somebody
+   * can be given `admin.audit.read` and nothing else; that person is by
+   * definition not on the team.
+   *
+   * Team members still reach it once enforcement is on: holding everything
+   * includes holding `admin.console.open`.
+   */
+  if (PERMISSIONS_ENABLED()) return next();
+  return requireControlHubAdmin(req, res, next);
+});
 
 // People and Presets both render from this one file, so either read
 // permission has to be enough to load it — gating it on admin.people.read
@@ -161,6 +183,39 @@ async function writeFile(
   sha: string | null, summary: string,
 ): Promise<Written> {
   if (PERMISSIONS_ENABLED()) {
+    /**
+     * Nobody on the Control Hub admin team is configurable.
+     *
+     * `permissionsFor` gives them everything on the strength of their
+     * membership, so an entry naming one of them decides nothing — and an
+     * entry that looks like it governs somebody while deciding nothing is
+     * worse than no entry at all. It reads as a restriction that is quietly
+     * not in force.
+     *
+     * Refused on the way in rather than stripped silently, because an
+     * administrator who has just spent a minute un-ticking boxes deserves to
+     * be told that the person they were editing is exempt and why.
+     */
+    const exempt = await controlHubAdminsIn(
+      new Set([...Object.keys(before.people ?? {}), ...Object.keys(toSave.people ?? {})]));
+    const touched = [...exempt].filter(login =>
+      JSON.stringify((before.people ?? {})[login] ?? null)
+        !== JSON.stringify((toSave.people ?? {})[login] ?? null));
+
+    if (touched.length > 0) {
+      return {
+        ok: false, status: 409,
+        body: {
+          code: "EXEMPT_SUBJECT",
+          logins: touched,
+          error: `${touched.join(", ")} ${touched.length === 1 ? "is" : "are"} on `
+            + `${CONTROL_HUB_ADMIN_TEAM}, which already holds every permission. `
+            + "Entries here would decide nothing. To narrow what they can do, take them off "
+            + "that team on GitHub.",
+        },
+      };
+    }
+
     const subject = await subjectFor(req.user!.login, { ownToken: req.user!.accessToken });
 
     /**
@@ -442,6 +497,14 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
          * The client must refuse to save a permission edit while this is true.
          */
         teamsUnavailable: subject.teamsUnavailable === true,
+
+        /**
+         * On the Control Hub admin team, so they hold everything by membership
+         * and nothing written here about them decides anything. The screen
+         * shows the tree read-only and says why, rather than letting somebody
+         * compose a restriction that would never take effect.
+         */
+        exempt: subject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM),
       });
     } catch (err) {
       res.status(500).json({ error: sanitizeError(err, "admin") });
@@ -736,17 +799,62 @@ router.post("/migrate", requirePermission("admin.people.assign"), async (req: Re
 router.get("/org-members", requirePermission("admin.people.read"), async (_req: Request, res: Response) => {
   try {
     const octokit = createOctokit(getSystemToken(), "Permissions");
-    const members = await listOrgMembers(depsFromOctokit(octokit), getOrg());
+    const [members, admins] = await Promise.all([
+      listOrgMembers(depsFromOctokit(octokit), getOrg()),
+      membersOfTeam(octokit, CONTROL_HUB_ADMIN_TEAM),
+    ]);
 
     res.json({
       // `listOrgMembers` already sorts case-insensitively and de-duplicates
       // across pages; it is the same read `/dry-run` and `/migrate` make, so
       // this costs no call they do not already make.
-      members: members.map(m => ({ login: m.login, avatarUrl: m.avatarUrl })),
+      //
+      // `exempt` marks the Control Hub admins, who hold everything by
+      // membership and cannot be configured here. One team read for the whole
+      // roster, not one per person.
+      members: members.map(m => ({
+        login: m.login,
+        avatarUrl: m.avatarUrl,
+        exempt: admins.has(m.login.toLowerCase()),
+      })),
     });
   } catch (err) {
     res.status(502).json({ error: sanitizeError(err, "admin") });
   }
 });
+
+/**
+ * Which of these logins are on the Control Hub admin team.
+ *
+ * One team read, cached by `subjectFor` for a minute, rather than one call per
+ * login: an organization of two hundred would otherwise spend two hundred
+ * requests deciding whether a single save is allowed.
+ */
+async function membersOfTeam(octokit: any, slug: string): Promise<Set<string>> {
+  const set = new Set<string>();
+  try {
+    for (let page = 1; ; page++) {
+      const { data } = await octokit.rest.teams.listMembersInOrg({
+        org: getOrg(), team_slug: slug, per_page: 100, page,
+      });
+      for (const m of data) if (m.login) set.add(m.login.toLowerCase());
+      if (data.length < 100) break;
+    }
+  } catch {
+    // A team that cannot be read marks nobody exempt, which shows them as
+    // configurable. The write path checks again and refuses, so the worst case
+    // is a save that is refused rather than an exemption silently lost.
+  }
+  return set;
+}
+
+async function controlHubAdminsIn(logins: Set<string>): Promise<Set<string>> {
+  const found = new Set<string>();
+  for (const login of logins) {
+    const subject = await subjectFor(login);
+    if (subject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM)) found.add(login);
+  }
+  return found;
+}
 
 export default router;

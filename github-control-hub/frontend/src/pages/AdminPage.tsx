@@ -183,11 +183,17 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
     // Everyone in the file, plus everyone in the organization who is not in it
     // yet. The second group is what makes somebody addable without knowing how
     // they spell their username.
+    const exempt = new Set((roster ?? []).filter(m => m.exempt).map(m => m.login.toLowerCase()));
+
     const all = [
-      ...Object.entries(file.people).map(([login, entry]) => ({ login, entry, inFile: true })),
+      ...Object.entries(file.people)
+        .map(([login, entry]) => ({ login, entry, inFile: true, exempt: exempt.has(login) })),
       ...(roster ?? [])
         .filter(m => !named.has(m.login.toLowerCase()))
-        .map(m => ({ login: m.login.toLowerCase(), entry: {} as PersonEntry, inFile: false })),
+        .map(m => ({
+          login: m.login.toLowerCase(), entry: {} as PersonEntry,
+          inFile: false, exempt: m.exempt === true,
+        })),
     ];
 
     return all
@@ -227,9 +233,9 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
         />
       ) : (
         <div className="grid gap-2">
-          {rows.map(({ login, entry, inFile }, i) => (
+          {rows.map(({ login, entry, inFile, exempt }, i) => (
             <PersonRow key={login} login={login} entry={entry} file={file} index={i}
-              inFile={inFile} onOpen={() => onOpen(login)} />
+              inFile={inFile} exempt={exempt} onOpen={() => onOpen(login)} />
           ))}
         </div>
       )}
@@ -245,16 +251,18 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
   );
 }
 
-function PersonRow({ login, entry, file, index, inFile, onOpen }: {
+function PersonRow({ login, entry, file, index, inFile, exempt, onOpen }: {
   login: string; entry: PersonEntry; file: PermissionsFile; index: number;
-  inFile: boolean; onOpen: () => void;
+  inFile: boolean; exempt: boolean; onOpen: () => void;
 }) {
-  const hasOverrides = !!(entry.grant?.length || entry.revoke?.length);
-  const presetLabel = !inFile
-    ? "In the organization, holds nothing here yet"
-    : (entry.presets ?? []).length === 0
-      ? "No preset"
-      : entry.presets!.map(id => file.presets[id]?.name ?? id).join(", ");
+  const hasOverrides = !exempt && !!(entry.grant?.length || entry.revoke?.length);
+  const presetLabel = exempt
+    ? "On the Control Hub admin team — holds everything, not configurable here"
+    : !inFile
+      ? "In the organization, holds nothing here yet"
+      : (entry.presets ?? []).length === 0
+        ? "No preset"
+        : entry.presets!.map(id => file.presets[id]?.name ?? id).join(", ");
 
   return (
     <RailCard intent={hasOverrides ? "warn" : "neutral"} index={index} onClick={onOpen}>
@@ -264,6 +272,7 @@ function PersonRow({ login, entry, file, index, inFile, onOpen }: {
           <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{presetLabel}</p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {exempt && <Pill intent="info">Admin team</Pill>}
           {hasOverrides && <Pill intent="warn">Overrides</Pill>}
           {entry.note && (
             <span className="text-[0.75rem] text-ink-3 max-w-[24ch] truncate" title={entry.note}>{entry.note}</span>
@@ -392,6 +401,26 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
    */
   const baselineIncomplete = access?.teamsUnavailable === true;
 
+  /**
+   * On the Control Hub admin team, so they hold everything by membership and
+   * an entry here would decide nothing. The screen stays readable — seeing
+   * what somebody holds is the point of opening it — but every control that
+   * would compose a restriction is off, because a restriction that will never
+   * take effect is worse than none: it reads, to the next administrator, as
+   * one that is in force.
+   */
+  const exempt = access?.exempt === true;
+
+  /**
+   * Whether anything is set on this person directly, as opposed to reaching
+   * them through a preset or a team. Clearing these is the way to say "give
+   * them exactly what the preset says and nothing else" — without it, undoing
+   * a scatter of earlier overrides means finding and un-ticking each one, and
+   * a missed one is invisible because it looks the same as an inherited tick.
+   */
+  const overrideCount = (entry.grant?.length ?? 0) + (entry.revoke?.length ?? 0);
+  const hasOverrides = overrideCount > 0;
+
   const dirty = !entriesEqual(entry, { grant: existing?.grant, revoke: existing?.revoke })
     || note.trim() !== (existing?.note ?? "")
     || presetsChanged;
@@ -428,7 +457,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                     {presetEntries.map(([id, preset]) => (
                       <label key={id}
                         className={`flex items-center gap-2.5 ${canAssign ? "cursor-pointer" : ""}`}>
-                        <input type="checkbox" checked={presets.includes(id)} disabled={!canAssign}
+                        <input type="checkbox" checked={presets.includes(id)} disabled={!canAssign || exempt}
                           onChange={() => togglePreset(id)} className="shrink-0" />
                         <span className={`${TYPE.body} text-ink`}>{preset.name}</span>
                         {preset.description && (
@@ -442,6 +471,15 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
             )}
 
             <Block title="Permissions">
+              {exempt && (
+                <Note intent="info">
+                  {loginKey} is on the Control Hub admin team, which holds every permission in the
+                  app — the GitHub side and the AWS side both. Nothing set here would change that,
+                  so nothing here can be set. To narrow what they can do, take them off that team
+                  on GitHub; membership is the grant, and it is visible there rather than
+                  contradicted by an entry in here.
+                </Note>
+              )}
               {presetsChanged && (
                 <p className={`${TYPE.sub} text-ink-2 mb-3`}>
                   The preset selection above has changed, so what {loginKey} inherits is not
@@ -459,16 +497,27 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                 </Note>
               )}
               <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
-                onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete} />
+                onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete || exempt} />
+
+              {canOverride && !presetsChanged && !baselineIncomplete && hasOverrides && (
+                <div className="mt-4 flex items-center gap-3 flex-wrap">
+                  <Button variant="ghost" onClick={() => setEntry({})}>Clear this person's overrides</Button>
+                  <span className={`${TYPE.sub} text-ink-3`}>
+                    Removes everything set on {loginKey} directly — {overrideCount}{" "}
+                    {overrideCount === 1 ? "entry" : "entries"} — and leaves them with exactly what
+                    their presets and teams give them. Takes effect when you save.
+                  </span>
+                </div>
+              )}
             </Block>
 
             <Block title="Note">
-              <textarea value={note} onChange={e => setNote(e.target.value)} disabled={!canOverride}
+              <textarea value={note} onChange={e => setNote(e.target.value)} disabled={!canOverride || exempt}
                 placeholder="Why does this person hold what they hold? Visible to any other administrator."
                 className="w-full bg-paper-2 border border-rule px-3 py-2 text-[0.8438rem] text-ink min-h-[4.5rem] disabled:text-ink-3" />
             </Block>
 
-            {(canOverride || canAssign) && (
+            {(canOverride || canAssign) && !exempt && (
               <Block title="Save">
                 <div className="flex items-center gap-4 flex-wrap">
                   <input value={summary} onChange={e => setSummary(e.target.value)}

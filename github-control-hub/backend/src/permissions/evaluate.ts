@@ -1,6 +1,7 @@
 import type { PermissionsFile, PermissionEntry, Preset } from "./types";
 import { resolvePreset, type Rule } from "./presets";
 import { isKnownNode, isUnder, PERMISSIONS } from "./vocabulary";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 /**
  * Where a rule was written, in increasing authority.
@@ -151,7 +152,7 @@ export interface Subject {
 
 export interface Explanation {
   held: boolean;
-  reason: "owner" | "inert" | "granted" | "revoked" | "not granted";
+  reason: "owner" | "controlHubAdmin" | "inert" | "granted" | "revoked" | "not granted";
   /** "preset Engineer", "team platform", "set on this person". Null when nothing matched. */
   origin: string | null;
 }
@@ -195,6 +196,28 @@ export function allPermissions(reason: Explanation["reason"], origin: string): P
  */
 export function permissionsFor(file: PermissionsFile, subject: Subject): PermissionSet {
   if (subject.isOrgOwner) return allPermissions("owner", "organization owner");
+
+  /**
+   * The Control Hub admin team holds everything, and is not configurable.
+   *
+   * The team already decides who may open the Admin tab, and somebody trusted
+   * to hand out every permission in the organization is not usefully
+   * restricted from using them. Splitting the two produced a role nobody
+   * wanted — an administrator who can grant `aws.rules.enforce` to anybody
+   * except themselves — and an entry in the file that looked like it governed
+   * them while deciding nothing.
+   *
+   * So membership is the grant. Narrowing somebody means taking them off the
+   * team, which is done on GitHub and is visible there, rather than leaving
+   * them on it with a file entry that quietly contradicts it.
+   *
+   * Note this reads `teamSlugs`, so it inherits the `teamsUnavailable`
+   * behaviour: a team listing that failed leaves the list empty and denies,
+   * which is the safe direction and the same one the gate already takes.
+   */
+  if (subject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM)) {
+    return allPermissions("controlHubAdmin", `member of ${CONTROL_HUB_ADMIN_TEAM}`);
+  }
 
   const rules = collectRules(file, subject.login, subject.teamSlugs);
   const decisions = new Map<string, Decision>();

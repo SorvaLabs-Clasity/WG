@@ -330,7 +330,12 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // permission gate is a router with no guard at all. The blanket team gate
     // is what this names, and the behavioural check below is what proves it
     // decides something rather than merely being spelled correctly.
-    ["admin.ts",         /router\.(post|put|delete)\(/g, /requireControlHubAdmin/],
+    // admin.ts carries two guards, and neither alone is the answer. The team
+    // gate is a conditional `router.use` — it decides while PERMISSIONS_ENABLED
+    // is unset and steps aside once permissions do, so it is not a blanket this
+    // scan can credit. What every write route must name is its own permission.
+    // `repro-admin.ts` drives the flag-off half behaviourally.
+    ["admin.ts",         /router\.(post|put|delete)\(/g, /require(?:Any)?Permission|requireControlHubAdmin/],
     // Exempted as "read models over the graph" until it was read carefully.
     // PUT /config replaces the rule set the entire organization is scored
     // against, and `{"rules": []}` scores everything 100, an org-wide
