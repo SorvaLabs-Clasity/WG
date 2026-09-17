@@ -175,6 +175,45 @@ export function fileProblems(raw: unknown): FileProblem[] {
         problems.push({ where: `${label}.${key}`, what: `has a "presets" that is not an array` });
         continue;
       }
+
+      /**
+       * The per-account entries. Each is the same shape as the entry itself,
+       * filed under an account id — and an id that is not twelve digits names
+       * an account no install will ever match, so everything written under it
+       * silently decides nothing while reading as though it had taken effect.
+       */
+      if (entry.accounts !== undefined) {
+        if (!isObject(entry.accounts)) {
+          problems.push({ where: `${label}.${key}.accounts`, what: "is not an object" });
+          continue;
+        }
+        for (const [accountId, scoped] of Object.entries(entry.accounts)) {
+          const at = `${label}.${key}.accounts.${accountId}`;
+          if (!/^[0-9]{12}$/.test(accountId)) {
+            problems.push({ where: at, what: "is not a twelve-digit account id, so nothing here applies anywhere" });
+            continue;
+          }
+          if (!isObject(scoped)) {
+            problems.push({ where: at, what: "is not an object" });
+            continue;
+          }
+          if (scoped.presets !== undefined && !Array.isArray(scoped.presets)) {
+            problems.push({ where: at, what: `has a "presets" that is not an array` });
+            continue;
+          }
+          for (const id of (scoped.presets ?? []) as unknown[]) {
+            if (typeof id !== "string" || !has(presets, id)) {
+              problems.push({ where: at, what: `names a preset that does not exist: ${String(id)}` });
+            }
+          }
+          for (const field of ["grant", "revoke"] as const) {
+            const list = (scoped as any)[field];
+            if (list !== undefined && !Array.isArray(list)) {
+              problems.push({ where: at, what: `has a "${field}" that is not an array` });
+            }
+          }
+        }
+      }
       const assigned = entry.presets ?? [];
       for (const id of assigned) {
         if (typeof id !== "string" || !has(presets, id)) {

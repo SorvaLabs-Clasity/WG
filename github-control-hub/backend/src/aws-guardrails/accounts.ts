@@ -14,7 +14,7 @@
  */
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 import type { AwsAccount, Scope } from "./types";
-import { setConfiguredAccounts } from "../permissions/accountScope";
+import { setConfiguredAccounts, setInstallAccount } from "../permissions/accountScope";
 
 const REGION = awsRegion();
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
@@ -101,6 +101,9 @@ export async function resolveAccounts(): Promise<AwsAccount[]> {
    * depending on a scheduled job somebody has to remember exists.
    */
   setConfiguredAccounts([accountId]);
+  // And which of them this process is. Every permission decision here resolves
+  // against this account's entries; the admin console edits all of them.
+  setInstallAccount(accountId);
 
   return [{
     accountId,

@@ -187,3 +187,26 @@ export function isKnownNodeNow(node: string): boolean {
 export function leavesUnderNow(node: string): string[] {
   return currentVocabulary().filter(l => isUnder(l.key, node)).map(l => l.key);
 }
+
+
+/**
+ * The account this install *is*.
+ *
+ * Permissions are per account, and a request arriving at this process concerns
+ * the account this process runs in — so every gate resolves against this one.
+ * The admin console edits entries for every declared account, because the file
+ * is shared; only this account's entries decide anything here.
+ *
+ * Undefined until `resolveAccounts` has run, and undefined is meaningful: it
+ * means "accounts are not in play", and evaluation falls back to the entry's
+ * top-level fields, which is every file written before accounts existed.
+ */
+let installAccount: string | undefined;
+
+export function setInstallAccount(accountId: string | undefined): void {
+  installAccount = accountId && isAccountId(accountId) ? accountId : undefined;
+}
+
+export function installAccountId(): string | undefined {
+  return installAccount;
+}

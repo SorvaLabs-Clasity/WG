@@ -4,6 +4,7 @@ import { permissionsFor, allPermissions, type PermissionSet, type Subject } from
 import { unknownNodesIn } from "./validate";
 import { emptyFile } from "./types";
 import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { installAccountId } from "./accountScope";
 
 export * from "./types";
 export { PERMISSIONS, isLeaf, isKnownNode, leavesUnder } from "./vocabulary";
@@ -138,6 +139,17 @@ async function access(login: string, subject: Promise<Subject>): Promise<Access>
      * who wants deny-by-default before writing anything. It can no longer turn
      * it *off*, which was the hole.
      */
+    /**
+     * Resolved for the account this install is. Every request arriving here
+     * concerns that account, and an account somebody has been given nothing in
+     * grants them nothing — deny by default, applied to a dimension.
+     *
+     * `undefined` means accounts are not in play, and evaluation falls back to
+     * the entries' top-level fields: a file written before accounts existed,
+     * or an install whose account list has not resolved yet.
+     */
+    const account = installAccountId();
+
     const empty = Object.keys(loaded.file.people ?? {}).length === 0
       && Object.keys(loaded.file.presets ?? {}).length === 0
       && Object.keys(loaded.file.teams ?? {}).length === 0;
@@ -146,7 +158,7 @@ async function access(login: string, subject: Promise<Subject>): Promise<Access>
     return {
       permissions: inert
         ? allPermissions("inert", "no permissions file has been written yet")
-        : permissionsFor(loaded.file, resolvedSubject),
+        : permissionsFor(loaded.file, resolvedSubject, account),
       inert,
       failure: null,
       unknownNodes: unknownNodesIn(loaded.file),

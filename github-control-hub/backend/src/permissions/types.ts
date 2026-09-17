@@ -30,10 +30,44 @@ export interface PersonEntry extends PermissionEntry {
   note?: string;
   updatedAt?: string;
   updatedBy?: string;
+  /**
+   * What this person holds, per account, keyed by account id.
+   *
+   * An account with no entry here grants them nothing there — deny by default
+   * applied to a dimension rather than an exception to it. That is why a newly
+   * declared account starts empty and why the admin screen can copy one
+   * account's entry onto others.
+   *
+   * The `presets`/`grant`/`revoke` above this are the pre-account shape and are
+   * still honoured: an install that has declared no accounts reads them, and a
+   * file written before accounts existed keeps working unchanged.
+   */
+  accounts?: Record<string, AccountEntry>;
 }
 
 export interface TeamEntry extends PermissionEntry {
   presets?: string[];
+  /** As `PersonEntry.accounts`: what this team confers in one account. */
+  accounts?: Record<string, AccountEntry>;
+}
+
+/**
+ * What somebody holds **in one account**.
+ *
+ * The account is a dimension over the whole vocabulary rather than a branch
+ * inside part of it: an account is a configured environment, some with GitHub
+ * and some without, and each has its own tabs. "Read Activity in sandbox but
+ * not in production" is a sentence the key path could never express and this
+ * one states directly.
+ *
+ * Presets are global *definitions* — a named bundle is the same bundle
+ * wherever it is applied. What varies per account is who holds which bundle,
+ * and whatever is set on them directly on top of it.
+ */
+export interface AccountEntry {
+  presets?: string[];
+  grant?: string[];
+  revoke?: string[];
 }
 
 export interface PermissionsFile {

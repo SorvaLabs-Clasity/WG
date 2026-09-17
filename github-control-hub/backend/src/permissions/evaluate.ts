@@ -1,4 +1,4 @@
-import type { PermissionsFile, PermissionEntry, Preset } from "./types";
+import type { PermissionsFile, PermissionEntry, Preset, AccountEntry } from "./types";
 import { resolvePreset, type Rule } from "./presets";
 import { isUnder } from "./vocabulary";
 /**
@@ -45,16 +45,38 @@ function ownRules(entry: PermissionEntry, layer: number, origin: string): Layere
  * person, not part of their entry. That is what `inheritedStanding` needs and
  * it is the only reason the option exists.
  */
+/**
+ * Which slice of an entry applies.
+ *
+ * With an account id, only that account's entry — an account nobody has been
+ * given anything in grants nothing there. Without one, the entry's own
+ * top-level fields, which is every file written before accounts existed and
+ * every install that has declared none.
+ *
+ * Never both. Merging them would mean a permission granted "generally" leaking
+ * into an account somebody had deliberately left empty, which is the one thing
+ * per-account access exists to prevent.
+ */
+function sliceFor(
+  entry: (PermissionEntry & { presets?: string[]; accounts?: Record<string, AccountEntry> }) | undefined,
+  accountId: string | undefined,
+): AccountEntry | undefined {
+  if (!entry) return undefined;
+  if (accountId === undefined) return entry;
+  return entry.accounts?.[accountId];
+}
+
 export function collectRules(
   file: PermissionsFile, login: string, teamSlugs: string[],
-  opts: { includeOwnEntry?: boolean } = {},
+  opts: { includeOwnEntry?: boolean; accountId?: string } = {},
 ): LayeredRule[] {
   const includeOwnEntry = opts.includeOwnEntry !== false;
+  const accountId = opts.accountId;
   const out: LayeredRule[] = [];
   const key = login.toLowerCase();
 
   for (const slug of teamSlugs) {
-    const team = file.teams?.[slug];
+    const team = sliceFor(file.teams?.[slug], accountId);
     if (!team) continue;
     for (const presetId of team.presets ?? []) {
       out.push(...resolvePreset(file.presets ?? {}, presetId, `team ${slug} via`)
@@ -63,7 +85,7 @@ export function collectRules(
     out.push(...ownRules(team, LAYER.team, `team ${slug}`));
   }
 
-  const person = file.people?.[key];
+  const person = sliceFor(file.people?.[key], accountId);
   if (!person) return out;
 
   for (const presetId of person.presets ?? []) {
@@ -207,7 +229,9 @@ export function allPermissions(reason: Explanation["reason"], origin: string): P
  * vocabulary is small, the admin screen needs every answer at once anyway, and
  * a set that cannot change under a request is one fewer thing to reason about.
  */
-export function permissionsFor(file: PermissionsFile, subject: Subject): PermissionSet {
+export function permissionsFor(
+  file: PermissionsFile, subject: Subject, accountId?: string,
+): PermissionSet {
   /**
    * Organization owners are **not** exempt.
    *
@@ -245,7 +269,7 @@ export function permissionsFor(file: PermissionsFile, subject: Subject): Permiss
     return allPermissions("controlHubAdmin", `member of ${CONTROL_HUB_ADMIN_TEAM}`);
   }
 
-  const rules = collectRules(file, subject.login, subject.teamSlugs);
+  const rules = collectRules(file, subject.login, subject.teamSlugs, { accountId });
   const decisions = new Map<string, Decision>();
   for (const { key } of currentVocabulary()) decisions.set(key, decideLeaf(key, rules));
 
@@ -352,8 +376,11 @@ export interface Standing {
  * mistake: a leaf the person revokes and their team grants is `true` here,
  * because the team grants it and the person's revoke is not in the room.
  */
-export function inheritedStanding(file: PermissionsFile, subject: Subject): Standing {
-  const rules = collectRules(file, subject.login, subject.teamSlugs, { includeOwnEntry: false });
+export function inheritedStanding(
+  file: PermissionsFile, subject: Subject, accountId?: string,
+): Standing {
+  const rules = collectRules(file, subject.login, subject.teamSlugs,
+    { includeOwnEntry: false, accountId });
   return { rules, baseline: baselineOf(rules) };
 }
 
