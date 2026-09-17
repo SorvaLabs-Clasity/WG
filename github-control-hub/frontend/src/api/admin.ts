@@ -141,6 +141,14 @@ export interface PersonAccess {
    * cannot disagree with it about what "already granted" means.
    */
   baseline: Record<string, boolean>;
+
+  /**
+   * True when this person's GitHub teams could not be read, so `baseline`
+   * understates what they hold. Saving a permission edit against an
+   * understated baseline deletes their own revokes — the tree must refuse
+   * rather than diff against it.
+   */
+  teamsUnavailable?: boolean;
 }
 
 export const fetchPersonAccess = (login: string) =>

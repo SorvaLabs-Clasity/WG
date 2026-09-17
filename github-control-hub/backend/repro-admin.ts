@@ -1185,10 +1185,21 @@ async function theAdminRouterDriven() {
             migrated.status === 200 && migrated.body.ok === true, migrated);
 
           /**
-           * The one behaviour this branch changes with the flag unset, besides
-           * the team gate: `/migrate` refuses a file it would have overwritten.
-           * Inside the Admin tab, a refusal rather than a loss, and the same
-           * kind of caveat the `presets` half of this guard already carried.
+           * The complete list of what this branch changes with the flag unset.
+           * Three things, all inside the Admin tab, none of them a loss:
+           *
+           * 1. Every route requires `control-hub-admins` membership. Without
+           *    this the permission gate is `return next()` and the tab is live
+           *    for every signed-in member.
+           * 2. `/migrate` refuses a file it would have overwritten — a refusal
+           *    rather than a loss, the same caveat the `presets` half of this
+           *    guard already carried.
+           * 3. `/bootstrap` answers 409 on a save conflict where it answered
+           *    502, because it now shares `writeFile`'s status mapping. 409 is
+           *    the correct answer for a conflict and 502 was wrong, so this is
+           *    listed rather than reverted — but it is listed, because "the
+           *    flag changes nothing" is a claim that has to be exhaustive to
+           *    be worth making.
            */
           const teamsOnly = await run("post", "/migrate", {
             stored: loaded({ version: 1, presets: {}, people: {},

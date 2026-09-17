@@ -276,9 +276,41 @@ console.log("\nthe screen does not offer an edit against a baseline it knows is 
    * re-resolved them.
    */
   const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
-  check("the person's tree is read-only while the preset selection is dirty",
-    /readOnly=\{!canOverride \|\| presetsChanged\}/.test(page),
-    "a tick against a baseline known to be incomplete is a diff against the wrong thing");
+
+  /**
+   * Written as "every known-stale condition locks the tree" rather than as the
+   * exact expression, so adding a fourth condition does not fail this and
+   * dropping one of the three does. There are two ways for the baseline to be
+   * wrong and both must lock:
+   *
+   *   presetsChanged      the preset selection is dirty, so `inherited` came
+   *                       from a route that answers for presets, not people
+   *   baselineIncomplete  GitHub could not say which teams this person is on,
+   *                       so the baseline understates what they already hold
+   *
+   * The second is the one that matters most and is the least obvious: an
+   * understated baseline makes the person's own revokes look redundant, so the
+   * next tick on any leaf at all drops them and hands back everything they were
+   * suppressing. One transient failure on a team listing, and a restriction
+   * disappears with nothing on screen having said so.
+   */
+  const readOnly = page.match(/readOnly=\{([^}]*)\}/);
+  check("the person's tree declares when it is read-only", readOnly !== null);
+
+  for (const condition of ["!canOverride", "presetsChanged", "baselineIncomplete"]) {
+    check(`  and locks on ${condition}`,
+      (readOnly?.[1] ?? "").includes(condition),
+      `readOnly is \`${readOnly?.[1]}\` — a tick against a baseline known to be `
+        + "incomplete is a diff against the wrong thing");
+  }
+
+  check("  and the incomplete baseline comes from the server, not guessed at",
+    /teamsUnavailable/.test(page) && /baselineIncomplete\s*=\s*access\?\.teamsUnavailable/.test(page),
+    "the client cannot know a team read failed unless the server says so");
+
+  check("  and says so on screen, rather than silently refusing to respond",
+    /GitHub could not be asked which teams/.test(page),
+    "a tree that goes read-only with no explanation reads as a broken page");
 }
 
 console.log("\nan incomplete baseline still writes nothing about what it cannot see");

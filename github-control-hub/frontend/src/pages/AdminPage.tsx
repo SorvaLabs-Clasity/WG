@@ -346,6 +346,19 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     [presetsChanged, access],
   );
 
+  /**
+   * The server could not read this person's GitHub teams, so `baseline` is
+   * missing whatever those teams grant.
+   *
+   * This locks the tree for the same reason a dirty preset selection does, and
+   * it is not a cosmetic caveat: the tree saves the difference between what is
+   * ticked and the baseline, so an understated baseline makes this person's own
+   * revokes look redundant, and the next tick — on any leaf at all — drops them
+   * and hands back everything they were suppressing. Editing against a baseline
+   * we know is wrong is the one thing this screen must not do.
+   */
+  const baselineIncomplete = access?.teamsUnavailable === true;
+
   const dirty = !entriesEqual(entry, { grant: existing?.grant, revoke: existing?.revoke })
     || note.trim() !== (existing?.note ?? "")
     || presetsChanged;
@@ -404,8 +417,16 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                   answer is only right once the server has re-resolved it.
                 </p>
               )}
+              {baselineIncomplete && (
+                <Note intent="warn">
+                  GitHub could not be asked which teams {loginKey} is on, so what they already
+                  inherit is not fully known here. Permissions are edited as a difference from
+                  that answer, so editing now could quietly undo a restriction they hold.
+                  Reload once GitHub is reachable.
+                </Note>
+              )}
               <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
-                onChange={setEntry} readOnly={!canOverride || presetsChanged} />
+                onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete} />
             </Block>
 
             <Block title="Note">

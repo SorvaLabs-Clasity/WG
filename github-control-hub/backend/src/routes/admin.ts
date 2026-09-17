@@ -423,6 +423,20 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
         explanations,
         inherited: rules.map(r => ({ node: r.node, effect: r.effect, layer: r.layer, origin: r.origin })),
         baseline,
+        /**
+         * True when this person's GitHub teams could not be read, so `baseline`
+         * is missing whatever their teams grant.
+         *
+         * This is not a display caveat. The tree saves the difference between
+         * what is ticked and this baseline, so a baseline that understates what
+         * the teams grant makes the person's own `revoke` look redundant — and
+         * the next unrelated tick drops it, handing back everything that revoke
+         * was suppressing. That is exactly the defect this endpoint's baseline
+         * was added to fix, reachable through one transient GitHub failure.
+         *
+         * The client must refuse to save a permission edit while this is true.
+         */
+        teamsUnavailable: subject.teamsUnavailable === true,
       });
     } catch (err) {
       res.status(500).json({ error: sanitizeError(err, "admin") });
