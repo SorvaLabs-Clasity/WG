@@ -49,9 +49,16 @@ comes from a permission file: about 109 individual permissions, assignable
 singly or by whole branches of the tree, grouped into presets, attachable to a
 person or to a GitHub team.
 
-**This is off until an operator turns it on.** With `PERMISSIONS_ENABLED`
-unset — the state this ships in — every gate falls through to the two-team
-behaviour described above and nothing changes for anyone. The Admin tab, the
+**This is off until somebody writes a file.** An organization with no
+permissions repository, no `permissions.json`, or an empty one falls through to
+the two-team behaviour described above and nothing changes for anyone.
+
+The switch is the file rather than a setting because the desktop build runs the
+backend inside the user's own process: an environment variable there is a lock
+whose key sits beside it, and not setting it — the default — turned every gate
+into `return next()`. A file committed to the organization cannot be unset
+locally, and every install reads the same one, so enforcement begins everywhere
+at once. The Admin tab, the
 file, the dry-run and the migration all exist so that the flip can be made
 with the answer already known. Deleting `aws-guardrail-admins` on GitHub is a
 separate, later, human decision.

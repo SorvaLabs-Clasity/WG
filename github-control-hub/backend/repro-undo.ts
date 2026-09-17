@@ -463,13 +463,24 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   const caller = () => ({ user: { login: "on-no-team", accessToken: "a-token" }, params: {}, query: {}, body: {} });
 
-  // The premise, asserted rather than assumed: this is why naming a permission
-  // gate is not enough on its own.
+  /**
+   * The premise, asserted rather than assumed.
+   *
+   * This used to read "requirePermission decides nothing while
+   * PERMISSIONS_ENABLED is unset" — the flag short-circuited the gate before
+   * it asked anything, which is why a team gate had to stand in front of the
+   * admin router. The switch is the file now, and no credentials are loaded
+   * here, so the file cannot be read and the gate refuses as an outage.
+   *
+   * That is the behaviour to pin: **a gate that cannot establish standing
+   * refuses.** Passing here would mean an unreadable file reopened every route
+   * it guards, which is the failure this whole design is arranged against.
+   */
   {
     const { requirePermission: perm } = await import("./src/middleware/permissionGate");
     const d = await runChain([perm("admin.people.assign")], caller());
-    check("requirePermission decides nothing while PERMISSIONS_ENABLED is unset",
-      d.kind === "passed", d);
+    check("a gate that cannot read the file refuses rather than continuing",
+      d.kind === "refused" && d.status === 503, d);
   }
 
   /**

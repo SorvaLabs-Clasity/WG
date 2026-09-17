@@ -1,11 +1,12 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { requirePermission, requireAnyPermission, PERMISSIONS_ENABLED } from "../middleware/permissionGate";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 import { requireControlHubAdmin } from "../middleware/teamGate";
 import {
   loadPermissions, savePermissions, isFailure, unknownNodesIn, fileProblems,
   forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
   changeClasses, explainPreset, subjectFor,
+  enforcementActive,
 } from "../permissions";
 import { permissionsFor, inheritedStanding, presetStanding } from "../permissions/evaluate";
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
@@ -31,7 +32,7 @@ const router = Router();
 
 /**
  * The legacy team gate, in front of everything, because the permission gates
- * below are inert until `PERMISSIONS_ENABLED` is flipped.
+ * below are inert until a permissions file exists in the organization.
  *
  * Every other privileged router in this repo keeps its team gate *as well as*
  * its new permission gate — `access.ts`, `alarms.ts`, `pulls.ts`, `config.ts` —
@@ -66,8 +67,13 @@ router.use((req, res, next) => {
    * Team members still reach it once enforcement is on: holding everything
    * includes holding `admin.console.open`.
    */
-  if (PERMISSIONS_ENABLED()) return next();
-  return requireControlHubAdmin(req, res, next);
+  accessForSelf(req.user!.login, req.user!.accessToken)
+    .then(access => access.inert
+      // Nothing written yet, so the permission gates below decide nothing and
+      // this team check is the only thing in front of the router.
+      ? requireControlHubAdmin(req, res, next)
+      : next())
+    .catch(() => requireControlHubAdmin(req, res, next));
 });
 
 // People and Presets both render from this one file, so either read
@@ -120,15 +126,13 @@ router.get("/file", requireAnyPermission("admin.people.read", "admin.presets.rea
  * A withheld section is left off the object rather than blanked, and named in
  * `withheld`, so the screen can say "not shown to you" instead of "nobody".
  *
- * Inert with `PERMISSIONS_ENABLED` unset, like every other permission decision
+ * Inert until a file exists, like every other permission decision
  * in this router: the legacy team gate above is what is deciding then, and it
  * admits nobody who is not a Control Hub administrator.
  */
 async function readableSections(
   req: Request, file: PermissionsFile,
 ): Promise<{ file: PermissionsFile; withheld: string[] }> {
-  if (!PERMISSIONS_ENABLED()) return { file, withheld: [] };
-
   const access = await accessForSelf(req.user!.login, req.user!.accessToken);
   if (access.inert) return { file, withheld: [] };
 
@@ -173,7 +177,7 @@ async function readableSections(
  * everywhere else here: they already hold everything, so there is nothing to
  * widen into.
  *
- * Inert with `PERMISSIONS_ENABLED` unset, like every other permission decision
+ * Inert until a file exists, like every other permission decision
  * in this router.
  */
 type Written =
@@ -184,7 +188,7 @@ async function writeFile(
   req: Request, before: PermissionsFile, toSave: PermissionsFile,
   sha: string | null, summary: string,
 ): Promise<Written> {
-  if (PERMISSIONS_ENABLED()) {
+  if (await enforcementActive()) {
     /**
      * Nobody on the Control Hub admin team is configurable.
      *
@@ -319,11 +323,11 @@ router.put(
     let before: PermissionsFile = emptyFile();
 
     /**
-     * Off by default, exactly like the gate above: with `PERMISSIONS_ENABLED`
+     * Off until a file exists, exactly like the gate above: with no file
      * unset this has to stay inert, or an install that never turned the
      * subsystem on would start losing writes to a check nobody asked for.
      */
-    if (PERMISSIONS_ENABLED()) {
+    if (await enforcementActive()) {
       // The same cached read `requireAnyPermission` just made.
       const access = await accessForSelf(req.user!.login, req.user!.accessToken);
 

@@ -27,7 +27,7 @@ import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
-import { requirePermission, requireAnyPermission, PERMISSIONS_ENABLED } from "../middleware/permissionGate";
+import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
 import { accessForSelf } from "../permissions";
 import {
   createBranch,
@@ -206,7 +206,7 @@ export const REDACTED_ACTOR = "(hidden)";
 async function redactFeed(
   entries: ActivityEntry[], login: string, accessToken: string,
 ): Promise<ActivityEntry[]> {
-  if (!PERMISSIONS_ENABLED()) return entries;
+  // The file decides, not this machine's environment; `access.inert` below carries it.
 
   // The same call the gate in front of this route made, and it is cached for
   // sixty seconds — this is a second read of one answer, not a second round
@@ -357,7 +357,7 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
       /**
        * Present only when the redaction refill stopped short of a full page,
        * so the client can tell a bounded page from a budget-truncated one.
-       * Absent otherwise — including always, while `PERMISSIONS_ENABLED` is
+       * Absent otherwise — including always, while no permissions file
        * unset, since nothing is redacted then and the refill never loops.
        */
       ...(filled.boundHit ? { boundHit: true } : {}),

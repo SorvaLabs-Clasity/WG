@@ -555,19 +555,23 @@ router.post("/alerts/test", requirePermission("me.alerts.test"), async (req: Req
  * answers true to `can()` for everything in that state regardless of `held`.
  */
 router.get("/permissions", async (req: Request, res: Response) => {
-  const { PERMISSIONS_ENABLED } = await import("../middleware/permissionGate");
   const adminTeam = process.env.CONTROL_HUB_ADMIN_TEAM || "control-hub-admins";
-
-  if (!PERMISSIONS_ENABLED()) {
-    res.json({ enforced: false, inert: false, held: [], failure: null, adminTeam });
-    return;
-  }
 
   const { accessForSelf } = await import("../permissions");
   try {
+    /**
+     * `enforced` is what the file says, not what this machine's environment
+     * says. The desktop build runs this backend on the user's own computer, so
+     * a banner reading an environment variable was reporting a setting the
+     * person reading it controlled.
+     *
+     * `inert` already carries the answer — it is true exactly when no file
+     * says anything — so enforcement is its negation and the two cannot
+     * disagree.
+     */
     const access = await accessForSelf(req.user!.login, req.user!.accessToken);
     res.json({
-      enforced: PERMISSIONS_ENABLED(),
+      enforced: !access.inert,
       inert: access.inert,
       held: access.permissions.held,
       failure: access.failure ? { reason: access.failure.reason, detail: access.failure.detail } : null,
