@@ -1,4 +1,4 @@
-import type { PermissionsFile, PermissionEntry } from "./types";
+import type { PermissionsFile, PermissionEntry, Preset } from "./types";
 import { resolvePreset, type Rule } from "./presets";
 import { isKnownNode, isUnder, PERMISSIONS } from "./vocabulary";
 
@@ -30,10 +30,17 @@ function ownRules(entry: PermissionEntry, layer: number, origin: string): Layere
  * since a person's entries and their presets sit at different layers. The
  * `sublayer: 99` on a direct entry only marks it as belonging to no inheritance
  * chain; the resolver does not compare it.
+ *
+ * `includeOwnEntry: false` leaves out the person's own `grant`/`revoke` and
+ * nothing else — their presets stay, because a preset is a layer *beneath* the
+ * person, not part of their entry. That is what `inheritedStanding` needs and
+ * it is the only reason the option exists.
  */
 export function collectRules(
   file: PermissionsFile, login: string, teamSlugs: string[],
+  opts: { includeOwnEntry?: boolean } = {},
 ): LayeredRule[] {
+  const includeOwnEntry = opts.includeOwnEntry !== false;
   const out: LayeredRule[] = [];
   const key = login.toLowerCase();
 
@@ -54,7 +61,7 @@ export function collectRules(
     out.push(...resolvePreset(file.presets ?? {}, presetId, "preset")
       .map(r => ({ ...r, layer: LAYER.preset })));
   }
-  out.push(...ownRules(person, LAYER.person, "set on this person"));
+  if (includeOwnEntry) out.push(...ownRules(person, LAYER.person, "set on this person"));
 
   return out;
 }
@@ -125,6 +132,21 @@ export interface Subject {
    * visible in `explain`, because access nobody can account for reads as a bug.
    */
   isOrgOwner: boolean;
+  /**
+   * GitHub could not be asked which teams this person is in, so `teamSlugs` is
+   * empty because the question failed rather than because the answer is none.
+   *
+   * **A subject whose teams could not be read is not a subject with no teams.**
+   * Absent — every hand-built subject in this repository — means the list is
+   * complete. Present and true means it is not, and the caller has to decide
+   * which way that failure points. For a *gate* an empty list denies, which is
+   * closed and therefore safe to leave alone. For anything that compares two
+   * evaluations of the same subject — the admin router's self-widening check —
+   * it is fail-open: both sides lose the same teams, so granting `admin` to a
+   * team the caller is in registers as no gain at all. Those callers must
+   * refuse outright.
+   */
+  teamsUnavailable?: boolean;
 }
 
 export interface Explanation {
@@ -194,4 +216,103 @@ export function permissionsFor(file: PermissionsFile, subject: Subject): Permiss
       };
     },
   };
+}
+
+/**
+ * What one preset's own `inherits` chain grants, leaf by leaf — the same
+ * per-leaf shape `permissionsFor(...).explain` returns for a whole person,
+ * computed here from a single chain rather than from a person's teams, presets
+ * and own entries layered together.
+ *
+ * `frontend/src/api/admin.ts` used to hand-port `resolvePreset` for exactly
+ * this — down to a duplicated `MAX_INHERIT_DEPTH` — so the Presets editor could
+ * show what an `inherits` selection actually grants before it is saved. A hand
+ * port is a drift hazard: if the tie rule or the depth cap ever changes here,
+ * that screen would quietly start lying about what a preset grants. This is
+ * what the admin route now serves instead, over `resolvePreset` itself rather
+ * than a copy of it.
+ *
+ * A single chain needs no `layer` of its own to compete against — there is
+ * only ever one candidate rule per node here, so every rule is placed at
+ * layer 0 and `decideLeaf`'s depth-then-revoke tie-break applies within the
+ * chain exactly as `resolvePreset` already resolved it.
+ */
+export function presetRules(presets: Record<string, Preset>, id: string): LayeredRule[] {
+  return resolvePreset(presets, id, "preset").map(r => ({ ...r, layer: 0 }));
+}
+
+export function explainPreset(presets: Record<string, Preset>, id: string): Record<string, Explanation> {
+  const rules = presetRules(presets, id);
+  const out: Record<string, Explanation> = {};
+  for (const { key } of PERMISSIONS) {
+    const decision = decideLeaf(key, rules);
+    out[key] = decision.rule
+      ? { held: decision.held, reason: decision.held ? "granted" : "revoked", origin: decision.rule.origin }
+      : { held: false, reason: "not granted", origin: null };
+  }
+  return out;
+}
+
+/**
+ * What one *layer* of rules decides, leaf by leaf.
+ *
+ * The admin tree edits one layer as a **difference** from the layers beneath
+ * it, so it needs their verdict on every leaf as a thing in its own right, not
+ * as a side effect of the winning rule overall. This is that verdict.
+ */
+export function baselineOf(rules: LayeredRule[]): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const { key } of PERMISSIONS) out[key] = decideLeaf(key, rules).held;
+  return out;
+}
+
+export interface Standing {
+  /**
+   * Every rule from the layers beneath, **at the depth it was written**.
+   *
+   * Not one rule per leaf. `decideLeaf` ranks depth above layer on both sides
+   * of the wire, so a rule flattened to leaf depth on the way out is a rule
+   * that outranks, in the client's tree, a shallower rule it loses to on the
+   * server. That mismatch is what made un-ticking a branch show as unchanged on
+   * screen while revoking fourteen leaves on save.
+   */
+  rules: LayeredRule[];
+  /** What those rules alone decide. The baseline the tree diffs against. */
+  baseline: Record<string, boolean>;
+}
+
+/**
+ * What the layers **beneath this person** decide, on their own.
+ *
+ * The admin tree edits exactly one layer — the person's own `grant`/`revoke` —
+ * and writes the shortest entry expressing the difference between what the
+ * administrator ticked and what everything below already gives. So it needs
+ * "what would this person hold if their own entry were empty", and that is a
+ * different question from "what do they hold, with the rules that came from
+ * their own entry filtered out of the answer".
+ *
+ * The screen used to ask the second one, by dropping every leaf whose winning
+ * explanation read `set on this person`. A leaf the person's own `revoke` was
+ * suppressing came back as "not granted" — which is what the baseline says for
+ * a leaf nothing grants — so the revoke agreed with the baseline, no rule was
+ * emitted for it, and the next unrelated tick rewrote the entry without it.
+ * The team grant underneath returned, silently, with the tree still showing the
+ * branch as not held.
+ *
+ * Evaluating the file with the entry genuinely removed cannot make that
+ * mistake: a leaf the person revokes and their team grants is `true` here,
+ * because the team grants it and the person's revoke is not in the room.
+ */
+export function inheritedStanding(file: PermissionsFile, subject: Subject): Standing {
+  const rules = collectRules(file, subject.login, subject.teamSlugs, { includeOwnEntry: false });
+  return { rules, baseline: baselineOf(rules) };
+}
+
+/**
+ * The same thing for the Presets editor, whose layer beneath is one `inherits`
+ * chain rather than a person's teams and presets.
+ */
+export function presetStanding(presets: Record<string, Preset>, id: string): Standing {
+  const rules = presetRules(presets, id);
+  return { rules, baseline: baselineOf(rules) };
 }

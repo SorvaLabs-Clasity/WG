@@ -9,6 +9,8 @@ export { PERMISSIONS, isLeaf, isKnownNode, leavesUnder } from "./vocabulary";
 export { forgetPermissions, savePermissions, loadPermissions, isFailure } from "./store";
 export { forgetSubjects, subjectFor } from "./subject";
 export { fileProblems, unknownNodesIn, isUsable } from "./validate";
+export { changeClasses, CHANGE_CLASS, ALL_CHANGE_CLASSES } from "./changeClasses";
+export { explainPreset, type Explanation } from "./evaluate";
 
 /**
  * What one person may do, all the way from GitHub.

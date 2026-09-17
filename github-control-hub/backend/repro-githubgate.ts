@@ -132,10 +132,20 @@ function verdict(configured: string, actual: string | null) {
 
     check("the feed drops GitHub rows when GitHub is not available here",
       /await awsOnly\(\)/.test(src) && /isAwsRow/.test(src));
+    /**
+     * Written against the property rather than the expression: this used to
+     * pin `top = top.filter(e => isAwsRow` literally, and broke the day the
+     * paging loop moved that same filter into a callback without changing a
+     * thing about what reaches the client. What matters is that the filter is
+     * applied on the server, to parents and to children, not the name of the
+     * variable it is assigned back to.
+     */
+    const filterSites = [...src.matchAll(/\.filter\(\s*e\s*=>\s*isAwsRow\(e\.action\)\)/g)].length;
     check("  filtered on the server, not hidden in the page",
-      /top = top\.filter\(e => isAwsRow/.test(src),
-      "these rows are who has access to what, and an account not meant to hold "
-        + "them is not meant to read them either");
+      filterSites >= 2, filterSites === 0
+        ? "these rows are who has access to what, and an account not meant to hold "
+          + "them is not meant to read them either"
+        : `only ${filterSites} filter site — parents and children both need one`);
     check("  including rows nested under a parent that survived",
       /children = children\.filter\(e => isAwsRow/.test(src),
       "filtering parents alone lets a GitHub child through under an AWS parent");

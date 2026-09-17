@@ -191,16 +191,15 @@ console.log("\nthe gate is complete, in both directions");
     invented.length === 0, invented);
 
   /**
-   * `admin.*` is excepted because the admin console's own routes do not exist
-   * yet — stage 4 builds them.
-   *
-   * **Stage 4 must delete this exception.** Once those routes are written,
-   * every `admin.*` key has a route to name it, and leaving the filter here
-   * would mean the one branch that hands out every other permission is the one
-   * branch nothing checks. It is a scaffold with a removal date, not a rule.
+   * The `admin.*` exception this check used to carry is gone: every
+   * `admin.*` key now has a route that names it, including the five write
+   * permissions `PUT /file` used to collapse into one — `changeClasses` gave
+   * each of them a literal `requireAnyPermission(...)` mention on that route
+   * for exactly this reason, so the one branch that hands out every other
+   * permission is no longer the one branch nothing checks.
    */
-  const unused = [...vocabulary].filter(k => !named.has(k) && !k.startsWith("admin."));
-  check("every permission is named by at least one route (admin.* excepted, stage 4)",
+  const unused = [...vocabulary].filter(k => !named.has(k));
+  check("every permission is named by at least one route",
     unused.length === 0, unused.slice(0, 12));
 
   check("  and every exemption says why",
@@ -243,13 +242,37 @@ console.log("\nthe redaction model is applied, not merely named");
   check("  and does nothing at all while the flag is off",
     /if \(!PERMISSIONS_ENABLED\(\)\) return entries;/.test(src));
 
-  check("the redacted actor is a constant, spelled once",
-    /export const REDACTED_ACTOR = "\(hidden\)";/.test(src));
+  /**
+   * The marker crosses the wire, so it is declared twice — once on each side of
+   * an HTTP boundary, in packages that cannot import from one another without a
+   * shared package existing for the sake of one string.
+   *
+   * Two declarations are fine; two declarations that can disagree are not. So
+   * this reads the value out of each file and compares them to each other
+   * rather than each to a literal written here. Changing the marker then means
+   * changing both sources and nothing else — and changing one of them fails
+   * here, which is the whole point.
+   */
+  const declared = (text: string, where: string) => {
+    const m = text.match(/REDACTED_ACTOR\s*=\s*"([^"]+)"/);
+    if (!m) throw new Error(`no REDACTED_ACTOR declaration in ${where}`);
+    return m[1];
+  };
 
   const avatar = fs.readFileSync("../frontend/src/components/UserAvatar.tsx", "utf8");
-  check("  and the frontend knows the same marker, so it renders as withheld",
-    /REDACTED_ACTOR = "\(hidden\)"/.test(avatar),
-    "otherwise the avatar fetches github.com/(hidden).png and draws initials for nobody");
+  check("the redacted actor is a constant, spelled once on each side",
+    /export const REDACTED_ACTOR =/.test(src) && /export const REDACTED_ACTOR =/.test(avatar));
+
+  const backendMarker = declared(src, "routes/activity.ts");
+  const frontendMarker = declared(avatar, "UserAvatar.tsx");
+  check("  and the two sides agree on it, so a row redacted server-side renders as withheld",
+    backendMarker === frontendMarker,
+    `backend ${JSON.stringify(backendMarker)} vs frontend ${JSON.stringify(frontendMarker)} — ` +
+    "otherwise the avatar fetches github.com/<marker>.png and draws initials for nobody");
+
+  check("  and it is not a value a real login could collide with",
+    /[^a-zA-Z0-9-]/.test(backendMarker),
+    `${backendMarker} contains only characters GitHub allows in a username`);
 }
 
 console.log("\nthe permissions endpoint itself");

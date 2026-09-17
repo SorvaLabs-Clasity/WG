@@ -21,6 +21,7 @@ import {
   logActivity,
 } from "../services/activityService";
 import type { ActivityEntry } from "../services/activityService";
+import { fillPage } from "../services/activityPaging";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
@@ -281,16 +282,37 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     const { memoryLogForSearch, getChildrenFor } = await import("../services/activityService");
 
     const { usesDynamo } = await import("../utils/dynamo");
-    const page = usesDynamo()
-      ? await searchActivity(filters, limit, cursor)
-      : searchMemory(memoryLogForSearch(), filters, limit, Number(cursor) || 0);
-
-    let top = page.entries;
-
-    // Children are dropped with their parents: an undo of a GitHub change is a
-    // GitHub row whatever its own action says.
     const awsOnlyDeployment = await awsOnly();
-    if (awsOnlyDeployment) top = top.filter(e => isAwsRow(e.action));
+
+    // Redaction drops rows, so the page has to be refilled after it, not
+    // before — see `fillPage`, which carries the reasoning and is where this
+    // is actually tested. The route's job is only to say what a fetch is and
+    // what surviving redaction means.
+    const filled = await fillPage(
+      /**
+       * The AWS-only filter belongs to the *source*, not to redaction.
+       *
+       * It used to sit inside `keep`, which made every filtered-short page on
+       * an AWS-only install look like a redacted one and set the refill loop
+       * running on every request, flag or no flag — where the same page used
+       * to be returned as-is. An account with no GitHub half simply has fewer
+       * rows; that is what its feed is, not something withheld from the
+       * viewer, so it is applied here and `fillPage` never sees a drop for it.
+       */
+      async c => {
+        const page = usesDynamo()
+          ? await searchActivity(filters, limit, c)
+          : searchMemory(memoryLogForSearch(), filters, limit, Number(c) || 0);
+        return awsOnlyDeployment
+          ? { ...page, entries: page.entries.filter(e => isAwsRow(e.action)) }
+          : page;
+      },
+      // Children are dropped with their parents: an undo of a GitHub change
+      // is a GitHub row whatever its own action says.
+      async batch => redactFeed(batch, req.user!.login, req.user!.accessToken),
+      limit, cursor);
+
+    const top = filled.entries;
 
     // Children are fetched for the rows on this page only, rather than paged
     // themselves. A page of fifty parents is fifty rows on screen however many
@@ -301,9 +323,10 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     // meant to hold GitHub data at all, which is the whole point of the split.
     if (awsOnlyDeployment) children = children.filter(e => isAwsRow(e.action));
 
-    // Before the tree is built, so a child is redacted or dropped on its own
-    // merits rather than inheriting whatever its parent was allowed to say.
-    const visible = await redactFeed([...top, ...children], req.user!.login, req.user!.accessToken);
+    // Redacted separately from their parents, and before the tree is built, so
+    // a child is judged on its own merits rather than inheriting whatever its
+    // parent was allowed to say.
+    const visible = [...top, ...await redactFeed(children, req.user!.login, req.user!.accessToken)];
     let tree = buildActivityTree(visible);
 
     const nestedSigs = collectNestedSignatures(tree);
@@ -316,10 +339,17 @@ router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.row
     res.json({
       entries: tree,
       limit,
-      cursor: page.cursor,
+      cursor: filled.cursor,
       /** False means the budget ran out, not that there is nothing more. */
-      exhausted: page.exhausted,
-      examined: page.examined,
+      exhausted: filled.exhausted,
+      examined: filled.examined,
+      /**
+       * Present only when the redaction refill stopped short of a full page,
+       * so the client can tell a bounded page from a budget-truncated one.
+       * Absent otherwise — including always, while `PERMISSIONS_ENABLED` is
+       * unset, since nothing is redacted then and the refill never loops.
+       */
+      ...(filled.boundHit ? { boundHit: true } : {}),
     });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "activity") });

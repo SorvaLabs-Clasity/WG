@@ -29,6 +29,13 @@ import { testHooks } from "./testing";
  * Cached for the same minute as the file. Failing to read yields *no* teams
  * rather than a remembered set, for the same reason the file has no cached
  * fallback: a membership that outlives its source is a grant nobody can revoke.
+ *
+ * **And it says so.** An empty list that nothing produced is marked
+ * `teamsUnavailable`, because "we could not ask" and "the answer is none" are
+ * the same value and not the same fact. A gate may treat them alike — both
+ * deny, which is closed — but anything comparing two evaluations of the same
+ * subject cannot: the missing teams cancel out and a write that hands `admin`
+ * to a team the caller is in reads as no gain. See `Subject.teamsUnavailable`.
  */
 
 const TTL_MS = 60_000;
@@ -96,10 +103,21 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
     teamsResolved = true;
   }
 
-  if (ownerHooked && teamsResolved) {
-    cache.set(key, { at: now, subject });
+  /**
+   * The one place this function returns from, so that "the teams were never
+   * resolved" cannot be forgotten on one path out of four. Only an answer that
+   * was actually resolved is remembered: caching an empty list that nothing
+   * produced would let one tokenless internal call leave this login holding
+   * nothing for the next minute, and the request that caused it is not the
+   * request that pays for it.
+   */
+  const answer = (): Subject => {
+    if (teamsResolved) cache.set(key, { at: now, subject });
+    else subject.teamsUnavailable = true;
     return subject;
-  }
+  };
+
+  if (ownerHooked && teamsResolved) return answer();
 
   /**
    * Inside the try, deliberately. `getOrg()` throws when `GITHUB_ORG` is unset,
@@ -115,14 +133,10 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
     appToken = getSystemToken();
   } catch (err: any) {
     console.warn(`[permissions] Could not read the subject for "${login}":`, err?.message ?? err);
-    if (teamsResolved) cache.set(key, { at: now, subject });
-    return subject;
+    return answer();
   }
 
-  if (!appToken && !ownToken) {
-    if (teamsResolved) cache.set(key, { at: now, subject });
-    return subject;
-  }
+  if (!appToken && !ownToken) return answer();
 
   /**
    * Ownership, with the App token — and once more with the caller's own if the
@@ -159,14 +173,7 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
     }
   }
 
-  /**
-   * Only an answer that was actually resolved is remembered. Caching an empty
-   * list that nothing produced would let one tokenless internal call leave this
-   * login holding nothing for the next minute, and the request that caused it
-   * is not the request that pays for it.
-   */
-  if (teamsResolved) cache.set(key, { at: now, subject });
-  return subject;
+  return answer();
 }
 
 /**

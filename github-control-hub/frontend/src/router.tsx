@@ -11,6 +11,7 @@ import AwsPage from "./pages/AwsPage";
 import ExpertisePage from "./pages/ExpertisePage";
 import MyWorkPage from "./pages/MyWorkPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
+import AdminPage from "./pages/AdminPage";
 import { isAuthenticated } from "./api/client";
 import RequireTeam from "./components/RequireTeam";
 import NoAccess from "./components/NoAccess";
@@ -172,6 +173,24 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <KnowledgeGraphPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/admin",
+    element: (
+      <RequireAuth>
+        {/*
+          * The same team gate `/access` and `/analytics` carry, and for a
+          * stronger reason: this screen grants permissions. `usePermissionSet`
+          * answers true to every key while enforcement is off, so without this
+          * the tab and every button inside it — including "Run the migration"
+          * and "Create the permissions repository" — were live for every
+          * signed-in member.
+          */}
+        <RequireTeam team="control-hub" title="Admin">
+          <AdminPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   }

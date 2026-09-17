@@ -33,6 +33,16 @@ export interface FileProblem {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * Whether a table really names this id, rather than inheriting it.
+ *
+ * `presets["toString"]` is a function on any `JSON.parse`d object, so the
+ * dangling-preset check below read a preset that does not exist as one that
+ * does, and let an entry assigned to it through as valid. See the same note in
+ * `changeClasses.ts` and `presets.ts`.
+ */
+const has = (table: object, id: string): boolean => Object.hasOwn(table, id);
+
 /** `grant` and `revoke` from one entry, whatever shape it arrived in. */
 function nodesOf(entry: unknown): string[] {
   if (!isObject(entry)) return [];
@@ -101,6 +111,21 @@ export function fileProblems(raw: unknown): FileProblem[] {
 
   for (const [label, table] of [["people", people], ["teams", teams]] as const) {
     for (const [key, entry] of Object.entries(table)) {
+      /**
+       * `collectRules` looks a person up by `login.toLowerCase()`, so an entry
+       * filed under `ANA` is never consulted — and a **revoke** written there
+       * silently does nothing while reading as though it had taken effect.
+       * `AdminPage.tsx` lower-cases before writing, so the screen is safe; a
+       * hand-edited file or a direct API call is not, and this is the gate
+       * that makes evaluation safe for both.
+       */
+      if (label === "people" && key !== key.toLowerCase()) {
+        problems.push({
+          where: `${label}.${key}`,
+          what: `is not lower-case, so it is never consulted; write it as "${key.toLowerCase()}"`,
+        });
+        continue;
+      }
       if (!isObject(entry)) {
         problems.push({ where: `${label}.${key}`, what: "is not an object" });
         continue;
@@ -120,7 +145,7 @@ export function fileProblems(raw: unknown): FileProblem[] {
       }
       const assigned = entry.presets ?? [];
       for (const id of assigned) {
-        if (typeof id !== "string" || !presets[id]) {
+        if (typeof id !== "string" || !has(presets, id)) {
           problems.push({ where: `${label}.${key}`, what: `is assigned preset "${String(id)}", which does not exist` });
         }
       }

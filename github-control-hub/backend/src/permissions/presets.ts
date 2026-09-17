@@ -29,6 +29,18 @@ export interface Rule {
 /** How deep an `inherits` chain may go before it is a mistake rather than a design. */
 export const MAX_INHERIT_DEPTH = 4;
 
+/**
+ * One preset by id, never through the prototype.
+ *
+ * `presets["constructor"]` on a `JSON.parse`d object is `Object` — a function,
+ * and truthy — so a chain naming it resolved as though the preset existed.
+ * Ids come out of somebody's file, so every read of this table is an
+ * own-property read.
+ */
+function own(presets: Record<string, Preset>, id: string): Preset | undefined {
+  return Object.hasOwn(presets, id) ? presets[id] : undefined;
+}
+
 function rulesOf(entry: PermissionEntry, sublayer: number, origin: string): Rule[] {
   return [
     ...(entry.grant ?? []).map(node => ({ node, effect: "grant" as const, sublayer, origin })),
@@ -67,7 +79,7 @@ export function resolvePreset(
   while (cursor) {
     if (seen.has(cursor)) return [];              // cycle
     if (chain.length >= MAX_INHERIT_DEPTH + 1) return [];  // runaway
-    const preset: Preset | undefined = presets[cursor];
+    const preset: Preset | undefined = own(presets, cursor);
     if (!preset) return chain.length === 0 ? [] : finish(chain, presets, layerLabel);
     seen.add(cursor);
     chain.push(cursor);
@@ -88,7 +100,7 @@ function finish(chain: string[], presets: Record<string, Preset>, layerLabel: st
   const byNode = new Map<string, Rule>();
   const deepestFirst = [...chain].reverse();
   deepestFirst.forEach((presetId, index) => {
-    const preset = presets[presetId];
+    const preset = own(presets, presetId);
     if (!preset) return;
     for (const rule of rulesOf(preset, index, `${layerLabel} ${preset.name}`)) {
       const held = byNode.get(rule.node);
@@ -121,7 +133,7 @@ export function presetProblems(presets: Record<string, Preset>): string[] {
     if (!preset.name) problems.push(`preset "${id}" has no name`);
     if (!preset.inherits) continue;
 
-    if (!presets[preset.inherits]) {
+    if (!own(presets, preset.inherits)) {
       problems.push(`preset "${id}" inherits "${preset.inherits}", which does not exist`);
       continue;
     }
@@ -136,7 +148,7 @@ export function presetProblems(presets: Record<string, Preset>): string[] {
         break;
       }
       seen.add(cursor);
-      cursor = presets[cursor]?.inherits;
+      cursor = own(presets, cursor)?.inherits;
       depth++;
     }
   }
