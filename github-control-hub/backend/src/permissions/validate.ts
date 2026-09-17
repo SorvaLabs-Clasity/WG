@@ -1,6 +1,6 @@
 import type { PermissionsFile, Preset, PermissionEntry } from "./types";
 import { presetProblems } from "./presets";
-import { isKnownNode } from "./vocabulary";
+import { isKnownNodeNow } from "./accountScope";
 
 /**
  * Whether a parsed file may be used, and what is wrong with it when it may not.
@@ -171,7 +171,7 @@ export function unknownNodesIn(file: PermissionsFile): string[] {
   const seen = new Set<string>();
   const consider = (entry: unknown) => {
     for (const node of nodesOf(entry)) {
-      if (!isKnownNode(node)) seen.add(node);
+      if (!isKnownNodeNow(node)) seen.add(node);
     }
   };
   for (const preset of Object.values(file.presets ?? {})) consider(preset);

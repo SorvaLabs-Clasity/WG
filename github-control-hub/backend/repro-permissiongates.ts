@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PERMISSIONS } from "./src/permissions/vocabulary";
+import { globalKeyFor } from "./src/permissions/accountScope";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -119,6 +120,20 @@ console.log("\nthe gate is complete, in both directions");
       for (const k of (m[1] ?? "").matchAll(/"([^"]+)"/g)) named.add(k[1]);
     }
 
+    /**
+     * `requirePermissionInAccounts("remediate")` names `aws.remediate` — the
+     * global form, which answers for every account — and, for accounts that
+     * are configured, `aws.account.<id>.remediate`. It is a permission named
+     * by a route in exactly the sense this check means; it is just spelled as
+     * the suffix, because the account half is not known until runtime.
+     *
+     * `globalKeyFor` is the same function the gate itself uses, so the two
+     * cannot drift into disagreeing about what a suffix means.
+     */
+    for (const m of src.matchAll(/requirePermissionInAccounts\("([^"]+)"\)/g)) {
+      named.add(globalKeyFor(m[1]));
+    }
+
     const starts = [...src.matchAll(ROUTE_RE)].map(m => m.index!);
     let considered = 0;
     const fileUngated: string[] = [];
@@ -150,7 +165,9 @@ console.log("\nthe gate is complete, in both directions");
       const args = handlerAt >= 0
         ? body.slice(0, body.indexOf("(") + handlerAt)
         : body;
-      if (!/require(Any)?Permission\(/.test(args)) fileUngated.push(sig);
+      // `requirePermissionInAccounts` is a gate like the other two — it refuses
+      // per account instead of outright, which is narrower, not weaker.
+      if (!/require(Any)?Permission\(|requirePermissionInAccounts\(/.test(args)) fileUngated.push(sig);
     });
 
     /**

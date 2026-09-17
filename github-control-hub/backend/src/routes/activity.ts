@@ -220,6 +220,15 @@ async function redactFeed(
   const seesActor = access.permissions.has("activity.read.app.actor");
   const seesRows = access.permissions.has("activity.read.app.rows");
   const seesGithub = access.permissions.has("activity.read.github");
+  /**
+   * AWS rows are reachable two ways, and holding either is enough.
+   *
+   * `activity.read.app.rows` is what showed them before this key existed, and
+   * narrowing anybody on the day a key is added is exactly the failure the
+   * vocabulary's `addedIn` exists to make visible. `activity.read.aws` is the
+   * narrower one, and the only one that can be scoped to a single account.
+   */
+  const seesAws = access.permissions.has("activity.read.aws");
   if (seesActor && seesRows && seesGithub) return entries;
 
   const me = login.toLowerCase();
@@ -227,7 +236,9 @@ async function redactFeed(
     (e.actor ?? "").toLowerCase() === me || (e.triggeredBy ?? "").toLowerCase() === me;
 
   const kept = entries.filter(e =>
-    mine(e) || (e.source === "github" ? seesGithub : seesRows));
+    mine(e) || (e.source === "github"
+      ? seesGithub
+      : (seesRows || (isAwsRow(e.action) && seesAws))));
   if (seesActor) return kept;
 
   // `triggeredBy` as well as `actor`. A guardrail row records the engine as the
@@ -248,7 +259,7 @@ async function redactFeed(
  * made the pager stop at page two whatever the table held and made search blind
  * to anything older. Filters are query parameters now, and the cursor is opaque.
  */
-router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.rows", "activity.read.app.actor", "activity.read.github"), async (req: Request, res: Response) => {
+router.get("/", requireAnyPermission("activity.read.own", "activity.read.app.rows", "activity.read.app.actor", "activity.read.github", "activity.read.aws"), async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const repo = req.query.repo as string | undefined;
   const cursor = req.query.cursor as string | undefined;

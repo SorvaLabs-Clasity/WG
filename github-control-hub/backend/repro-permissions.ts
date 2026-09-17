@@ -24,7 +24,20 @@ function check(name: string, ok: boolean, got?: unknown) {
 
 console.log("the vocabulary");
 {
-  check("every permission in the vocabulary is present", PERMISSIONS.length === 109, PERMISSIONS.length);
+  /**
+   * Not a count. A pinned total says nothing about whether the vocabulary is
+   * correct and fails every time a leaf is legitimately added — it broke on
+   * `activity.read.aws`, which was a deliberate addition, and a test that
+   * cries wolf on intended change is one people learn to edit rather than
+   * read. `vocabularyProblems` is the module's own answer to "is this list
+   * sound", and it is what should be asserted.
+   */
+  check("the vocabulary is internally sound", vocabularyProblems().length === 0, vocabularyProblems());
+  check("  and is a real list, not an empty one that trivially satisfies every rule",
+    PERMISSIONS.length > 100, PERMISSIONS.length);
+  check("  with every leaf labelled, because the admin tree renders these",
+    PERMISSIONS.every(p => typeof p.label === "string" && p.label.length > 3),
+    PERMISSIONS.filter(p => !p.label || p.label.length <= 3).map(p => p.key));
 
   /**
    * The rule the whole tree rests on. If `activity.read.app` were both a

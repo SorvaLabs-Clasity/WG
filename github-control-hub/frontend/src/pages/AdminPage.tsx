@@ -285,13 +285,14 @@ function PersonRow({ login, entry, file, index, inFile, exempt, onOpen }: {
 
 // ── Person ────────────────────────────────────────────────────────────
 
-function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, onBack, onSaved }: {
+function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, onBack, onSaved, accounts,}: {
   login: string; file: PermissionsFile; sha: string | null; vocabulary: PermissionLeaf[];
   /** The permission tree: grant/revoke one permission for this person. */
   canOverride: boolean;
   /** The preset multi-select: which presets this person holds. */
   canAssign: boolean;
   onBack: () => void; onSaved: () => void;
+  accounts: Record<string, string>;
 }) {
   const loginKey = login.toLowerCase();
   const existing = file.people[loginKey];
@@ -496,7 +497,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                   Reload once GitHub is reachable.
                 </Note>
               )}
-              <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
+              <PermissionTree vocabulary={vocabulary} accounts={accounts} inherited={inherited} baseline={baseline} entry={entry}
                 onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete || exempt} />
 
               {canOverride && !presetsChanged && !baselineIncomplete && hasOverrides && (
@@ -595,13 +596,14 @@ function PresetsListView({ file, canCreate, onOpen, onCreate }: {
   );
 }
 
-function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelete, onBack, onSaved }: {
+function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelete, onBack, onSaved, accounts,}: {
   presetId: string | "new"; file: PermissionsFile; sha: string | null; vocabulary: PermissionLeaf[];
   /** `admin.presets.create` for a new preset, `admin.presets.edit` for an existing one. */
   canEditFields: boolean;
   /** `admin.presets.delete`. Independent of `canEditFields`: holding one does not imply the other. */
   canDelete: boolean;
   onBack: () => void; onSaved: () => void;
+  accounts: Record<string, string>;
 }) {
   const isNew = presetId === "new";
   const existing = isNew ? undefined : file.presets[presetId];
@@ -729,7 +731,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         </Block>
 
         <Block title="Permissions">
-          <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
+          <PermissionTree vocabulary={vocabulary} accounts={accounts} inherited={inherited} baseline={baseline} entry={entry}
             onChange={setEntry} readOnly={!canEditFields} />
         </Block>
 
@@ -877,6 +879,14 @@ export default function AdminPage() {
   });
 
   const vocabulary = vocab?.permissions ?? [];
+  /**
+   * `{ id: name }` for the account branches. Memoised because it is a prop on
+   * the tree, and a fresh object each render would rebuild the whole tree on
+   * every keystroke elsewhere on the screen.
+   */
+  const accountNames = useMemo(
+    () => Object.fromEntries((vocab?.accounts ?? []).map(a => [a.accountId, a.name])),
+    [vocab]);
 
   const loaded: AdminFile | null = adminFile && !isAdminFileFailure(adminFile) ? adminFile : null;
   const file = loaded?.file ?? null;
@@ -897,7 +907,7 @@ export default function AdminPage() {
   if (file && openPerson) {
     return (
       <Page user={user}>
-        <PersonDetail login={openPerson} file={file} sha={sha} vocabulary={vocabulary}
+        <PersonDetail login={openPerson} file={file} sha={sha} vocabulary={vocabulary} accounts={accountNames}
           canOverride={canOverride} canAssign={canAssign}
           onBack={() => setOpenPerson(null)} onSaved={() => setOpenPerson(null)} />
       </Page>
@@ -908,7 +918,7 @@ export default function AdminPage() {
     const isNew = openPreset === "new";
     return (
       <Page user={user}>
-        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary}
+        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary} accounts={accountNames}
           canEditFields={isNew ? canCreatePreset : canEditPresets} canDelete={canDeletePresets}
           onBack={() => setOpenPreset(null)} onSaved={() => setOpenPreset(null)} />
       </Page>

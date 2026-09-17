@@ -3,7 +3,7 @@ import { TYPE } from "../design";
 import type { PermissionLeaf, PermissionEntry, FlatRule } from "../api/admin";
 import {
   buildTree, collectLeafKeys, knownNodesOf, decideLeaf, ownRulesFrom, baselineOf, collapseEntry,
-  type Node,
+  type Node, type AccountNames,
 } from "./permissionTreeModel";
 
 /**
@@ -45,6 +45,12 @@ export interface PermissionTreeProps {
   /** The vocabulary, fetched from the server. Never a client-side copy. */
   vocabulary: PermissionLeaf[];
   /**
+   * Configured AWS accounts as `{ id: name }`, so an account branch reads as
+   * the place people call it rather than as twelve digits. Optional: without
+   * it the branches still render, labelled by id.
+   */
+  accounts?: AccountNames;
+  /**
    * Every rule from a layer beneath the one being edited, already flattened and
    * ranked — from `resolvePresetChain` in `../api/admin`, typically. Empty for a
    * preset with no parent.
@@ -67,11 +73,11 @@ export interface PermissionTreeProps {
 }
 
 export default function PermissionTree({
-  vocabulary, inherited, baseline: given, entry, onChange, readOnly,
+  vocabulary, inherited, baseline: given, entry, onChange, readOnly, accounts,
 }: PermissionTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
-  const tree = useMemo(() => buildTree(vocabulary), [vocabulary]);
+  const tree = useMemo(() => buildTree(vocabulary, accounts), [vocabulary, accounts]);
 
   const knownNodes = useMemo(() => knownNodesOf(vocabulary), [vocabulary]);
 

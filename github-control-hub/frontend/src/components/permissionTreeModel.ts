@@ -26,7 +26,29 @@ export function prettyLabel(segment: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-export function buildTree(vocabulary: readonly PermissionLeaf[]): Node[] {
+/**
+ * Account ids are not names.
+ *
+ * A branch reading as twelve raw digits tells nobody which estate they are about to
+ * grant remediation in, and picking the wrong twelve-digit number is precisely
+ * how somebody grants it in production. Given the configured accounts, the
+ * branch is labelled the way people refer to it, with the id kept alongside
+ * because two accounts can share a name.
+ */
+export type AccountNames = Readonly<Record<string, string>>;
+
+function labelFor(key: string, segment: string, accounts: AccountNames): string {
+  const parts = key.split(".");
+  if (parts.length === 3 && parts[0] === "aws" && parts[1] === "account") {
+    const name = accounts[segment];
+    return name ? `${name} (${segment})` : segment;
+  }
+  return prettyLabel(segment);
+}
+
+export function buildTree(
+  vocabulary: readonly PermissionLeaf[], accounts: AccountNames = {},
+): Node[] {
   const roots: Node[] = [];
   const branches = new Map<string, Node>();
 
@@ -34,7 +56,7 @@ export function buildTree(vocabulary: readonly PermissionLeaf[]): Node[] {
     const existing = branches.get(key);
     if (existing) return existing;
     const parts = key.split(".");
-    const node: Node = { key, label: prettyLabel(parts[parts.length - 1]), isLeaf: false, children: [] };
+    const node: Node = { key, label: labelFor(key, parts[parts.length - 1], accounts), isLeaf: false, children: [] };
     branches.set(key, node);
     if (parts.length === 1) roots.push(node);
     else ensureBranch(parts.slice(0, -1).join(".")).children.push(node);

@@ -27,7 +27,7 @@ export interface PermissionLeaf {
 }
 
 /** Bump when leaves are added. Never reuse a number. */
-export const VOCABULARY_VERSION = 3;
+export const VOCABULARY_VERSION = 4;
 
 const L = (key: string, label: string, addedIn = 1): PermissionLeaf => ({ key, label, addedIn });
 
@@ -61,6 +61,17 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("activity.undo.repo", "Undo a repository action"),
   L("activity.undo.app", "Undo an app configuration change"),
   L("activity.undo.aws", "Undo an AWS change"),
+  /**
+   * AWS rows, as a thing in their own right.
+   *
+   * They used to be reachable only through `activity.read.app.rows`, which is
+   * every row somebody else made whatever it touched. That is one permission
+   * for two questions, and it left no key to scope per account.
+   *
+   * Additive: holding either this or `activity.read.app.rows` shows an AWS
+   * row, so nothing anybody holds today is narrowed by its arrival.
+   */
+  L("activity.read.aws", "Activity rows from AWS accounts", 4),
   L("activity.retry", "Retry a failed action"),
   L("activity.resolution.undo", "Undo a conflict resolution"),
   L("activity.detailedLogging.read", "Whether detailed logging is on"),
