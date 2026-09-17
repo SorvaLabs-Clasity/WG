@@ -87,9 +87,40 @@ async function access(login: string, subject: Promise<Subject>): Promise<Access>
       };
     }
 
+    /**
+     * **The file is the switch.**
+     *
+     * Enforcement used to depend on `PERMISSIONS_ENABLED`, an environment
+     * variable — and the desktop build runs this backend inside the Electron
+     * process on the user's own machine, so the person being restricted owned
+     * the process doing the restricting. Not setting it, which is the default,
+     * turned every gate into `return next()`. Permissions were a real boundary
+     * only on the hosted deployment.
+     *
+     * A file committed to the organization cannot be unset locally. Every
+     * install reads the same one, so enforcement begins everywhere at once,
+     * the moment an operator commits a file that says something.
+     *
+     * "Says something" is the whole test. A missing repository and a missing
+     * file both load as an empty file (`source` "no-repo" / "absent"), so an
+     * organization that has never adopted this is inert exactly as before —
+     * and committing an empty file cannot lock everybody out of the screen
+     * that would fix it.
+     *
+     * `PERMISSIONS_ENABLED=true` still forces enforcement on, for an operator
+     * who wants deny-by-default before writing anything. It can no longer turn
+     * it *off*, which was the hole.
+     */
+    const empty = Object.keys(loaded.file.people ?? {}).length === 0
+      && Object.keys(loaded.file.presets ?? {}).length === 0
+      && Object.keys(loaded.file.teams ?? {}).length === 0;
+    const inert = empty && process.env.PERMISSIONS_ENABLED !== "true";
+
     return {
-      permissions: permissionsFor(loaded.file, resolvedSubject),
-      inert: false,
+      permissions: inert
+        ? allPermissions("inert", "no permissions file has been written yet")
+        : permissionsFor(loaded.file, resolvedSubject),
+      inert,
       failure: null,
       unknownNodes: unknownNodesIn(loaded.file),
       source: loaded.source,
@@ -134,4 +165,26 @@ export async function accessForSelf(login: string, ownToken: string): Promise<Ac
  */
 export async function accessForOther(login: string): Promise<Access> {
   return access(login, subjectFor(login));
+}
+
+
+/**
+ * Is enforcement live for this organization?
+ *
+ * One rule, in one place, so the gate, the admin router, the activity feed and
+ * the client's own banner cannot disagree about it. A file that says something
+ * means yes; a missing repository, a missing file, or an empty one means no.
+ * `PERMISSIONS_ENABLED=true` forces yes and can no longer force no.
+ *
+ * A read failure answers **true**: the gates fail closed on an unreadable
+ * file, and a helper that answered "not enforcing" there would quietly reopen
+ * everything during an outage — the exact hole this whole change closes.
+ */
+export async function enforcementActive(): Promise<boolean> {
+  if (process.env.PERMISSIONS_ENABLED === "true") return true;
+  const loaded = await loadPermissions();
+  if (isFailure(loaded)) return loaded.reason !== "aws-only";
+  return Object.keys(loaded.file.people ?? {}).length > 0
+    || Object.keys(loaded.file.presets ?? {}).length > 0
+    || Object.keys(loaded.file.teams ?? {}).length > 0;
 }

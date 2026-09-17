@@ -382,8 +382,19 @@ them. *Restrict who can push* needs the admin team in its actor list.
 Check it worked by running the migration. If a ruleset is still in the way the
 app reports the refusal GitHub gave it, naming the rule.
 
-**Turning it on.** `PERMISSIONS_ENABLED=true`, and not before the dry-run is
-clean:
+**Turning it on.** Committing a file that says something *is* turning it on.
+There is no switch to set afterwards, and that is deliberate: enforcement used
+to depend on an environment variable, and the desktop app runs its backend on
+the user's own machine — so the person being restricted controlled the setting
+that restricted them. A file in the organization cannot be unset locally, and
+every install reads the same one.
+
+An organization that has written nothing is unaffected. A missing repository,
+a missing file and an empty file all mean the same thing: not adopted, nothing
+enforced.
+
+So the order matters, and the dry-run comes before the migration's file
+lands:
 
 1. Open the Admin tab (`control-hub-admins` gates it, which is now that team's
    only remaining meaning).
@@ -397,7 +408,12 @@ clean:
    the file shows up here rather than reading as unchanged. Anything in the
    "would lose" column is a decision to make *before* the flip, not a support
    ticket after.
-4. Set `PERMISSIONS_ENABLED=true` and restart.
+4. There is no step four. The file written in step 2 is live once anybody's
+   entry is in it.
+
+`PERMISSIONS_ENABLED=true` still exists and forces enforcement on for an
+organization that has written nothing — an operator choosing deny-by-default
+before granting anybody anything. It can no longer force enforcement *off*.
 
 **What the flip costs you if GitHub is unreachable:** the app cannot read the
 file, so it refuses everyone with a 503 rather than guessing. There is

@@ -845,15 +845,25 @@ async function theAdminRouterDriven() {
        * commenting that line out left the suite entirely green — a commented
        * gate matches the substring just as well as a live one.
        *
-       * So the real chains are run, with `PERMISSIONS_ENABLED` in the state it
-       * ships in. That is deliberate and it is the whole point: with the flag
-       * unset every `requirePermission` is `return next()`, so the team gate is
-       * the only thing left that can refuse anybody, and a route that reaches
-       * its handler here is a route open to every signed-in member.
+       * So the real chains are run, against an organization that has written
+       * nothing. That is deliberate and it is the whole point: with no file
+       * every `requirePermission` is inert, so the team gate is the only thing
+       * left that can refuse anybody, and a route that reaches its handler
+       * here is a route open to every signed-in member.
+       *
+       * The empty file has to be *readable*. An unreadable one is a different
+       * state with a different right answer — every gate fails closed with a
+       * 503, which `repro-undo.ts` pins — and it would pass the first
+       * assertion below for entirely the wrong reason.
        */
       const flagHere = process.env.PERMISSIONS_ENABLED;
       delete process.env.PERMISSIONS_ENABLED;
       const { invalidateAdminCache } = require("./src/services/authorizationService");
+      setPermissionsTestHooks({
+        loadFile: () => loaded({ version: 1, presets: {}, teams: {}, people: {} }),
+      });
+      forgetPermissions();
+      forgetSubjects();
       try {
         // GitHub answers "not a member of anything" — the object the stub
         // returns has neither `role: "admin"` nor `state: "active"`.
@@ -1182,26 +1192,27 @@ async function theAdminRouterDriven() {
         written.people?.dana?.note === "left the platform team in March", written.people);
     }
 
-    console.log("\nwith PERMISSIONS_ENABLED unset, none of the above happens");
+    console.log("\nwith no permissions file written, none of the above happens");
     {
       /**
-       * The inertness rule, checked rather than assumed. Everything this branch
-       * added to these two handlers sits behind `PERMISSIONS_ENABLED()`, so
-       * with the flag in the state it ships in the router answers exactly what
-       * it answered before — the one change being the team gate in front of it,
-       * which `repro-undo.ts` drives.
+       * The inertness rule, checked rather than assumed — and now checked
+       * against the thing that actually decides it.
+       *
+       * It used to set `PERMISSIONS_ENABLED=false`. That was the hole: the
+       * desktop build runs this backend inside the user's own Electron
+       * process, so the variable was a lock whose key sat beside it. The
+       * switch is the file, so inertness is *an organization that has written
+       * nothing* — which is what this block now sets up, and which no local
+       * setting can fake.
        */
       process.env.PERMISSIONS_ENABLED = "false";
       try {
-        const stored = withCaller(["admin.presets.read"], {
-          people: { dana: { presets: ["member"], note: "a note" } },
-        });
+        const stored: PermissionsFile = { version: 1, presets: {}, teams: {}, people: {} };
 
         const whole = await run("get", "/file", { stored: loaded(stored), as: "plain" });
         check("GET /file withholds nothing, however little the caller holds",
-          !!whole.body.file.people?.dana && !!whole.body.file.presets?.member
-            && whole.body.withheld === undefined,
-          { keys: Object.keys(whole.body.file), withheld: whole.body.withheld });
+          whole.status === 200 && whole.body.withheld === undefined,
+          { status: whole.status, withheld: whole.body.withheld });
 
         /**
          * And the write path decides nothing either — not `changeClasses`, not
@@ -1209,7 +1220,9 @@ async function theAdminRouterDriven() {
          * team gate is the authorization in this configuration.
          */
         const selfPromote = JSON.parse(JSON.stringify(stored));
-        selfPromote.people.plain.presets = ["member", "control-hub-admin"];
+        selfPromote.people = { plain: { presets: ["member", "control-hub-admin"] } };
+        selfPromote.presets = { member: { name: "Member" },
+          "control-hub-admin": { name: "Admin", grant: ["admin"] } };
         const write = await run("put", "/file", {
           stored: loaded(stored), as: "plain",
           body: { file: selfPromote, sha: "stored-sha", summary: "unchecked, as before" },
@@ -1590,7 +1603,60 @@ async function theAdminRouterDriven() {
 }
 
 theAdminRouterDriven().then(() => {
-  console.log("\nthe Control Hub admin team holds everything and is not configurable");
+  console.log("\nthe file is the switch, not this machine's environment");
+{
+  const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
+  const gate = fs.readFileSync("./src/middleware/permissionGate.ts", "utf8");
+  const me = fs.readFileSync("./src/routes/me.ts", "utf8");
+
+  /**
+   * Enforcement used to be `PERMISSIONS_ENABLED`, an environment variable. The
+   * desktop build requires this backend into the Electron process on the
+   * user's own machine, so the person being restricted owned the process doing
+   * the restricting: not setting the variable — the default — turned every
+   * gate into `return next()`. Permissions were a boundary only on the hosted
+   * deployment.
+   *
+   * A file committed to the organization cannot be unset locally, and every
+   * install reads the same one.
+   */
+  const gateBodies = gate.slice(gate.indexOf("function gate("));
+  check("no gate reads the environment to decide whether to enforce",
+    !/process\.env\.PERMISSIONS_ENABLED/.test(gateBodies),
+    "a variable on the restricted person's own machine is not a control");
+
+  check("  and the client's banner reports the file's answer, not the environment's",
+    /enforced: !access\.inert/.test(me) && !/PERMISSIONS_ENABLED/.test(me));
+
+  /**
+   * Adoption stays opt-in, in the only way that cannot be faked locally: an
+   * organization with nothing written is inert. A missing repository and a
+   * missing file both load as an empty file, so this covers never having set
+   * it up at all — and committing an empty file cannot lock everybody out of
+   * the screen that would fix it.
+   */
+  check("an empty file is inert, so adopting this is still a deliberate act",
+    /const inert = empty && process\.env\.PERMISSIONS_ENABLED !== "true"/.test(index),
+    "enforcement beginning the moment the repo exists would surprise every install");
+
+  check("  and the variable can still force it on, but no longer off",
+    /PERMISSIONS_ENABLED === "true"/.test(index)
+      && !/PERMISSIONS_ENABLED !== "true"\) return next/.test(index),
+    "forcing on is an operator choosing deny-by-default; forcing off was the hole");
+
+  /**
+   * One rule, in one place. The gate, the admin router, the activity feed and
+   * the banner all have to agree about whether enforcement is live, and four
+   * copies of "is it on" is four things to get out of step.
+   */
+  check("there is a single shared answer to whether enforcement is live",
+    /export async function enforcementActive/.test(index));
+  check("  and it answers yes on an unreadable file, because the gates fail closed there",
+    /if \(isFailure\(loaded\)\) return loaded\.reason !== "aws-only"/.test(index),
+    "answering no during an outage would reopen everything, which is the hole again");
+}
+
+console.log("\nthe Control Hub admin team holds everything and is not configurable");
 {
   const admin = { login: "an-admin", teamSlugs: [CONTROL_HUB_ADMIN_TEAM], isOrgOwner: false };
   const plain = { login: "plain", teamSlugs: [], isOrgOwner: false };

@@ -26,12 +26,28 @@ const gate = fs.readFileSync("./src/middleware/permissionGate.ts", "utf8");
 
 console.log("the gate");
 {
-  check("nothing enforces unless the flag is on",
-    /PERMISSIONS_ENABLED/.test(gate) && /!== "true"/.test(gate),
-    "flipping this on is stage 4's job, after the dry-run says who loses what");
+  /**
+   * The switch is the file, not this machine's environment.
+   *
+   * It used to be `PERMISSIONS_ENABLED`, and the desktop build runs this
+   * backend inside the user's own Electron process — so the person being
+   * restricted owned the process doing the restricting, and not setting the
+   * variable, which was the default, turned every gate into `return next()`.
+   * A file committed to the organization cannot be unset locally.
+   */
+  // Scoped to the gate functions. The module still exports a force-*on* helper,
+  // which is fine — it can no longer force enforcement off, which was the hole.
+  const gateBodies = gate.slice(gate.indexOf("function gate("));
+  check("the gate does not consult this machine's environment",
+    !/process\.env\.PERMISSIONS_ENABLED/.test(gateBodies),
+    "a local variable is a lock whose key sits beside it on a desktop install");
 
-  check("  and when it is off, the request simply continues",
-    /return next\(\)/.test(gate));
+  check("  it asks the permission set instead",
+    /accessForSelf\(/.test(gate));
+
+  check("  and an organization with nothing written is still let through",
+    /access\.inert/.test(gate) && /return next\(\)/.test(gate),
+    "adopting this must stay opt-in; an empty file cannot lock anybody out");
 
   /**
    * Stage 2's hard contract: a per-request call that omits the caller's token
@@ -256,8 +272,9 @@ console.log("\nthe redaction model is applied, not merely named");
     /accessForSelf\(\s*login,\s*accessToken\s*\)/.test(src),
     "accessForOther cannot take one, and omitting it is a GitHub call per team");
 
-  check("  and does nothing at all while the flag is off",
-    /if \(!PERMISSIONS_ENABLED\(\)\) return entries;/.test(src));
+  check("  and does nothing at all where nothing has been written",
+    /if \(access\.inert\) return entries;/.test(src),
+    "an organization that has not adopted permissions must see an unredacted feed");
 
   /**
    * The marker crosses the wire, so it is declared twice — once on each side of
@@ -312,18 +329,22 @@ console.log("\nthe permissions endpoint itself");
       !/require(Any)?Permission\(/.test(body));
 
     /**
-     * Inert in cost as well as in effect. `Navbar` mounts the hook that calls
-     * this on every page, so reading the file here while the flag is off would
-     * put a new GitHub draw on a branch that promises to change nothing.
+     * `enforced` is what the file says, not what this machine's environment
+     * says — the banner used to read a variable that, on a desktop install,
+     * the person reading it controlled.
+     *
+     * It costs one read of `permissions.json` now, where it used to cost none
+     * while the flag was off. That read is cached for a minute and is the same
+     * one every gate on the page already makes, so it is one draw per minute
+     * per user, not one per request. Paying it is the price of an answer that
+     * cannot be turned off locally.
      */
-    const flagOff = body.indexOf("if (!PERMISSIONS_ENABLED())");
-    const selfCall = body.indexOf("accessForSelf(");
-    check("  and with the flag off it answers without asking GitHub anything",
-      flagOff >= 0 && selfCall > flagOff,
-      { flagOff, selfCall });
+    check("  it reports enforcement from the file, not from the environment",
+      /enforced: !access\.inert/.test(body) && !/PERMISSIONS_ENABLED/.test(body),
+      "a banner reading a local variable reports a setting its reader controls");
 
-    check("    returning the shape the client expects, enforced: false",
-      /enforced: false, inert: false, held: \[\], failure: null, adminTeam/.test(body));
+    check("    through the caller's own token, like every other permission read",
+      /accessForSelf\(req\.user!\.login, req\.user!\.accessToken\)/.test(body));
   }
 }
 

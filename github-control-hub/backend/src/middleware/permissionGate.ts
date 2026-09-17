@@ -13,7 +13,7 @@ import {
  * whole reason for choosing this over a central policy map: a route added with
  * no guard is a build failure rather than a lookup miss.
  *
- * **Off by default.** With `PERMISSIONS_ENABLED` unset, every gate calls
+ * **Off until a file exists.** With nothing written in the organization, every gate calls
  * `next()` and the existing team gates continue to decide. The flag is flipped
  * in stage 4, once the dry-run has said exactly who would lose what — deny by
  * default means switching this on is a cliff, and the cliff is somebody's
@@ -22,14 +22,28 @@ import {
 
 export const PERMISSION_DENIED = "PERMISSION_REQUIRED";
 
+/**
+ * Kept as an explicit force-on, for an operator who wants deny-by-default
+ * before writing anything. It can no longer force enforcement *off*, which was
+ * the hole: on the desktop build this backend runs inside the user's own
+ * Electron process, so an environment variable was a lock whose key sat beside
+ * it. `enforcementActive()` in `../permissions` is the one rule now.
+ */
 export const PERMISSIONS_ENABLED = (): boolean =>
   process.env.PERMISSIONS_ENABLED === "true";
 
 function gate(keys: string[], needsAll: boolean): RequestHandler {
   return (req, res, next) => {
-    // Anything other than exactly "true" — unset, "false", a typo — leaves
-    // every route exactly as it behaves today.
-    if (process.env.PERMISSIONS_ENABLED !== "true") return next();
+    /**
+     * No environment check here any more. `access.inert` below carries it, and
+     * it is decided by the file in the organization rather than by a variable
+     * on whichever machine happens to be running this process — the desktop
+     * build runs this backend inside the user's own Electron process, so a
+     * local variable was a lock whose key sat beside it.
+     *
+     * An organization with no file is still inert, so this is not a change of
+     * behaviour for anybody who has not adopted permissions.
+     */
 
     // Always the caller's own token, through the function that can only ever
     // be about the caller themselves. Omitting it — or reaching for
@@ -121,8 +135,7 @@ function accountsInRequest(req: any): string[] | "all" {
  */
 export function requirePermissionInAccounts(suffix: string): RequestHandler {
   return (req, res, next) => {
-    if (!PERMISSIONS_ENABLED()) return next();
-
+    // As `gate` above: the file decides, not this machine's environment.
     accessForSelf(req.user!.login, req.user!.accessToken)
       .then(access => {
         if (access.inert) return next();
