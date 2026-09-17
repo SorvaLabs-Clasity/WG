@@ -66,6 +66,12 @@ export interface LoadFailure {
   detail: string;
   /** Present for `invalid`: what the validator objected to, for the admin screen. */
   problems?: string[];
+  /**
+   * Epoch milliseconds before which asking again is pointless — GitHub's own
+   * rate-limit reset. Present only when the read failed because the budget was
+   * exhausted, and it is what stops the app retrying itself into a hole.
+   */
+  retryAfter?: number;
 }
 
 export function isFailure(r: LoadedPermissions | LoadFailure): r is LoadFailure {
@@ -81,7 +87,42 @@ export function decodeFileContent(base64: string): string {
   return Buffer.from(base64.replace(/\s+/g, ""), "base64").toString("utf8");
 }
 
-let cache: { at: number; value: LoadedPermissions | LoadFailure } | null = null;
+let cache: { at: number; value: LoadedPermissions | LoadFailure; until?: number } | null = null;
+
+/**
+ * A rate-limited read is not a transient failure, and retrying it is what
+ * keeps it rate-limited.
+ *
+ * Every failure was cached for five seconds, on the reasoning that somebody
+ * repairing the file by pushing directly should not wait a minute to see it
+ * land. That is right for a broken file and exactly wrong for an exhausted
+ * budget: the app retried every five seconds, from every request, and since
+ * the permissions file became the enforcement switch *every* request reads it.
+ * The app held its own limit down and could never climb out — "no one is using
+ * it and it is still rate limited" is the app, using it.
+ *
+ * GitHub says when the budget returns. Wait until then, and not one call
+ * before.
+ */
+function rateLimitedUntil(err: any): number | null {
+  const status = err?.status ?? err?.response?.status;
+  const headers = err?.response?.headers ?? {};
+  const remaining = Number(headers["x-ratelimit-remaining"]);
+  const message = String(err?.message ?? "");
+
+  const looksRateLimited =
+    (status === 403 || status === 429) &&
+    (remaining === 0 || /rate limit|secondary rate/i.test(message));
+  if (!looksRateLimited) return null;
+
+  const reset = Number(headers["x-ratelimit-reset"]);
+  if (Number.isFinite(reset) && reset > 0) return reset * 1000;
+
+  // No reset header — a secondary limit, usually. `retry-after` is in seconds.
+  const retryAfter = Number(headers["retry-after"]);
+  const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60;
+  return Date.now() + seconds * 1000;
+}
 
 /** Drop the cached read. Called after every write, so a change is live at once. */
 export function forgetPermissions(): void {
@@ -104,11 +145,19 @@ export function forgetPermissions(): void {
  * So: the App reads, the administrator writes. See `savePermissions`.
  */
 export async function loadPermissions(now = Date.now()): Promise<LoadedPermissions | LoadFailure> {
+  // A rate-limit hold outlives the ordinary failure TTL: asking again before
+  // the budget returns is the thing that stopped it returning.
+  if (cache?.until !== undefined && now < cache.until) return cache.value;
+
   if (cache && now - cache.at < (isFailure(cache.value) ? FAILURE_TTL_MS : TTL_MS)) {
     return cache.value;
   }
   const value = await read();
-  cache = { at: now, value };
+  cache = {
+    at: now,
+    value,
+    until: isFailure(value) ? value.retryAfter : undefined,
+  };
 
   /**
    * Keep the account registry in step with the file.
@@ -176,6 +225,19 @@ async function read(): Promise<LoadedPermissions | LoadFailure> {
      * One probe separates them.
      */
     if (status === 404) return await probeRepository(token);
+
+    const until = rateLimitedUntil(err);
+    if (until !== null) {
+      return {
+        reason: "unreachable",
+        detail: `The GitHub App's API rate limit is exhausted. It returns at `
+          + `${new Date(until).toLocaleTimeString()}; the app will not ask again before then. `
+          + "This is the App installation's own budget, which is separate from your user token — "
+          + "a full budget on the rate-limit screen is not the same pool.",
+        retryAfter: until,
+      };
+    }
+
     return { reason: "unreachable", detail: err?.message ?? String(err) };
   }
 
@@ -231,6 +293,20 @@ async function probeRepository(token: string): Promise<LoadedPermissions | LoadF
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status;
     if (status === 404) return { file: emptyFile(), sha: null, source: "no-repo" };
+
+    // The probe runs on the failure path, so it is the call most likely to be
+    // made while the budget is already gone. Carrying the reset here too keeps
+    // the hold intact instead of falling back to the five-second retry.
+    const until = rateLimitedUntil(err);
+    if (until !== null) {
+      return {
+        ...lost(`${PERMISSIONS_REPO} could not be read: the App's rate limit is exhausted.`),
+        detail: `The GitHub App's API rate limit is exhausted. It returns at `
+          + `${new Date(until).toLocaleTimeString()}; the app will not ask again before then.`,
+        retryAfter: until,
+      };
+    }
+
     return lost(`${PERMISSIONS_REPO} could not be read: ${err?.message ?? String(err)}.`);
   }
 
