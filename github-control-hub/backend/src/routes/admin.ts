@@ -204,11 +204,22 @@ async function writeFile(
      * administrator who has just spent a minute un-ticking boxes deserves to
      * be told that the person they were editing is exempt and why.
      */
-    const exempt = await controlHubAdminsIn(
-      new Set([...Object.keys(before.people ?? {}), ...Object.keys(toSave.people ?? {})]));
-    const touched = [...exempt].filter(login =>
+    /**
+     * Work out *what changed* first, and only then ask who is exempt.
+     *
+     * The exempt check costs a GitHub call. Asking it about every login in the
+     * file meant every save paid for it — including saves that touch no person
+     * at all, like editing a preset or declaring an AWS account, which is the
+     * commonest kind of save there is.
+     */
+    const changed = [...new Set([
+      ...Object.keys(before.people ?? {}), ...Object.keys(toSave.people ?? {}),
+    ])].filter(login =>
       JSON.stringify((before.people ?? {})[login] ?? null)
         !== JSON.stringify((toSave.people ?? {})[login] ?? null));
+
+    const exempt = await controlHubAdminsIn(new Set(changed));
+    const touched = changed.filter(login => exempt.has(login));
 
     if (touched.length > 0) {
       return {
@@ -887,11 +898,13 @@ router.get("/org-members", requirePermission("admin.people.read"), async (_req: 
 });
 
 /**
- * Which of these logins are on the Control Hub admin team.
+ * The members of one team, in one paginated read.
  *
- * One team read, cached by `subjectFor` for a minute, rather than one call per
- * login: an organization of two hundred would otherwise spend two hundred
- * requests deciding whether a single save is allowed.
+ * A team that cannot be read answers empty rather than throwing: the callers
+ * either mark nobody exempt — which shows them as configurable, and the write
+ * path checks again — or refuse nothing, which is the same answer they gave
+ * before any of this existed. A save must not fail because a team listing
+ * blinked.
  */
 async function membersOfTeam(octokit: any, slug: string): Promise<Set<string>> {
   const set = new Set<string>();
@@ -912,12 +925,27 @@ async function membersOfTeam(octokit: any, slug: string): Promise<Set<string>> {
 }
 
 async function controlHubAdminsIn(logins: Set<string>): Promise<Set<string>> {
-  const found = new Set<string>();
-  for (const login of logins) {
-    const subject = await subjectFor(login);
-    if (subject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM)) found.add(login);
-  }
-  return found;
+  if (logins.size === 0) return new Set();
+
+  /**
+   * One call: the team's members, intersected with the logins asked about.
+   *
+   * This used to ask `subjectFor(login)` per login. For somebody who is not
+   * the caller that runs the App-token path, whose own docblock says it costs
+   * one GitHub call **per team in the organization** and "if it ever becomes a
+   * per-request cost, it is the wrong implementation". It became exactly that:
+   * every write compares the people in the stored file with the people in the
+   * proposed one, and after the migration that is every member of the
+   * organization — so a single save cost members × teams calls and emptied the
+   * App's rate limit in two or three saves. The file then read as unreachable,
+   * which is a permissions outage caused by saving permissions.
+   *
+   * Asking the team who its members are answers the same question in one
+   * paginated call, whatever the size of the organization.
+   */
+  const octokit = createOctokit(getSystemToken(), "Permissions");
+  const members = await membersOfTeam(octokit, CONTROL_HUB_ADMIN_TEAM);
+  return new Set([...logins].filter(login => members.has(login.toLowerCase())));
 }
 
 export default router;
