@@ -7,6 +7,7 @@ import {
 } from "../design";
 import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
+import { diffAccount } from "../components/permissionDiff";
 import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
@@ -302,32 +303,86 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     queryFn: () => fetchPersonAccess(loginKey),
   });
 
-  const [entry, setEntry] = useState<PermissionEntry>({ grant: existing?.grant, revoke: existing?.revoke });
+  /**
+   * The accounts this person can be configured in, and the one being edited.
+   *
+   * An account is a configured environment — some with GitHub, some AWS-only —
+   * and each has its own tabs, so each gets its own permissions. With none
+   * declared there is a single unscoped draft, which is the pre-account shape
+   * and what a file written before accounts uses.
+   */
+  const accountIds = useMemo(() => Object.keys(accounts).sort(
+    (a, b) => (accounts[a] ?? a).localeCompare(accounts[b] ?? b)), [accounts]);
+  const scoped = accountIds.length > 0;
+
+  const draftFor = (accountId: string | null): PermissionEntry & { presets?: string[] } => {
+    const from = accountId ? existing?.accounts?.[accountId] : existing;
+    return { presets: from?.presets ?? [], grant: from?.grant, revoke: from?.revoke };
+  };
+
+  const [tab, setTab] = useState<string | null>(accountIds[0] ?? null);
+  const [drafts, setDrafts] = useState<Record<string, PermissionEntry & { presets?: string[] }>>(() =>
+    scoped
+      ? Object.fromEntries(accountIds.map(id => [id, draftFor(id)]))
+      : { "": draftFor(null) });
   const [note, setNote] = useState(existing?.note ?? "");
-  const [presets, setPresets] = useState<string[]>(existing?.presets ?? []);
   const [summary, setSummary] = useState(`Update permissions for ${loginKey}`);
+  const [confirming, setConfirming] = useState(false);
+
+  const tabKey = scoped ? (tab ?? accountIds[0] ?? "") : "";
+  const draft = drafts[tabKey] ?? { presets: [] };
+  const entry: PermissionEntry = { grant: draft.grant, revoke: draft.revoke };
+  const presets = draft.presets ?? [];
+
+  const patchDraft = (patch: Partial<PermissionEntry & { presets?: string[] }>) =>
+    setDrafts(prev => ({ ...prev, [tabKey]: { ...prev[tabKey], ...patch } }));
+
+  const setEntry = (next: PermissionEntry) => patchDraft({ grant: next.grant, revoke: next.revoke });
+  const setPresets = (next: string[] | ((p: string[]) => string[])) =>
+    patchDraft({ presets: typeof next === "function" ? next(presets) : next });
 
   // The draft mirrors whichever login is open; opening a different one from
   // the list re-mounts nothing (this is the same component instance), so the
   // draft has to be reset by hand rather than by a fresh `useState` default.
   useEffect(() => {
-    setEntry({ grant: existing?.grant, revoke: existing?.revoke });
+    setDrafts(scoped
+      ? Object.fromEntries(accountIds.map(id => [id, draftFor(id)]))
+      : { "": draftFor(null) });
+    setTab(accountIds[0] ?? null);
     setNote(existing?.note ?? "");
-    setPresets(existing?.presets ?? []);
     setSummary(`Update permissions for ${loginKey}`);
+    setConfirming(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loginKey]);
+  }, [loginKey, accountIds.join(",")]);
 
   const qc = useQueryClient();
   const save = useMutation({
     mutationFn: () => {
-      const nextEntry: PersonEntry = {
-        ...existing,
-        presets: presets.length ? presets : undefined,
-        grant: entry.grant,
-        revoke: entry.revoke,
-        note: note.trim() ? note.trim() : undefined,
-      };
+      const trim = (d: PermissionEntry & { presets?: string[] }) => ({
+        presets: d.presets?.length ? d.presets : undefined,
+        grant: d.grant?.length ? d.grant : undefined,
+        revoke: d.revoke?.length ? d.revoke : undefined,
+      });
+
+      /**
+       * Per-account entries when accounts are declared, the pre-account fields
+       * when they are not. Never both: an entry carrying a top-level grant
+       * *and* per-account entries would read as though the top-level one
+       * applied everywhere, which is exactly what per-account access exists to
+       * stop.
+       */
+      const nextEntry: PersonEntry = scoped
+        ? {
+            ...existing,
+            presets: undefined, grant: undefined, revoke: undefined,
+            accounts: Object.fromEntries(accountIds.map(id => [id, trim(drafts[id] ?? {})])),
+            note: note.trim() ? note.trim() : undefined,
+          }
+        : {
+            ...existing,
+            ...trim(drafts[""] ?? {}),
+            note: note.trim() ? note.trim() : undefined,
+          };
       const nextFile: PermissionsFile = { ...file, people: { ...file.people, [loginKey]: nextEntry } };
       return saveAdminFile(nextFile, sha, summary.trim() || `Update permissions for ${loginKey}`);
     },
@@ -338,7 +393,32 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     },
   });
 
-  const presetsChanged = !sameMembers(presets, existing?.presets ?? []);
+  /**
+   * What the save will change, per account. Computed against each account's own
+   * baseline, because a permission can be inherited in one account and not in
+   * another — so "gains Fix a finding" is only true where the layers beneath
+   * did not already grant it.
+   */
+  const diffs = useMemo(() => {
+    if (!scoped) {
+      return [diffAccount("", "This install", vocabulary,
+        { grant: existing?.grant, revoke: existing?.revoke },
+        drafts[""] ?? {},
+        access?.baseline ?? {}, inheritedFrom(access?.inherited))];
+    }
+    return accountIds.map(id => diffAccount(
+      id, accounts[id] ?? id, vocabulary,
+      existing?.accounts?.[id],
+      drafts[id] ?? {},
+      access?.perAccount?.[id]?.baseline ?? {},
+      inheritedFrom(access?.perAccount?.[id]?.rules),
+    )).filter(d => !d.unchanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scoped, accountIds.join(","), drafts, existing, access, vocabulary]);
+
+  const storedPresetsFor = (accountId: string) =>
+    (scoped ? existing?.accounts?.[accountId]?.presets : existing?.presets) ?? [];
+  const presetsChanged = !sameMembers(presets, storedPresetsFor(tabKey));
 
   /**
    * Assigning a preset has to move the tree's baseline before anybody saves,
@@ -370,11 +450,20 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     })),
   });
 
+  /**
+   * The layers beneath this person **in the account being edited**. The server
+   * computes one standing per declared account; the unscoped pair is the
+   * fallback for an install that has declared none.
+   */
+  const scopedStanding = scoped ? access?.perAccount?.[tabKey] : undefined;
+
   const inherited = useMemo(() => {
-    if (!presetsChanged) return inheritedFrom(access?.inherited);
+    if (!presetsChanged) {
+      return inheritedFrom(scoped ? scopedStanding?.rules : access?.inherited);
+    }
     return presetQueries.flatMap(q => inheritedFrom(q.data?.inherited));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetsChanged, access, presetQueries.map(q => q.dataUpdatedAt).join(",")]);
+  }, [presetsChanged, access, scoped, tabKey, presetQueries.map(q => q.dataUpdatedAt).join(",")]);
 
   /**
    * The server's own baseline, while it is the one that answers for this
@@ -385,8 +474,10 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
    * against it.
    */
   const baseline = useMemo(
-    () => (presetsChanged ? undefined : baselineFrom(access?.baseline)),
-    [presetsChanged, access],
+    () => (presetsChanged
+      ? undefined
+      : baselineFrom(scoped ? scopedStanding?.baseline : access?.baseline)),
+    [presetsChanged, access, scoped, tabKey],
   );
 
   /**
@@ -422,13 +513,33 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
   const overrideCount = (entry.grant?.length ?? 0) + (entry.revoke?.length ?? 0);
   const hasOverrides = overrideCount > 0;
 
-  const dirty = !entriesEqual(entry, { grant: existing?.grant, revoke: existing?.revoke })
-    || note.trim() !== (existing?.note ?? "")
-    || presetsChanged;
+  /**
+   * Dirty across *every* account, not just the one on screen. Copying this
+   * account's permissions onto another changes a draft the current tab is not
+   * showing, and a Save button that only watched the visible tab would stay
+   * disabled over a real change.
+   */
+  const anyAccountChanged = scoped
+    ? accountIds.some(id => {
+        const stored = existing?.accounts?.[id];
+        const d = drafts[id] ?? {};
+        return !entriesEqual({ grant: d.grant, revoke: d.revoke },
+                             { grant: stored?.grant, revoke: stored?.revoke })
+          || !sameMembers(d.presets ?? [], stored?.presets ?? []);
+      })
+    : !entriesEqual({ grant: drafts[""]?.grant, revoke: drafts[""]?.revoke },
+                    { grant: existing?.grant, revoke: existing?.revoke })
+      || !sameMembers(drafts[""]?.presets ?? [], existing?.presets ?? []);
 
-  const presetLabel = (existing?.presets ?? []).length === 0
-    ? "No preset assigned. Everything below is granted directly."
-    : `Holds ${existing!.presets!.map(id => file.presets[id]?.name ?? id).join(", ")}.`;
+  const dirty = anyAccountChanged || note.trim() !== (existing?.note ?? "");
+
+  const storedPresets = storedPresetsFor(tabKey);
+  const presetLabel = storedPresets.length === 0
+    ? scoped
+      ? `No preset assigned in ${accounts[tabKey] ?? tabKey}. Everything below is granted directly.`
+      : "No preset assigned. Everything below is granted directly."
+    : `Holds ${storedPresets.map(id => file.presets[id]?.name ?? id).join(", ")}`
+      + (scoped ? ` in ${accounts[tabKey] ?? tabKey}.` : ".");
 
   const presetEntries = useMemo(
     () => Object.entries(file.presets).sort(([, a], [, b]) => a.name.localeCompare(b.name)),
@@ -466,6 +577,39 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                         )}
                       </label>
                     ))}
+                  </div>
+                )}
+              </Block>
+            )}
+
+            {scoped && (
+              <Block title="Account">
+                <Segmented value={tabKey} onChange={setTab}
+                  options={accountIds.map(id => [id, accounts[id] ?? id] as [string, string])} />
+                <p className={`${TYPE.sub} text-ink-3 mt-2`}>
+                  Each account is configured separately, and an account {loginKey} has been given
+                  nothing in grants them nothing there.
+                  {access?.installAccount === tabKey
+                    ? " This is the account this install enforces."
+                    : access?.installAccount
+                      ? " This install enforces a different account; changes here apply where that account runs."
+                      : ""}
+                </p>
+
+                {canOverride && !exempt && accountIds.length > 1 && (
+                  <div className="mt-3 flex items-center gap-3 flex-wrap">
+                    <span className={`${TYPE.sub} text-ink-2`}>Copy this account's permissions to</span>
+                    {accountIds.filter(id => id !== tabKey).map(id => (
+                      <Button key={id} variant="ghost"
+                        onClick={() => setDrafts(prev => ({ ...prev, [id]: { ...prev[tabKey] } }))}>
+                        {accounts[id] ?? id}
+                      </Button>
+                    ))}
+                    <Button variant="ghost"
+                      onClick={() => setDrafts(prev => Object.fromEntries(
+                        accountIds.map(id => [id, { ...prev[tabKey] }])))}>
+                      all of them
+                    </Button>
                   </div>
                 )}
               </Block>
@@ -528,6 +672,47 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
 
             {(canOverride || canAssign) && !exempt && (
               <Block title="Save">
+                {/*
+                  * The preview diffs what the entries *decide*, not the entries
+                  * themselves. Two entries that look nothing alike can decide
+                  * the same thing, and two differing by a character can decide
+                  * something very different — so a textual diff would report
+                  * noise and miss substance. This answers the question somebody
+                  * is actually asking: what will this person be able to do,
+                  * where, that they could not before.
+                  */}
+                {dirty && diffs.length > 0 && (
+                  <div className="mb-4 grid gap-3">
+                    {diffs.map(d => (
+                      <RailCard key={d.accountId} intent={d.lost.length ? "warn" : "neutral"} index={0}>
+                        <div className="min-w-0">
+                          <span className="display text-[1.0625rem] text-ink">{d.name}</span>
+                          {d.unchanged ? (
+                            <p className={`${TYPE.sub} text-ink-3 mt-1`}>No change.</p>
+                          ) : (
+                            <div className="mt-1 grid gap-1">
+                              {d.gained.length > 0 && (
+                                <p className={`${TYPE.sub} text-ink-2`}>
+                                  <strong className="text-ink">Gains {d.gained.length}:</strong>{" "}
+                                  {d.gained.slice(0, 6).map(l => l.label).join(", ")}
+                                  {d.gained.length > 6 && `, and ${d.gained.length - 6} more`}
+                                </p>
+                              )}
+                              {d.lost.length > 0 && (
+                                <p className={`${TYPE.sub} text-ink-2`}>
+                                  <strong className="text-ink">Loses {d.lost.length}:</strong>{" "}
+                                  {d.lost.slice(0, 6).map(l => l.label).join(", ")}
+                                  {d.lost.length > 6 && `, and ${d.lost.length - 6} more`}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </RailCard>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4 flex-wrap">
                   <input value={summary} onChange={e => setSummary(e.target.value)}
                     placeholder="What changed, and why" className={SURFACE.input} style={{ maxWidth: "32rem" }} />
