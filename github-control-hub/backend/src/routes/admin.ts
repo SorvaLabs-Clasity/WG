@@ -17,7 +17,9 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import { listOrgMembers, depsFromOctokit } from "../services/orgMembersService";
 import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { resolveAccounts } from "../aws-guardrails/accounts";
-import { currentVocabulary, setConfiguredAccounts, isAccountId } from "../permissions/accountScope";
+import {
+  currentVocabulary, setConfiguredAccounts, isAccountId, configuredAccounts, installAccountId,
+} from "../permissions/accountScope";
 
 /**
  * The Admin tab: the one router that can grant permissions.
@@ -570,6 +572,24 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
       const stored = isFailure(loaded) ? emptyFile() : loaded.file;
       const { rules, baseline } = inheritedStanding(stored, subject);
 
+      /**
+       * One standing per declared account, because the tree is edited per
+       * account now. The unscoped pair above stays for an install that has
+       * declared none — and for a file written before accounts existed, whose
+       * entries live at the top level.
+       *
+       * Computed from the file already in hand, so however many accounts there
+       * are this costs no GitHub call beyond the one already made.
+       */
+      const perAccount: Record<string, { rules: unknown[]; baseline: Record<string, boolean> }> = {};
+      for (const accountId of configuredAccounts()) {
+        const standing = inheritedStanding(stored, subject, accountId);
+        perAccount[accountId] = {
+          rules: standing.rules.map(r => ({ node: r.node, effect: r.effect, layer: r.layer, origin: r.origin })),
+          baseline: standing.baseline,
+        };
+      }
+
       res.json({
         login: req.params.login,
         held: access.permissions.held,
@@ -598,6 +618,11 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
          * compose a restriction that would never take effect.
          */
         exempt: subject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM),
+
+        /** Per declared account: what the layers beneath this person decide there. */
+        perAccount,
+        /** Which account this install enforces, so the screen can say which tab is live here. */
+        installAccount: installAccountId() ?? null,
       });
     } catch (err) {
       res.status(500).json({ error: sanitizeError(err, "admin") });

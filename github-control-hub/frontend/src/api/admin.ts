@@ -27,6 +27,8 @@ export interface PersonEntry extends PermissionEntry {
   note?: string;
   updatedAt?: string;
   updatedBy?: string;
+  /** What this person holds per account, keyed by account id. */
+  accounts?: Record<string, AccountEntry>;
 }
 
 export interface TeamEntry extends PermissionEntry {
@@ -48,6 +50,12 @@ export interface PermissionsFile {
    * credentials for that account, which is a separate problem.
    */
   awsAccounts?: AwsAccountEntry[];
+}
+
+export interface AccountEntry {
+  presets?: string[];
+  grant?: string[];
+  revoke?: string[];
 }
 
 export interface AwsAccountEntry {
@@ -178,6 +186,11 @@ export interface PersonAccess {
    * accepting an edit that would quietly not apply.
    */
   exempt?: boolean;
+
+  /** Per declared account: what the layers beneath this person decide there. */
+  perAccount?: Record<string, { rules: FlatRule[]; baseline: Record<string, boolean> }>;
+  /** Which account this install enforces, so the screen can say which tab is live. */
+  installAccount?: string | null;
 }
 
 export interface OrgMember {
