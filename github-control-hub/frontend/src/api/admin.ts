@@ -151,6 +151,18 @@ export interface PersonAccess {
   teamsUnavailable?: boolean;
 }
 
+export interface OrgMember {
+  login: string;
+  avatarUrl: string | null;
+}
+
+/**
+ * Everybody in the organization, so the People screen can offer them rather
+ * than requiring their login to be typed exactly right from memory.
+ */
+export const fetchOrgMembers = () =>
+  apiGet<{ members: OrgMember[] }>("/admin/org-members").then(r => r.members);
+
 export const fetchPersonAccess = (login: string) =>
   apiGet<PersonAccess>(`/admin/person/${encodeURIComponent(login)}`);
 

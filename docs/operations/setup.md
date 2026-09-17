@@ -307,7 +307,13 @@ here so that it exists before anyone needs it.
 |---|---|
 | Name | `control-hub-permissions` (override with `PERMISSIONS_REPO`) |
 | Visibility | **Private** |
-| Initialize | empty — the app writes `permissions.json` itself |
+| Initialize | **add a README** — see below |
+
+**Initialize it with something.** A repository created with no commits has no
+default branch, and GitHub's Contents API refuses to write to it — the app
+reports that the repo has no commits yet and asks you to add a file. The
+Bootstrap button creates the repo with a README for this reason; if you create
+it by hand, tick "Add a README file".
 
 Then lock it down, because a file that says who may do what is worth exactly as
 much as the restrictions on who may edit it:
@@ -318,6 +324,38 @@ pushes by humans should be impossible. The app is the only writer; the Admin
 tab is the only way in; git history is the audit log.
 
 Grant the GitHub App **Contents: Read and write** on this repository only.
+
+#### Organization rulesets apply here too
+
+A repository ruleset is not the whole story. **Organization** rulesets
+(Organization → Settings → Rules → Rulesets) layer on top of it, and where they
+overlap the most restrictive wins — so an org-wide "require a pull request
+before merging" rule blocks the app exactly as it blocks a person. The app
+commits straight to the default branch; it does not open pull requests, and it
+should not, because a permissions change that waits for review is a permissions
+change that has not happened.
+
+There is no environment variable or app setting that gets past this — a ruleset
+is only escapable through its own bypass list. Two ways, either is fine:
+
+**Either exclude the repository from the rulesets that would block it.** In each
+org ruleset, under *Target repositories*, exclude `control-hub-permissions` by
+name. This is the narrower change: nothing gains a bypass anywhere else.
+
+**Or add the GitHub App to each ruleset's bypass list.** Edit the ruleset →
+**Bypass list** → *Add bypass* → **GitHub Apps** → your Control Hub app, with
+the mode set to **Always** rather than *For pull requests only* (the app never
+opens one, so pull-requests-only grants it nothing). The app must be installed
+on the organization to appear in that list.
+
+Which rules actually bite: *require a pull request before merging* and *require
+status checks* both block a direct commit. *Require signed commits* does not —
+commits the app makes through the Contents API are signed by GitHub. *Restrict
+who can push* needs the app in its own actor list, which is what the repository
+ruleset above already does.
+
+Check it worked by running the migration. If a ruleset is still in the way the
+app reports the refusal GitHub gave it, naming the rule.
 
 **Turning it on.** `PERMISSIONS_ENABLED=true`, and not before the dry-run is
 clean:

@@ -522,7 +522,23 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
       }
 
       const octokit = createOctokit(getSystemToken(), "Permissions");
-      await octokit.rest.repos.createInOrg({ org: getOrg(), name: PERMISSIONS_REPO, private: true });
+      /**
+       * `auto_init` is not a nicety. A repository created without it has no
+       * commits at all, and the Contents API answers 409 on an empty
+       * repository — which `savePermissions` then reported as "somebody else
+       * saved while this was open", on a repository nobody had ever written
+       * to. The first thing an operator did after creating the repo was the
+       * migration, so the first thing they saw was that.
+       *
+       * A repository with one commit is also what the branch ruleset in
+       * `docs/operations/setup.md` needs to target: there is no default branch
+       * to protect until something has been committed to it.
+       */
+      await octokit.rest.repos.createInOrg({
+        org: getOrg(), name: PERMISSIONS_REPO, private: true,
+        auto_init: true,
+        description: "Who may do what in the Control Hub. Written by the app; do not edit by hand.",
+      });
       repoCreated = true;
 
       forgetPermissions();
@@ -671,6 +687,35 @@ router.post("/migrate", requirePermission("admin.people.assign"), async (req: Re
     res.json({ ok: true, sha: written.sha, people: Object.keys(file.people).length });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
+  }
+});
+
+/**
+ * Everybody in the organization, for the People screen's search.
+ *
+ * The screen used to search `permissions.json` alone, so the only people it
+ * could offer were the ones somebody had already granted something. Adding
+ * anybody new meant typing their login exactly right, from memory, with no
+ * confirmation that the account existed — and a typo created an entry that
+ * would never match anyone, silently.
+ *
+ * Gated on `admin.people.read`, which is the permission for seeing who holds
+ * what. The roster itself is not privileged — every member can see the
+ * organization's people on github.com — but the screen it feeds is.
+ */
+router.get("/org-members", requirePermission("admin.people.read"), async (_req: Request, res: Response) => {
+  try {
+    const octokit = createOctokit(getSystemToken(), "Permissions");
+    const members = await listOrgMembers(depsFromOctokit(octokit), getOrg());
+
+    res.json({
+      // `listOrgMembers` already sorts case-insensitively and de-duplicates
+      // across pages; it is the same read `/dry-run` and `/migrate` make, so
+      // this costs no call they do not already make.
+      members: members.map(m => ({ login: m.login, avatarUrl: m.avatarUrl })),
+    });
+  } catch (err) {
+    res.status(502).json({ error: sanitizeError(err, "admin") });
   }
 });
 

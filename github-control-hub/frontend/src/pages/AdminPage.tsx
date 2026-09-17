@@ -8,7 +8,7 @@ import {
 import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
 import {
-  fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit,
+  fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
   type AdminFile, type PermissionsFile, type PermissionEntry, type PersonEntry, type Preset,
   type PermissionLeaf, type AuditEntry, type FlatRule,
@@ -161,15 +161,41 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
   const [query, setQuery] = useState("");
   const [onlyEmpty, setOnlyEmpty] = useState(false);
 
+  /**
+   * The organization's own roster, not just the file's.
+   *
+   * Searching `file.people` alone meant the only people the screen could offer
+   * were the ones who had already been granted something — so adding anybody
+   * new required typing their login exactly, from memory, and a typo made an
+   * entry that matched no account and said nothing about it.
+   *
+   * A failure here is not fatal: the file's own entries still list and a login
+   * can still be opened directly, which is what the screen did before.
+   */
+  const { data: roster, isLoading: rosterLoading, isError: rosterFailed } = useQuery({
+    queryKey: ["admin", "org-members"], queryFn: fetchOrgMembers, staleTime: 5 * 60_000,
+  });
+
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return Object.entries(file.people)
-      .map(([login, entry]) => ({ login, entry }))
-      .filter(({ entry }) => !onlyEmpty
+    const named = new Set(Object.keys(file.people));
+
+    // Everyone in the file, plus everyone in the organization who is not in it
+    // yet. The second group is what makes somebody addable without knowing how
+    // they spell their username.
+    const all = [
+      ...Object.entries(file.people).map(([login, entry]) => ({ login, entry, inFile: true })),
+      ...(roster ?? [])
+        .filter(m => !named.has(m.login.toLowerCase()))
+        .map(m => ({ login: m.login.toLowerCase(), entry: {} as PersonEntry, inFile: false })),
+    ];
+
+    return all
+      .filter(({ entry, inFile }) => !onlyEmpty || !inFile
         || (!(entry.presets?.length) && !(entry.grant?.length) && !(entry.revoke?.length)))
       .filter(({ login }) => !q || login.includes(q))
       .sort((a, b) => a.login.localeCompare(b.login));
-  }, [file, query, onlyEmpty]);
+  }, [file, roster, query, onlyEmpty]);
 
   const exact = rows.some(r => r.login === query.trim().toLowerCase());
 
@@ -177,7 +203,10 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
     <>
       <div className="flex items-end gap-6 mb-6 flex-wrap">
         <div className="flex-1 min-w-[220px]">
-          <SearchInput value={query} onChange={setQuery} placeholder="Find a login, or type one to open it" />
+          <SearchInput value={query} onChange={setQuery}
+            placeholder={rosterFailed
+              ? "Type a login to open it — the organization's roster could not be read"
+              : rosterLoading ? "Loading the organization…" : "Search anyone in the organization"} />
         </div>
         <label className="flex items-center gap-2 caps text-ink-2 cursor-pointer pb-2.5">
           <input type="checkbox" checked={onlyEmpty} onChange={e => setOnlyEmpty(e.target.checked)} />
@@ -189,7 +218,8 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
         <Empty
           title="Nobody matches"
           body={query.trim()
-            ? `Nobody named "${query.trim()}" is in the file yet. Open it directly to grant them something.`
+            ? `No member of the organization matches "${query.trim()}". If they are an outside `
+              + "collaborator rather than a member, open the login directly."
             : "Nobody is named in the file yet."}
           action={query.trim()
             ? <Button variant="primary" onClick={() => onOpen(query.trim())}>Open {query.trim()}</Button>
@@ -197,9 +227,9 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
         />
       ) : (
         <div className="grid gap-2">
-          {rows.map(({ login, entry }, i) => (
+          {rows.map(({ login, entry, inFile }, i) => (
             <PersonRow key={login} login={login} entry={entry} file={file} index={i}
-              onOpen={() => onOpen(login)} />
+              inFile={inFile} onOpen={() => onOpen(login)} />
           ))}
         </div>
       )}
@@ -215,13 +245,16 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
   );
 }
 
-function PersonRow({ login, entry, file, index, onOpen }: {
-  login: string; entry: PersonEntry; file: PermissionsFile; index: number; onOpen: () => void;
+function PersonRow({ login, entry, file, index, inFile, onOpen }: {
+  login: string; entry: PersonEntry; file: PermissionsFile; index: number;
+  inFile: boolean; onOpen: () => void;
 }) {
   const hasOverrides = !!(entry.grant?.length || entry.revoke?.length);
-  const presetLabel = (entry.presets ?? []).length === 0
-    ? "No preset"
-    : entry.presets!.map(id => file.presets[id]?.name ?? id).join(", ");
+  const presetLabel = !inFile
+    ? "In the organization, holds nothing here yet"
+    : (entry.presets ?? []).length === 0
+      ? "No preset"
+      : entry.presets!.map(id => file.presets[id]?.name ?? id).join(", ");
 
   return (
     <RailCard intent={hasOverrides ? "warn" : "neutral"} index={index} onClick={onOpen}>

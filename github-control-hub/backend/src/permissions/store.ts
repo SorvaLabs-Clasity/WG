@@ -279,6 +279,46 @@ export async function savePermissions(
     return { ok: true, sha: written };
   } catch (err: any) {
     const status = err?.status ?? err?.response?.status;
+
+    /**
+     * An empty repository is not a concurrent edit.
+     *
+     * The Contents API answers 409 for both, and mapping the pair to one
+     * message told operators "somebody else saved while this was open" about a
+     * repository that had never been written to at all — on the migration,
+     * which is the first thing anybody runs. The advice it gave (reload and
+     * re-apply) could not work, because there was nothing to reload and the
+     * next attempt failed identically.
+     *
+     * GitHub says which it is in the message, so read it rather than guess.
+     */
+    const message = String(err?.message ?? "");
+    if (status === 409 && /empty/i.test(message)) {
+      return {
+        ok: false, reason: "failed",
+        detail: `The ${PERMISSIONS_REPO} repository has no commits yet, so there is no branch to write to. `
+          + "Add any file to it on GitHub — a README is enough — and run this again.",
+      };
+    }
+
+    /**
+     * A ruleset refusal is not a concurrent edit either.
+     *
+     * Organization rulesets — "require a pull request before merging", most
+     * often — refuse a direct commit with the same 409/422 the sha check uses.
+     * Told "somebody else saved while this was open", an operator reloads,
+     * tries again, and gets it again, because nothing about reloading changes
+     * whether a rule allows the write. GitHub names the rule in the message;
+     * passing it through is the difference between a dead end and a fix.
+     */
+    if (/rule|ruleset|protected branch|pull request/i.test(message)) {
+      return {
+        ok: false, reason: "failed",
+        detail: `GitHub refused the commit: ${message} `
+          + `Add the app to that ruleset's bypass list, or exclude ${PERMISSIONS_REPO} from it.`,
+      };
+    }
+
     if (status === 409 || status === 422) {
       return {
         ok: false, reason: "conflict",
