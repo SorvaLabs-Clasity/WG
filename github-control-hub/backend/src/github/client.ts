@@ -328,14 +328,57 @@ export function createOctokit(
       // App's — so the two are counted apart and only the App's half is
       // comparable with the headroom this app can read.
       const drawnOn = via ?? (token && token === getSystemToken() ? "app" : "user");
-      recordRequest(
-        scoped !== UNATTRIBUTED ? scoped : (feature ?? UNATTRIBUTED),
-        bucketFor(String(options.url ?? ""), options.method),
-        drawnOn);
+      const attributed = scoped !== UNATTRIBUTED ? scoped : (feature ?? UNATTRIBUTED);
+      recordRequest(attributed, bucketFor(String(options.url ?? ""), options.method), drawnOn);
+      if (drawnOn === "app") noteAppCall(attributed);
     } catch { /* never let bookkeeping break a request */ }
   });
 
   return octokit;
+}
+
+/**
+ * Say so, loudly, when one feature starts spending the App's budget in bulk.
+ *
+ * The App's allowance has been emptied three times by loops nobody could see:
+ * a walk that asked per person, an uncapped pagination, a failure retried
+ * every five seconds. Each time the symptom was "the app says rate limited and
+ * nobody is using it", which names nothing and sends you looking in the wrong
+ * place — GitHub's own rate-limit screen cannot show a secondary limit at all.
+ *
+ * This costs one integer per feature per minute and turns the next one into a
+ * line in the log with the culprit's name on it. It warns rather than blocks:
+ * a legitimate bulk pass exists (the graph aggregator), and a diagnostic that
+ * stopped real work would be worse than the problem.
+ */
+const BURST_WINDOW_MS = 60_000;
+const BURST_WARN_AT = 300;
+let burstWindowStart = Date.now();
+let burstCounts = new Map<string, number>();
+let burstWarned = new Set<string>();
+
+function noteAppCall(feature: string): void {
+  const now = Date.now();
+  if (now - burstWindowStart > BURST_WINDOW_MS) {
+    burstWindowStart = now;
+    burstCounts = new Map();
+    burstWarned = new Set();
+  }
+  const next = (burstCounts.get(feature) ?? 0) + 1;
+  burstCounts.set(feature, next);
+  if (next === BURST_WARN_AT && !burstWarned.has(feature)) {
+    burstWarned.add(feature);
+    console.warn(
+      `[github] "${feature}" has made ${next} App-token requests in under a minute. ` +
+      "That is a loop, not a workload: the App's rate limit is minutes away, and a " +
+      "secondary limit sooner than that. GitHub's rate-limit screen will not show it.",
+    );
+  }
+}
+
+/** Test seam: what has been counted in the current window. */
+export function appCallBurst(): Record<string, number> {
+  return Object.fromEntries(burstCounts);
 }
 
 /**

@@ -33,6 +33,16 @@ import {
 const router = Router();
 
 /**
+ * How many pages of a hundred any membership walk will read.
+ *
+ * Every one of these loops used to end only when a page came back short, so
+ * anything that kept returning a full page spun forever at one GitHub call per
+ * turn. Two thousand members is far past any real organization here; a walk
+ * that reaches this has gone wrong, and stopping is better than continuing.
+ */
+const MAX_MEMBER_PAGES = 20;
+
+/**
  * The legacy team gate, in front of everything, because the permission gates
  * below are inert until a permissions file exists in the organization.
  *
@@ -793,7 +803,7 @@ async function buildMemberSnapshots(): Promise<MemberSnapshot[]> {
   const members = await listOrgMembers(depsFromOctokit(octokit), org);
 
   const owners = new Set<string>();
-  for (let page = 1; ; page++) {
+  for (let page = 1; page <= MAX_MEMBER_PAGES; page++) {
     const { data } = await octokit.rest.orgs.listMembers({ org, role: "admin", per_page: 100, page });
     for (const m of data) if (m.login) owners.add(m.login.toLowerCase());
     if (data.length < 100) break;
@@ -801,7 +811,7 @@ async function buildMemberSnapshots(): Promise<MemberSnapshot[]> {
 
   const teamMembers = async (slug: string): Promise<Set<string>> => {
     const set = new Set<string>();
-    for (let page = 1; ; page++) {
+    for (let page = 1; page <= MAX_MEMBER_PAGES; page++) {
       let data: Array<{ login?: string }>;
       try {
         const res = await octokit.rest.teams.listMembersInOrg({ org, team_slug: slug, per_page: 100, page });
@@ -953,17 +963,35 @@ router.get("/org-members", requirePermission("admin.people.read"), async (_req: 
 async function membersOfTeam(octokit: any, slug: string): Promise<Set<string>> {
   const set = new Set<string>();
   try {
-    for (let page = 1; ; page++) {
+    /**
+     * Capped, and the cap is the point.
+     *
+     * `for (let page = 1; ; page++)` ends only when a page comes back short.
+     * Anything that keeps returning a full page — a proxy serving the same
+     * cached response, an API that ignores `page`, a team of exactly 100 —
+     * spins forever, one GitHub call per turn, and empties the App's rate
+     * limit in seconds with nobody touching the app. Twenty pages is two
+     * thousand members, past which the answer is wrong for a different reason.
+     */
+    for (let page = 1; page <= MAX_MEMBER_PAGES; page++) {
       const { data } = await octokit.rest.teams.listMembersInOrg({
         org: getOrg(), team_slug: slug, per_page: 100, page,
       });
       for (const m of data) if (m.login) set.add(m.login.toLowerCase());
       if (data.length < 100) break;
     }
-  } catch {
-    // A team that cannot be read marks nobody exempt, which shows them as
-    // configurable. The write path checks again and refuses, so the worst case
-    // is a save that is refused rather than an exemption silently lost.
+  } catch (err: any) {
+    /**
+     * A rate limit is not "this team could not be read".
+     *
+     * Swallowing it returned a partial set, marked the wrong people
+     * configurable, and — worse — hid the one condition the caller most needs
+     * to know about, so the app went on spending a budget it did not have.
+     * Everything else still answers empty, which is the conservative reading
+     * the write path re-checks anyway.
+     */
+    const status = err?.status ?? err?.response?.status;
+    if (status === 403 || status === 429) throw err;
   }
   return set;
 }
