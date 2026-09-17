@@ -492,5 +492,53 @@ console.log("\nthe person screen: clearing overrides, and who cannot be edited")
     /exempt\s*=\s*access\?\.exempt/.test(page));
 }
 
+console.log("\nper-account AWS access is findable and grantable");
+{
+  const model = fs.readFileSync("./src/components/permissionTreeModel.ts", "utf8");
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+
+  const PROD = "0".repeat(11) + "1";
+  const vocab = [
+    { key: "aws.remediate", label: "Fix a finding", addedIn: 1 },
+    { key: `aws.account.${PROD}.remediate`, label: "Fix a finding", addedIn: 4 },
+  ];
+
+  /**
+   * The leaves existing is not the same as somebody being able to find them.
+   * They sit three levels down — AWS, then a branch the segment calls
+   * "account", then twelve digits — which reads as one more AWS leaf rather
+   * than as the place per-person, per-account access lives.
+   */
+  const tree = buildTree(vocab, { [PROD]: "prod" });
+  const aws = tree.find(n => n.key === "aws")!;
+  const perAccount = aws.children.find(n => n.key === "aws.account")!;
+
+  check("the per-account branch exists under aws", !!perAccount);
+  check("  and is named for what it is, not for its path segment",
+    perAccount.label === "Per-account access", perAccount.label);
+
+  const account = perAccount.children.find(n => n.key === `aws.account.${PROD}`)!;
+  check("  and each account is named the way people refer to it",
+    account.label === `prod (${PROD})`, account.label);
+  check("    falling back to the id when no name is known",
+    buildTree(vocab, {}).find(n => n.key === "aws")!
+      .children.find(n => n.key === "aws.account")!
+      .children[0].label === PROD);
+
+  check("the person screen says where per-account access lives",
+    /Per-account access/.test(page) && /applies to every account/.test(page),
+    "a branch three levels down that nobody is pointed at is a branch nobody finds");
+
+  /**
+   * And the vocabulary must not be cached forever. That was correct while it
+   * was a fixed list and became wrong the moment declaring an account could
+   * add branches to it — the account you just added would have nothing to
+   * grant until a reload.
+   */
+  check("the vocabulary is refetched, not cached forever",
+    !/queryKey: \["admin", "vocabulary"\][^}]*staleTime: Infinity/s.test(page),
+    "declaring an account changes the vocabulary, so it cannot be immutable");
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

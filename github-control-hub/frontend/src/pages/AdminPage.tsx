@@ -497,6 +497,14 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                   Reload once GitHub is reachable.
                 </Note>
               )}
+              {Object.keys(accounts).length > 0 && !exempt && (
+                <p className={`${TYPE.sub} text-ink-2 mb-3`}>
+                  To give {loginKey} different access in different AWS accounts, open{" "}
+                  <strong className="text-ink">AWS → Per-account access</strong>. Anything ticked
+                  directly under AWS applies to every account, including ones added later.
+                </p>
+              )}
+
               <PermissionTree vocabulary={vocabulary} accounts={accounts} inherited={inherited} baseline={baseline} entry={entry}
                 onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete || exempt} />
 
@@ -987,7 +995,14 @@ export default function AdminPage() {
   const [openPreset, setOpenPreset] = useState<string | "new" | null>(null);
 
   const { data: vocab } = useQuery({
-    queryKey: ["admin", "vocabulary"], queryFn: fetchVocabulary, staleTime: Infinity,
+    queryKey: ["admin", "vocabulary"], queryFn: fetchVocabulary,
+    /**
+     * Not `Infinity` any more. It was right while the vocabulary was a fixed
+     * list, and stopped being right the moment declaring an AWS account could
+     * add branches to it — a cached-forever vocabulary means the account you
+     * just added has nothing to grant until a reload.
+     */
+    staleTime: 60_000,
   });
 
   // Five distinct capabilities, threaded to where each belongs, rather than

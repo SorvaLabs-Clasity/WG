@@ -43,6 +43,12 @@ function labelFor(key: string, segment: string, accounts: AccountNames): string 
     const name = accounts[segment];
     return name ? `${name} (${segment})` : segment;
   }
+  /**
+   * "Account" is what the segment says and it is useless: it sits beside a
+   * dozen AWS leaves that also concern accounts, so it reads as one more of
+   * them rather than as the place per-person, per-account access lives.
+   */
+  if (key === "aws.account") return "Per-account access";
   return prettyLabel(segment);
 }
 
