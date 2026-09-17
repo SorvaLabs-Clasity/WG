@@ -71,6 +71,21 @@ export interface SubjectOptions {
    * login. Omit it instead, and the App token answers about `login` by name.
    */
   ownToken?: string;
+  /**
+   * The only team slugs whose membership can change this subject's answer.
+   *
+   * Without it, answering about somebody who is not the caller means listing
+   * every team in the organization and asking a membership question per team.
+   * That is one GitHub call per team, per person inspected — an administrator
+   * clicking through twenty people in an organization with thirty teams makes
+   * six hundred calls in a few seconds, which is exactly the burst GitHub's
+   * secondary rate limit exists to stop.
+   *
+   * Almost always a much shorter list: the permission file's own `teams`
+   * section, plus the admin team. A team nothing references cannot affect the
+   * answer, so asking about it is work with no outcome.
+   */
+  relevantTeams?: readonly string[];
 }
 
 export async function subjectFor(login: string, opts?: SubjectOptions, now = Date.now()): Promise<Subject> {
@@ -165,7 +180,7 @@ export async function subjectFor(login: string, opts?: SubjectOptions, now = Dat
         subject.teamSlugs = await ownTeams(ownToken, org);
         teamsResolved = true;
       } else if (appToken) {
-        subject.teamSlugs = await teamsOfSomebodyElse(appToken, org, login);
+        subject.teamSlugs = await teamsOfSomebodyElse(appToken, org, login, opts?.relevantTeams);
         teamsResolved = true;
       }
     } catch (err: any) {
@@ -231,9 +246,47 @@ async function ownTeams(ownToken: string, org: string): Promise<string[]> {
  * A failure anywhere throws rather than returning a short list: half the teams
  * is not a smaller answer, it is a wrong one, and the caller fails closed.
  */
-async function teamsOfSomebodyElse(appToken: string, org: string, login: string): Promise<string[]> {
+async function teamsOfSomebodyElse(
+  appToken: string, org: string, login: string, relevant?: readonly string[],
+): Promise<string[]> {
   const octokit = createOctokit(appToken, "Permissions");
   const slugs: string[] = [];
+
+  /**
+   * When the caller says which teams matter, ask about those and nothing else
+   * — no team listing, and one membership call per named team rather than per
+   * team in the organization. An empty list is a real answer: no team can
+   * affect this subject, so there is nothing to ask.
+   */
+  if (relevant) {
+    for (const slug of [...new Set(relevant)]) {
+      try {
+        const { data: membership } = await octokit.rest.teams.getMembershipForUserInOrg({
+          org, team_slug: slug, username: login,
+        });
+
+        /**
+         * A reply that is not a membership is not an answer.
+         *
+         * Reading `state` off whatever came back and finding it undefined
+         * silently becomes "not a member" — so a malformed reply, a proxy's
+         * error page, or a token that has stopped working all read as a
+         * confident no. The caller's whole `teamsUnavailable` distinction
+         * exists to keep "we could not ask" apart from "the answer is none".
+         */
+        if (typeof (membership as any)?.state !== "string") {
+          throw new Error(`team ${slug} answered without a membership state`);
+        }
+        if (membership.state === "active") slugs.push(slug);
+      } catch (err: any) {
+        // 404 is "not a member", which is a real answer. Anything else is not,
+        // and a partial list is a wrong answer rather than a smaller one.
+        if ((err?.status ?? err?.response?.status) !== 404) throw err;
+      }
+    }
+    return slugs;
+  }
+
   for (let page = 1; page <= 10; page++) {
     const { data } = await octokit.rest.teams.list({ org, per_page: 100, page });
     for (const team of data) {

@@ -230,10 +230,11 @@ async function read(): Promise<LoadedPermissions | LoadFailure> {
     if (until !== null) {
       return {
         reason: "unreachable",
-        detail: `The GitHub App's API rate limit is exhausted. It returns at `
+        detail: `GitHub is refusing the App's requests until `
           + `${new Date(until).toLocaleTimeString()}; the app will not ask again before then. `
-          + "This is the App installation's own budget, which is separate from your user token — "
-          + "a full budget on the rate-limit screen is not the same pool.",
+          + "If the rate-limit screen shows a full budget, this was a *secondary* limit — "
+          + "GitHub's throttle on rapid bursts, which never appears there — rather than the "
+          + "hourly budget that screen reports.",
         retryAfter: until,
       };
     }

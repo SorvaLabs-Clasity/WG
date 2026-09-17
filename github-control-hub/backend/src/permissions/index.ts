@@ -190,8 +190,16 @@ export async function accessForSelf(login: string, ownToken: string): Promise<Ac
  * teams are resolved by name, with the App token, not attributed from
  * whatever token the caller happens to be holding.
  */
-export async function accessForOther(login: string): Promise<Access> {
-  return access(login, subjectFor(login));
+export async function accessForOther(
+  login: string, relevantTeams?: readonly string[],
+): Promise<Access> {
+  /**
+   * `relevantTeams` bounds the cost. Without it this lists every team in the
+   * organization and asks a membership question per team — one call per team,
+   * per person inspected. The caller usually knows the short list that can
+   * actually change the answer: the teams the file names, plus the admin team.
+   */
+  return access(login, subjectFor(login, relevantTeams ? { relevantTeams } : undefined));
 }
 
 

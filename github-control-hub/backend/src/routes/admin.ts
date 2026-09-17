@@ -531,7 +531,16 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
       // accessForOther, never accessForSelf: this is an administrator asking
       // about somebody else, and accessForSelf would attribute the caller's
       // own teams to the login being inspected.
-      const access = await accessForOther(req.params.login);
+      /**
+       * Bounded by the teams that can matter, for the same reason as the
+       * subject build below: unbounded, this is one GitHub call per team in
+       * the organization every time somebody opens a person.
+       */
+      const forBound = await loadPermissions();
+      const access = await accessForOther(req.params.login, [
+        CONTROL_HUB_ADMIN_TEAM,
+        ...(isFailure(forBound) ? [] : Object.keys(forBound.file.teams ?? {})),
+      ]);
 
       const explanations: Record<string, ReturnType<typeof access.permissions.explain>> = {};
       for (const leaf of PERMISSIONS) {
@@ -544,10 +553,20 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
        * from the file rather than from `access`, because `access` applies the
        * organization-owner exemption and the tree is editing the file.
        */
-      const [loaded, subject] = await Promise.all([
-        loadPermissions(),
-        subjectFor(req.params.login),
-      ]);
+      /**
+       * The file is read first, so the subject build can be told which teams
+       * can possibly matter: the ones the file itself names, plus the admin
+       * team, which is the total exemption. Without that list this call lists
+       * every team in the organization and asks a membership question per team
+       * — one GitHub call per team, per person opened, which is the burst that
+       * trips GitHub's secondary rate limit after a few clicks.
+       */
+      const loaded = await loadPermissions();
+      const relevantTeams = [
+        CONTROL_HUB_ADMIN_TEAM,
+        ...(isFailure(loaded) ? [] : Object.keys(loaded.file.teams ?? {})),
+      ];
+      const subject = await subjectFor(req.params.login, { relevantTeams });
       const stored = isFailure(loaded) ? emptyFile() : loaded.file;
       const { rules, baseline } = inheritedStanding(stored, subject);
 
