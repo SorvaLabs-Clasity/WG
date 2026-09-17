@@ -703,8 +703,16 @@ async function theAdminRouterDriven() {
       // `/memberships/<login>` deliberately does not match either of these:
       // those are the single-person checks the team gate makes.
       const team = u.match(/\/teams\/([^/]+)\/members(?:\?|$)/);
+
+      // `GET /orgs/<org>/teams` — the org's team list. Served because the
+      // App-token subject builder walks it and asks a membership question per
+      // team, which is the cost the save-budget check below exists to catch.
+      // Without it that path answers nothing and the check measures nothing.
+      const allTeams = /\/orgs\/[^/]+\/teams(?:\?|$)/.test(u);
+
       const list =
-        team ? asUsers(orgSnapshot.teams[team[1]] ?? [])
+        allTeams ? (page > 1 ? [] : Object.keys(orgSnapshot.teams).map(slug => ({ slug, name: slug })))
+        : team ? asUsers(orgSnapshot.teams[team[1]] ?? [])
         : /\/orgs\/[^/]+\/members(?:\?|$)/.test(u)
           ? asUsers(/role=admin/.test(u) ? orgSnapshot.owners : orgSnapshot.members)
         : null;
@@ -918,7 +926,12 @@ async function theAdminRouterDriven() {
       check("a preset edit by somebody holding only admin.people.assign is refused",
         refused.status === 403 && refused.body.code === "PERMISSION_REQUIRED"
           && refused.body.permission === "admin.presets.edit", refused);
-      check("  and nothing was written", writes.length === 0, writes);
+      // Counted as PUTs, not as fetches. A write that changes somebody's entry
+      // now makes one GET first — asking the admin team who its members are, to
+      // see whether the subject is exempt — and "nothing was written" was only
+      // ever using total fetches as a proxy for "no PUT".
+      check("  and nothing was written",
+        writes.filter(w => w.method === "PUT").length === 0, writes);
 
       // A write it does cover, on somebody else.
       const assignsSomebodyElse = JSON.parse(JSON.stringify(stored));
@@ -935,8 +948,9 @@ async function theAdminRouterDriven() {
        * accepts the write unconditionally and the second of two administrators
        * on the same screen silently discards the first one's work.
        */
+      const puts = writes.filter(w => w.method === "PUT");
       check("  and the write carried the sha the editor loaded",
-        writes.length === 1 && writes[0].method === "PUT" && writes[0].sha === "stored-sha", writes);
+        puts.length === 1 && puts[0].sha === "stored-sha", writes);
     }
 
     console.log("\nPUT /file: a conflict is a conflict, and a broken file names its problems");
@@ -965,7 +979,71 @@ async function theAdminRouterDriven() {
       check("an invalid file is refused with its problems named, not with a bare rejection",
         invalid.status === 400 && Array.isArray(invalid.body.problems)
           && invalid.body.problems.some((p: any) => p.where === "people.dana"), invalid);
-      check("  and nothing reached GitHub", writes.length === 0, writes);
+      check("  and nothing was written to GitHub",
+        writes.filter(w => w.method === "PUT").length === 0, writes);
+    }
+
+    console.log("\nwhat a save costs does not scale with the organization");
+    {
+      /**
+       * The bug this exists to prevent, which happened: the exempt-subject
+       * check asked `subjectFor(login)` for every login in the file. For
+       * anybody who is not the caller that runs the App-token path, which
+       * costs one GitHub call **per team in the organization** — its own
+       * docblock says "if it ever becomes a per-request cost, it is the wrong
+       * implementation". After the migration every member is in the file, so
+       * one save cost members × teams calls, emptied the App's rate limit in
+       * two or three saves, and left the permissions file reading as
+       * unreachable: a permissions outage caused by saving permissions.
+       *
+       * The per-login cost itself is **not measurable here** — the `run`
+       * harness installs a `teamsOf` hook, so `subjectFor` never reaches
+       * GitHub in this suite at all. A check that counted calls and called
+       * that proof would pass against the broken code, which is worse than no
+       * check. So the two halves of the fix are asserted directly instead.
+       */
+      const src = fs.readFileSync("./src/routes/admin.ts", "utf8");
+      const fn = src.slice(src.indexOf("async function controlHubAdminsIn"));
+      // Comments stripped: this one explains at length what it must not do,
+      // and a scan that reads the explanation as the code always fails.
+      const body = fn.slice(0, fn.indexOf("\n}"))
+        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+      check("the exempt lookup does not ask per login",
+        !/subjectFor\(/.test(body) && /membersOfTeam\(/.test(body),
+        "subjectFor for somebody else costs one GitHub call per team in the org");
+
+      /**
+       * And the half that is measurable: a save touching nobody's entry —
+       * editing a preset, declaring an AWS account, the commonest saves there
+       * are — must not pay for the exempt lookup at all.
+       */
+      const stored: PermissionsFile = {
+        version: 1,
+        presets: { member: { name: "Member", grant: ["me"] } },
+        teams: {},
+        people: {
+          plain: { grant: ["admin.people.assign", "admin.people.override", "admin.presets.edit"] },
+          dana: { presets: ["member"] },
+        },
+      };
+      const next = JSON.parse(JSON.stringify(stored));
+      next.awsAccounts = [{ accountId: "0".repeat(11) + "7", name: "sandbox" }];
+
+      orgSnapshot = {
+        members: ["plain", "dana"], owners: [],
+        teams: { "control-hub-admins": [], "aws-guardrail-admins": [] },
+      };
+      writes = [];
+      const answer = await run("put", "/file", {
+        stored: loaded(stored), as: "plain",
+        body: { file: next, sha: "stored-sha", summary: "declare an account" },
+      });
+      orgSnapshot = null;
+
+      check("a save that changes no person is accepted", answer.status === 200, answer);
+      check("  and reads no team to decide it",
+        writes.filter(w => w.method === "GET").length === 0,
+        writes.filter(w => w.method === "GET"));
     }
 
     console.log("\nPUT /file: no write may widen the writer");
@@ -1006,7 +1084,12 @@ async function theAdminRouterDriven() {
           && /would give you permissions you do not hold/.test(String(refused.body.error))
           && refused.body.gained.some((k: string) => String(refused.body.error).includes(k)),
         { gained: refused.body.gained?.length, error: refused.body.error });
-      check("  and nothing was written", writes.length === 0, writes);
+      // Counted as PUTs, not as fetches. A write that changes somebody's entry
+      // now makes one GET first — asking the admin team who its members are, to
+      // see whether the subject is exempt — and "nothing was written" was only
+      // ever using total fetches as a proxy for "no PUT".
+      check("  and nothing was written",
+        writes.filter(w => w.method === "PUT").length === 0, writes);
 
       /**
        * The symmetric path: edit a preset you already hold to add `grant:
@@ -1458,7 +1541,12 @@ async function theAdminRouterDriven() {
       });
       check("a file that already names people is refused with a conflict",
         hasPeople.status === 409 && hasPeople.body.code === "conflict", hasPeople);
-      check("  and nothing was written", writes.length === 0, writes);
+      // Counted as PUTs, not as fetches. A write that changes somebody's entry
+      // now makes one GET first — asking the admin team who its members are, to
+      // see whether the subject is exempt — and "nothing was written" was only
+      // ever using total fetches as a proxy for "no PUT".
+      check("  and nothing was written",
+        writes.filter(w => w.method === "PUT").length === 0, writes);
 
       /**
        * The guard checked `people` and not `presets`, while `startingFile`

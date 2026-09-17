@@ -808,12 +808,26 @@ function AwsAccountsView({ file, sha, live, canEdit, onSaved }: {
   const [id, setId] = useState("");
   const [name, setName] = useState("");
 
+  /**
+   * The sha this screen will write against.
+   *
+   * Every save returns the new one, and a second save made before the refetch
+   * lands would otherwise still be carrying the sha from before the first —
+   * which GitHub refuses as a conflict. Adding two accounts in a row is the
+   * obvious thing to do here, so it has to work without waiting.
+   */
+  const [liveSha, setLiveSha] = useState<string | null>(sha);
+  useEffect(() => { setLiveSha(sha); }, [sha]);
+
   useEffect(() => { setRows(file.awsAccounts ?? []); }, [file]);
 
   const save = useMutation({
     mutationFn: (next: AwsAccountEntry[]) =>
-      saveAdminFile({ ...file, awsAccounts: next }, sha, "Update the AWS account list"),
-    onSuccess: onSaved,
+      saveAdminFile({ ...file, awsAccounts: next }, liveSha, "Update the AWS account list"),
+    onSuccess: (result) => { setLiveSha(result.sha); onSaved(); },
+    // The optimistic row goes back if the save failed, so the screen never
+    // shows an account the file does not have.
+    onError: () => setRows(file.awsAccounts ?? []),
   });
 
   const idOk = /^[0-9]{12}$/.test(id.trim());
