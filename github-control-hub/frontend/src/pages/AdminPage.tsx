@@ -11,7 +11,7 @@ import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
   type AdminFile, type PermissionsFile, type PermissionEntry, type PersonEntry, type Preset,
-  type PermissionLeaf, type Explanation, type AuditEntry, type FlatRule,
+  type PermissionLeaf, type AuditEntry, type FlatRule,
 } from "../api/admin";
 import { ago } from "../lib/ago";
 
@@ -32,23 +32,37 @@ import { ago } from "../lib/ago";
 // ── turning a server explanation into a tree layer ──────────────────────
 
 /**
- * The person's resolved state, from `GET /person/:login`, reduced to the
- * layer beneath whatever this screen is about to edit.
+ * The layer beneath whatever this screen is about to edit, as the server
+ * reports it — rules only relabelled for display, never recomputed here.
  *
- * A leaf whose `origin` reads "set on this person" is excluded: that is
- * exactly the person's own current entry, which `PermissionTree` derives
- * itself from `entry` and would otherwise double up on. Everything else —
- * a preset, a team, organization ownership — becomes a leaf-depth rule, so it
- * outranks nothing it should not and loses to a real edit at the same depth.
+ * This used to be derived from the `explanations` map, by dropping every leaf
+ * whose origin read "set on this person" and turning the rest into leaf-depth
+ * rules. That looked like the same thing and was not, twice over:
+ *
+ *   - `explanations` reports the rule that won *overall*. A leaf this person's
+ *     own `revoke` was suppressing appears there as not held, which is
+ *     indistinguishable from a leaf nothing grants — so the baseline agreed
+ *     with the revoke, `collapseEntry` emitted no rule for it, and the next
+ *     unrelated tick rewrote the entry without it. Fifteen AWS leaves came
+ *     back while the tree went on showing fourteen of them unticked.
+ *   - Leaf depth is not the depth the rule was written at, and `decideLeaf` —
+ *     here and on the server alike — ranks depth above layer. A person-layer
+ *     `revoke: ["aws"]` therefore lost to the client's leaf-depth inherited
+ *     grants and won against the server's real `aws`: un-ticking the branch
+ *     moved no checkbox and revoked fourteen leaves on save.
+ *
+ * `GET /admin/person/:login` and `GET /admin/preset/:id/resolved` now answer
+ * with `inherited` and `baseline` directly, from the server's own evaluator.
+ * Nothing is reconstructed on this side, so nothing on this side can disagree
+ * about what a person already holds.
  */
-function inheritedFromExplanations(explanations?: Record<string, Explanation>): FlatRule[] {
-  if (!explanations) return [];
-  const out: FlatRule[] = [];
-  for (const [leaf, exp] of Object.entries(explanations)) {
-    if (!exp.origin || exp.origin === "set on this person") continue;
-    out.push({ node: leaf, effect: exp.held ? "grant" : "revoke", layer: 0, origin: `From ${exp.origin}` });
-  }
-  return out;
+function inheritedFrom(rules?: FlatRule[]): FlatRule[] {
+  return (rules ?? []).map(r => ({ ...r, origin: `From ${r.origin}` }));
+}
+
+/** The server's baseline, in the shape `collapseEntry` reads it. */
+function baselineFrom(baseline?: Record<string, boolean>): Map<string, boolean> | undefined {
+  return baseline ? new Map(Object.entries(baseline)) : undefined;
 }
 
 /** Every preset id -> who holds it, by login or `team <slug>`. */
@@ -314,10 +328,23 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
   });
 
   const inherited = useMemo(() => {
-    if (!presetsChanged) return inheritedFromExplanations(access?.explanations);
-    return presetQueries.flatMap(q => inheritedFromExplanations(q.data?.explanations));
+    if (!presetsChanged) return inheritedFrom(access?.inherited);
+    return presetQueries.flatMap(q => inheritedFrom(q.data?.inherited));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetsChanged, access, presetQueries.map(q => q.dataUpdatedAt).join(",")]);
+
+  /**
+   * The server's own baseline, while it is the one that answers for this
+   * person. Once the preset selection is dirty there is no such answer — the
+   * preset route answers for presets, not for people, so her team-derived
+   * rules are missing — and the tree is read-only until the change is saved;
+   * it derives a baseline from `inherited` there, and nothing is written
+   * against it.
+   */
+  const baseline = useMemo(
+    () => (presetsChanged ? undefined : baselineFrom(access?.baseline)),
+    [presetsChanged, access],
+  );
 
   const dirty = !entriesEqual(entry, { grant: existing?.grant, revoke: existing?.revoke })
     || note.trim() !== (existing?.note ?? "")
@@ -377,7 +404,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                   answer is only right once the server has re-resolved it.
                 </p>
               )}
-              <PermissionTree vocabulary={vocabulary} inherited={inherited} entry={entry}
+              <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
                 onChange={setEntry} readOnly={!canOverride || presetsChanged} />
             </Block>
 
@@ -511,7 +538,8 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     enabled: !!inherits,
     staleTime: 30_000,
   });
-  const inherited = useMemo(() => inheritedFromExplanations(inheritsData?.explanations), [inheritsData]);
+  const inherited = useMemo(() => inheritedFrom(inheritsData?.inherited), [inheritsData]);
+  const baseline = useMemo(() => baselineFrom(inheritsData?.baseline), [inheritsData]);
 
   // The id a new preset would actually save under, and whether that collides
   // with one that already exists — checked ahead of the click, not discovered
@@ -598,7 +626,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         </Block>
 
         <Block title="Permissions">
-          <PermissionTree vocabulary={vocabulary} inherited={inherited} entry={entry}
+          <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
             onChange={setEntry} readOnly={!canEditFields} />
         </Block>
 

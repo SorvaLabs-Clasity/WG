@@ -122,6 +122,25 @@ export interface PersonAccess {
   login: string;
   held: string[];
   explanations: Record<string, Explanation>;
+  /**
+   * Every rule from the layers **beneath** this person's own entry — their
+   * teams and their presets — at the depth each was actually written.
+   *
+   * Not derived from `explanations`. `explanations` says which rule won
+   * overall, which is a different question: a leaf this person's own `revoke`
+   * suppresses reads there as "not granted", exactly like a leaf nothing
+   * grants, and dropping the `set on this person` entries from it therefore
+   * loses the revoke rather than stepping beneath it. Flattening what is left
+   * to leaf depth then inverts `decideLeaf`, which ranks depth above layer.
+   * Both of those wrote entries the screen had not shown.
+   */
+  inherited: FlatRule[];
+  /**
+   * What those layers alone decide, leaf by leaf. The baseline every tree edit
+   * is a difference from, computed by the server's own evaluator so the client
+   * cannot disagree with it about what "already granted" means.
+   */
+  baseline: Record<string, boolean>;
 }
 
 export const fetchPersonAccess = (login: string) =>
@@ -133,6 +152,10 @@ export interface PresetAccess {
   presetId: string;
   held: string[];
   explanations: Record<string, Explanation>;
+  /** The chain's rules, at the depth they were written. As `PersonAccess.inherited`. */
+  inherited: FlatRule[];
+  /** What the chain alone decides. As `PersonAccess.baseline`. */
+  baseline: Record<string, boolean>;
 }
 
 /**

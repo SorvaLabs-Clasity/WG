@@ -50,13 +50,25 @@ export interface PermissionTreeProps {
    * preset with no parent.
    */
   inherited: FlatRule[];
+  /**
+   * What the layers beneath decide, leaf by leaf, as the server computed it.
+   *
+   * Optional, and derived from `inherited` when it is absent — which is only
+   * correct because `decideLeaf` here is the server's `decideLeaf`. Where the
+   * server can answer the question itself it should: the baseline is what every
+   * edit is a difference from, so a client that reconstructs it is a client
+   * that can quietly disagree with the evaluator the save will be judged by.
+   */
+  baseline?: ReadonlyMap<string, boolean>;
   /** The layer being edited. */
   entry: PermissionEntry;
   onChange: (entry: PermissionEntry) => void;
   readOnly?: boolean;
 }
 
-export default function PermissionTree({ vocabulary, inherited, entry, onChange, readOnly }: PermissionTreeProps) {
+export default function PermissionTree({
+  vocabulary, inherited, baseline: given, entry, onChange, readOnly,
+}: PermissionTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   const tree = useMemo(() => buildTree(vocabulary), [vocabulary]);
@@ -70,8 +82,8 @@ export default function PermissionTree({ vocabulary, inherited, entry, onChange,
    * turns on.
    */
   const baseline = useMemo(
-    () => baselineOf(vocabulary, inherited, knownNodes),
-    [vocabulary, inherited, knownNodes],
+    () => given ?? baselineOf(vocabulary, inherited, knownNodes),
+    [given, vocabulary, inherited, knownNodes],
   );
 
   // One layer above the deepest inherited one, so a person's own entry always
