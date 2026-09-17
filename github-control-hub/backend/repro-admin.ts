@@ -1346,6 +1346,42 @@ async function theAdminRouterDriven() {
       check("  every leaf in the vocabulary has a verdict",
         PERMISSIONS.every(l => typeof answer.body.baseline?.[l.key] === "boolean"),
         Object.keys(answer.body.baseline ?? {}).length);
+
+      check("  and the route says the baseline is trustworthy when it is",
+        answer.body.teamsUnavailable === false, answer.body.teamsUnavailable);
+
+      /**
+       * The same request with dana's team read failing. `teams` is omitted, so
+       * no `teamsOf` hook is installed and `subjectFor` falls through to the
+       * real GitHub call the stub cannot satisfy — the transient failure,
+       * exactly as it arrives in production.
+       *
+       * The degraded baseline is not the bug; answering with it silently is.
+       * The tree saves the difference between what is ticked and this map, so a
+       * baseline that has lost her team's `grant: ["aws"]` makes her own
+       * `revoke: ["aws"]` look redundant — and the next tick on any leaf at all
+       * drops it, handing back all fourteen AWS leaves with the screen still
+       * showing them unticked. One failed team listing, and a restriction
+       * somebody set deliberately disappears with nothing having said so.
+       *
+       * So the flag is load-bearing, not advisory: `AdminPage` locks the tree
+       * on it (asserted in `frontend/repro-permissiontree.ts`), and this is the
+       * half that has to tell it.
+       */
+      setPermissionsTestHooks({ loadFile: () => loaded(stored), ownerOf: () => false });
+      forgetPermissions();
+      forgetSubjects();
+      const degraded = await answerOf(handlerFor("get", "/person/:login"), {
+        user: { login: "plain", accessToken: "plain-token" },
+        params: { login: "dana" }, query: {}, body: {},
+      });
+      check("a baseline built without her teams says so",
+        degraded.body.teamsUnavailable === true, degraded.body.teamsUnavailable);
+      check("  and it is degraded in the direction that makes the flag matter",
+        degraded.body.baseline?.["aws.read"] === false,
+        "her team's grant is missing, so her own revoke now looks redundant");
+      check("  while still answering, because the tab must stay readable",
+        degraded.status === 200, degraded.status);
     }
 
     console.log("\nPOST /migrate: it generates a starting file, it does not overwrite one");
