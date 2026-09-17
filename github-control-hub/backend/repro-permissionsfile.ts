@@ -384,9 +384,17 @@ console.log("\nthe one question the app asks");
    * it does not have. A doc comment saying "don't pass somebody else's
    * token" is a promise nothing enforces; a missing parameter is.
    */
-  check("  while accessForOther declares exactly one parameter, so it has no token to misuse",
-    /export async function accessForOther\(login: string\): Promise<Access> \{/.test(index),
-    "a second parameter here would let a dry-run diff reuse the operator's token");
+  /**
+   * Written as "takes no token", not "takes one parameter". It gained a second
+   * parameter — the list of team slugs that can affect the answer, which bounds
+   * an otherwise unbounded walk of every team in the organization — and a check
+   * that counted parameters would have called that a regression. What must
+   * never appear here is a token.
+   */
+  const otherSig = index.match(/export async function accessForOther\(([^)]*)\)/s)?.[1] ?? "";
+  check("  while accessForOther takes no token, so it has none to misuse",
+    otherSig.length > 0 && !/token/i.test(otherSig),
+    { signature: otherSig.replace(/\s+/g, " ").trim() });
 
   /**
    * AWS-only installs have no GitHub organization and no repository to hold a
@@ -552,8 +560,14 @@ console.log("\nthe one question the app asks");
     // Not just that this test happens not to pass a token — the signature
     // itself accepts none, so no future caller can reintroduce the bug.
     const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
+    // The signature itself accepts no token, so no future caller can
+    // reintroduce the bug — asserted as "no token in the parameter list"
+    // rather than as an exact spelling, which a legitimate second parameter
+    // would otherwise break.
+    const sig = index.match(/export async function accessForOther\(([^)]*)\)/s)?.[1] ?? "";
     check("  and accessForOther's signature accepts no token to misuse",
-      /export async function accessForOther\(login: string\): Promise<Access> \{/.test(index));
+      sig.length > 0 && !/token/i.test(sig),
+      { signature: sig.replace(/\s+/g, " ").trim() });
 
     setPermissionsTestHooks(null);
     forgetPermissions();

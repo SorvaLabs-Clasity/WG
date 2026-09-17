@@ -59,10 +59,12 @@ async function main() {
     const first = await loadPermissions();
     check("the first read fails", isFailure(first) && first.reason === "unreachable", first);
     check("  and says the budget is the reason, with when it returns",
-      isFailure(first) && /rate limit/i.test(first.detail) && typeof first.retryAfter === "number",
+      isFailure(first) && /rate.?limit|refusing/i.test(first.detail)
+        && typeof first.retryAfter === "number",
       isFailure(first) ? first.detail : first);
-    check("  and names the App's budget as a different pool from the user's",
-      isFailure(first) && /separate|installation/i.test(first.detail));
+    check("  and accounts for a full budget on the rate-limit screen",
+      isFailure(first) && /secondary/i.test(first.detail),
+      "the screen reports the hourly budget; a burst trips a limit it never shows");
 
     const afterFirst = calls;
 
@@ -102,6 +104,42 @@ async function main() {
       calls > afterFirst,
       "holding every failure for half an hour would strand somebody repairing the file");
   }
+  console.log("\nasking about somebody else is bounded by the teams that matter");
+  {
+    const { subjectFor, forgetSubjects } = await import("./src/permissions/subject");
+
+    /**
+     * Unbounded, this lists every team in the organization and asks a
+     * membership question per team — one GitHub call per team, per person
+     * inspected. An administrator clicking through twenty people in an
+     * organization with thirty teams makes six hundred calls in a few seconds,
+     * which is the burst that trips GitHub's secondary rate limit. Almost
+     * always only a handful of teams can change the answer: the ones the
+     * permissions file names, plus the admin team.
+     */
+    answer = { status: 404, headers: {}, body: { message: "Not Found" } };
+
+    forgetSubjects();
+    calls = 0;
+    await subjectFor("someone-else", { relevantTeams: ["control-hub-admins", "platform"] });
+    const bounded = calls;
+
+    check("two relevant teams cost a bounded number of calls",
+      bounded <= 4, bounded);
+
+    forgetSubjects();
+    calls = 0;
+    await subjectFor("someone-else", { relevantTeams: ["control-hub-admins"] });
+    check("  and one team costs fewer than two",
+      calls < bounded, { one: calls, two: bounded });
+
+    forgetSubjects();
+    calls = 0;
+    await subjectFor("someone-else", { relevantTeams: [] });
+    check("  and no relevant teams asks nothing about teams at all",
+      calls <= 1, calls);
+  }
+
 }
 
 main().then(() => {
