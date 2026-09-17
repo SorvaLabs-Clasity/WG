@@ -99,8 +99,44 @@ function bootstrapOnce(): Promise<void> {
   return bootstrapped;
 }
 
-export async function handler(): Promise<void> {
+/**
+ * How much of the invocation is left, and how much of it this pass will use.
+ *
+ * The handler took no arguments, so it never saw Lambda's context and had no
+ * way to know how long it had. It therefore ran until Lambda killed it: a
+ * timeout is an error, an errored schedule is retried, and with a five-minute
+ * timeout on a five-minute schedule the retries overlap the next pass. The
+ * function ends up running continuously, which is both the bill and — because
+ * it holds the App's token the whole time — a standing drain on the GitHub
+ * rate limit.
+ *
+ * `RESERVE_MS` is what is left unspent so the pass can finish its bookkeeping,
+ * write its summary and return cleanly. Stopping early with work outstanding is
+ * fine: everything below the alarm evaluation is *cache warming*, and a warm
+ * that does not happen costs somebody one slow page load, while a timeout costs
+ * the whole pass including the alarms that had not been reached yet.
+ */
+const RESERVE_MS = 30_000;
+const LOCAL_BUDGET_MS = 120_000;
+
+interface LambdaContextLike { getRemainingTimeInMillis?: () => number }
+
+function deadlineFrom(context?: LambdaContextLike): number {
+  const remaining = context?.getRemainingTimeInMillis?.();
+  const budget = typeof remaining === "number" && Number.isFinite(remaining)
+    ? remaining
+    // No context: a local run or a test. A fixed budget keeps the shape of the
+    // pass identical rather than making "no deadline" a second code path.
+    : LOCAL_BUDGET_MS;
+  return Date.now() + Math.max(0, budget - RESERVE_MS);
+}
+
+export async function handler(_event?: unknown, context?: LambdaContextLike): Promise<void> {
   const startedAt = Date.now();
+  const deadline = deadlineFrom(context);
+  const timeLeft = () => deadline - Date.now();
+  const outOfTime = () => timeLeft() <= 0;
+
   await bootstrapOnce();
 
   // ── the developers' own digests ───────────────────────────────────
@@ -314,7 +350,14 @@ export async function handler(): Promise<void> {
     const stored = await readDependencySnapshot();
     const age = stored?.computedAt ? Date.now() - Date.parse(stored.computedAt) : Infinity;
 
-    if (!(age < WARM_MS)) {
+    /**
+     * The most expensive thing this pass can do: a full Dependabot sweep of the
+     * organization plus a paginated search. Started only with real time in
+     * hand, because started with two minutes left it cannot finish, and the
+     * timeout it causes takes the whole pass with it — including the alarms.
+     * Skipping leaves the view an hour stale, which is what it already was.
+     */
+    if (!(age < WARM_MS) && timeLeft() > 90_000) {
       const { buildDependencyView } = await import("../services/dependencyView");
       const { fetchOrgDependencyAlerts } = await import("../services/dependencyService");
 
@@ -377,6 +420,7 @@ export async function handler(): Promise<void> {
         ["renovate-prs", () => buildRenovatePrs(octokit, org, bot)],
         ["renovate-dashboards", () => buildRenovateDashboards(octokit, org, bot)],
       ] as const) {
+        if (outOfTime()) break;
         const stored = await readView<any>(kind);
         if (isViewFresh(kind, stored)) continue;
         await saveView(kind, await build());
@@ -412,13 +456,27 @@ export async function handler(): Promise<void> {
     const { listViews, saveView, isViewFresh } = await import("../services/viewSnapshot");
     const { buildShipped } = await import("../routes/me");
 
+    /**
+     * Time-boxed, not count-boxed.
+     *
+     * This warmed a fixed forty rows a pass. Each one is a scan of the
+     * organization-wide activity table through a free-text filter, reading up
+     * to four hundred entries — so "forty" is a number whose cost nobody knows
+     * until it has been paid, and on a large table it is most of a five-minute
+     * invocation, every five minutes, for ever.
+     *
+     * The stalest first, for as long as there is time. A pass that warms six
+     * rows and returns is doing its job; the next pass takes the next six, and
+     * the ones nobody opens are never anybody's cost.
+     */
     const rows = (await listViews("shipped#"))
       .filter(row => !isViewFresh(row.kind, row))
-      .sort((a, b) => a.computedAt.localeCompare(b.computedAt))
-      .slice(0, 40);
+      .sort((a, b) => a.computedAt.localeCompare(b.computedAt));
 
     let warmed = 0;
+    let ranOut = false;
     for (const row of rows) {
+      if (outOfTime()) { ranOut = true; break; }
       // `shipped#<login>#<days>`. A key that does not split into three is one
       // this pass did not write and must not act on.
       const parts = row.kind.split("#");
@@ -433,7 +491,12 @@ export async function handler(): Promise<void> {
         console.warn(`[Alarm] Could not refresh ${row.kind}: ${err?.message ?? err}`);
       }
     }
-    if (warmed) console.log(`[Alarm] Refreshed ${warmed} My work rows`);
+    if (warmed || ranOut) {
+      console.log(
+        `[Alarm] Refreshed ${warmed} My work rows of ${rows.length} stale`
+        + (ranOut ? `, stopped on the clock with ${rows.length - warmed} left for the next pass` : ""),
+      );
+    }
   } catch (err: any) {
     // Warming a view must never fail a pass that has already evaluated alarms
     // and sent what it needed to send.
@@ -446,6 +509,26 @@ export async function handler(): Promise<void> {
     `${summary.recovered} recovered, ${summary.unreadable} unreadable, ` +
     `${summary.publishFailures} publish failures`,
   );
+
+  /**
+   * How long the pass took, and how close to the edge it came.
+   *
+   * Without this the only way to learn that a pass runs to its timeout is the
+   * bill — which is how it was found: $21 of compute in a month, which is
+   * ~290 seconds an invocation against a 300-second ceiling, every five
+   * minutes. One line per pass makes the same fact readable in the log, and
+   * says so out loud once there is less than a quarter of the budget left.
+   */
+  const tookMs = Date.now() - startedAt;
+  const spareMs = timeLeft();
+  console.log(`[Alarm] pass took ${Math.round(tookMs / 1000)}s, ${Math.round(spareMs / 1000)}s of budget unused`);
+  if (spareMs < RESERVE_MS) {
+    console.warn(
+      `[Alarm] the pass used all but ${Math.round(spareMs / 1000)}s of its budget. ` +
+      "It runs every five minutes with a five-minute ceiling, so a pass this long " +
+      "overlaps the next one and a pass that overruns is retried on top of it.",
+    );
+  }
 
   // ── the dashboard's snapshots ───────────────────────────────────────
   //
@@ -477,12 +560,20 @@ export async function handler(): Promise<void> {
       .then(edges => edges.filter((e: any) => e.type === "repo_meta").length)
       .catch(() => null);
 
-    let stored = 0, failed = 0;
+    let stored = 0, failed = 0, widgetsLeft = 0;
     // One graph reading for every widget in this snapshot, so two cards cannot
     // disagree because the graph moved between them, and the table is scanned
     // once rather than once every six seconds for the length of the loop.
     await withPinnedGraph(async () => {
     for (const widget of all) {
+      /**
+       * Each widget is a live reading of the organization, and the
+       * subject-by-subject checks draw on commit search, which allows thirty
+       * requests a minute. One slow widget must not eat the invocation and
+       * take the rest down with it — the snapshot a widget does not get is one
+       * stale card, while a timeout is the whole pass, alarms included.
+       */
+      if (outOfTime()) { widgetsLeft = all.length - stored - failed; break; }
       try {
         const result = await computeWidgetRows(widget as any, sources);
         await saveWidgetSnapshot(widget.id, result, repoTotal);
