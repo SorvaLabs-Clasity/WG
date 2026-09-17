@@ -7,7 +7,7 @@ import {
   forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
   changeClasses, explainPreset, subjectFor,
 } from "../permissions";
-import { permissionsFor } from "../permissions/evaluate";
+import { permissionsFor, inheritedStanding, presetStanding } from "../permissions/evaluate";
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
 import { emptyFile, type PermissionsFile } from "../permissions/types";
 import { PERMISSIONS_REPO, PERMISSIONS_PATH } from "../permissions/store";
@@ -124,6 +124,102 @@ async function readableSections(
 }
 
 /**
+ * The one way this router writes `permissions.json`.
+ *
+ * **No write may widen the writer.** `docs/auth/permissions-model.md` states
+ * that without qualification — "it closes the ones nobody has thought of yet" —
+ * and it was implemented on `PUT /file` alone. `POST /migrate` also writes a
+ * whole file, and the file it writes hands the `control-hub-admin` preset, the
+ * entire `admin` branch, to everybody on `control-hub-admins`, which after the
+ * team gate above is everybody who can reach the route at all. One call took a
+ * caller holding `admin.people.assign` to all ninety-three leaves. `POST
+ * /bootstrap` is a third write path, and a fourth added later would be a fourth
+ * place to remember.
+ *
+ * So the rule lives on *writing the file* rather than on one route. Every write
+ * path in this router goes through here, and `savePermissions` is imported
+ * nowhere else in it; a route that calls it directly is the thing to look for
+ * in review.
+ *
+ * What it asks is what `PUT /file` asked: what do *I* hold under the stored
+ * file, and what would I hold under the one being written, per `permissionsFor`
+ * — the same evaluator the gates use — over the caller's real subject. It
+ * permits an administrator to narrow themselves and to edit a preset they hold
+ * in ways that do not widen them. Organization owners are exempt, as they are
+ * everywhere else here: they already hold everything, so there is nothing to
+ * widen into.
+ *
+ * Inert with `PERMISSIONS_ENABLED` unset, like every other permission decision
+ * in this router.
+ */
+type Written =
+  | { ok: true; sha: string }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+async function writeFile(
+  req: Request, before: PermissionsFile, toSave: PermissionsFile,
+  sha: string | null, summary: string,
+): Promise<Written> {
+  if (PERMISSIONS_ENABLED()) {
+    const subject = await subjectFor(req.user!.login, { ownToken: req.user!.accessToken });
+
+    /**
+     * A subject whose teams could not be read is not a subject with no teams.
+     *
+     * `subjectFor` catches a failed team listing and answers with an empty
+     * list. The comparison below then computes **both** sides against a
+     * teamless subject, so a write granting `admin` to a team the caller is in
+     * registers as no gain and is written — a transient failure on `GET
+     * /user/teams` is the whole precondition. It is the same window `PUT
+     * /file`'s unreadable-store check was fixed for, and it has to fail the
+     * same way: an outage, not a decision. 503 is what the gate above answers
+     * when it cannot establish the caller's standing either.
+     */
+    if (subject.teamsUnavailable) {
+      return {
+        ok: false, status: 503,
+        body: {
+          code: "PERMISSIONS_UNAVAILABLE",
+          error: "Your own GitHub team membership could not be read, so this change cannot be "
+            + "checked against what you already hold and will not be written. Try again.",
+        },
+      };
+    }
+
+    if (!subject.isOrgOwner) {
+      const nowHeld = permissionsFor(before, subject);
+      const wouldHold = permissionsFor(toSave, subject);
+      const gained = wouldHold.held.filter(leaf => !nowHeld.has(leaf));
+
+      if (gained.length > 0) {
+        return {
+          ok: false, status: 403,
+          body: {
+            code: "SELF_WIDENING",
+            gained,
+            error: "This change would give you permissions you do not hold: "
+              + `${gained.slice(0, 6).join(", ")}${gained.length > 6 ? `, and ${gained.length - 6} more` : ""}. `
+              + "Nobody may widen their own access; ask another administrator to make this change.",
+          },
+        };
+      }
+    }
+  }
+
+  // sha is the blob the editor loaded; savePermissions refuses rather than
+  // clobbering a concurrent edit if it has moved on.
+  const result = await savePermissions(toSave, sha, req.user!.login, summary);
+  if (result.ok) return { ok: true, sha: result.sha };
+  if (result.reason === "conflict") {
+    return { ok: false, status: 409, body: { code: "conflict", error: result.detail } };
+  }
+  if (result.reason === "invalid") {
+    return { ok: false, status: 400, body: { error: result.detail, problems: fileProblems(toSave) } };
+  }
+  return { ok: false, status: 502, body: { error: result.detail } };
+}
+
+/**
  * This receives a whole file, the same shape whether the caller only meant to
  * change one person's note or meant to rewrite every preset in the
  * organization. `requireAnyPermission` below is a cheap rejection of somebody
@@ -151,6 +247,14 @@ router.put(
 
   try {
     let toSave = file as PermissionsFile;
+
+    /**
+     * What the change is diffed against, and what `writeFile` compares the
+     * caller's own standing across. Only ever read — and only ever needed —
+     * inside the enforcement branch below; an empty file here is never used as
+     * a baseline, because `writeFile` does not look at it with the flag unset.
+     */
+    let before: PermissionsFile = emptyFile();
 
     /**
      * Off by default, exactly like the gate above: with `PERMISSIONS_ENABLED`
@@ -193,7 +297,7 @@ router.put(
           return;
         }
 
-        const before = loadedBefore.file;
+        before = loadedBefore.file;
 
         /**
          * A section withheld on the way out comes back on the way in.
@@ -231,69 +335,23 @@ router.put(
         }
 
         /**
-         * **No write may widen the writer.**
-         *
-         * `changeClasses` derives what a write *does*; nothing derived who it
-         * was done *to*. A holder of `admin.people.assign` alone could add the
-         * shipped `control-hub-admin` preset — which grants the whole `admin`
-         * branch — to their own entry: the diff classifies as exactly
-         * `admin.people.assign`, so it was permitted, and afterwards they held
-         * all five admin write permissions. The symmetric path existed for
-         * `admin.presets.edit`: edit a preset you hold to add `grant:
-         * ["admin"]`. The five-way split is this stage's headline deliverable
-         * and both paths collapse it back into one.
-         *
-         * Enumerating the routes would be a list to keep complete. This asks
-         * the question directly instead — what do *I* hold before, and what
-         * would I hold after — with `permissionsFor`, the same evaluator the
-         * gates use, over the caller's real subject. It permits an
-         * administrator to narrow themselves and to edit a preset they hold in
-         * ways that do not widen them, and it closes every escalation path
-         * including ones nobody has thought of yet.
-         *
-         * Organization owners are exempt, as they are everywhere else here:
-         * they already hold everything, so there is nothing to widen into.
+         * The self-widening rule that used to live here is now in `writeFile`
+         * below, which every write path in this router goes through — see its
+         * docblock. `changeClasses` derives what a write *does*; nothing here
+         * derives who it was done *to*, and that was the hole: a holder of
+         * `admin.people.assign` alone could add the shipped `control-hub-admin`
+         * preset to their own entry and the diff classified as exactly
+         * `admin.people.assign`.
          */
-        const subject = await subjectFor(req.user!.login, { ownToken: req.user!.accessToken });
-        if (!subject.isOrgOwner) {
-          const nowHeld = permissionsFor(before, subject);
-          const wouldHold = permissionsFor(toSave, subject);
-          const gained = wouldHold.held.filter(leaf => !nowHeld.has(leaf));
-
-          if (gained.length > 0) {
-            res.status(403).json({
-              code: "SELF_WIDENING",
-              gained,
-              error: "This change would give you permissions you do not hold: "
-                + `${gained.slice(0, 6).join(", ")}${gained.length > 6 ? `, and ${gained.length - 6} more` : ""}. `
-                + "Nobody may widen their own access; ask another administrator to make this change.",
-            });
-            return;
-          }
-        }
       }
     }
 
-    // sha is the blob the editor loaded; savePermissions refuses rather than
-    // clobbering a concurrent edit if it has moved on.
-    const result = await savePermissions(toSave, sha ?? null, req.user!.login, summary);
-
-    if (result.ok) {
-      res.json({ ok: true, sha: result.sha });
+    const written = await writeFile(req, before, toSave, sha ?? null, summary);
+    if (written.ok) {
+      res.json({ ok: true, sha: written.sha });
       return;
     }
-
-    if (result.reason === "conflict") {
-      res.status(409).json({ code: "conflict", error: result.detail });
-      return;
-    }
-
-    if (result.reason === "invalid") {
-      res.status(400).json({ error: result.detail, problems: fileProblems(toSave) });
-      return;
-    }
-
-    res.status(502).json({ error: result.detail });
+    res.status(written.status).json(written.body);
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }
@@ -305,6 +363,35 @@ router.get("/vocabulary", requirePermission("admin.console.open"), (_req: Reques
   res.json({ permissions: PERMISSIONS, version: VOCABULARY_VERSION });
 });
 
+/**
+ * One person's standing, and the baseline the admin tree edits against.
+ *
+ * `explanations` says which rule won overall, leaf by leaf, and that is a
+ * different question from the one the tree asks. The tree edits **one layer** —
+ * this person's own `grant`/`revoke` — and writes the shortest entry expressing
+ * the difference from everything beneath it, so what it needs is "what would
+ * they hold if their own entry were empty".
+ *
+ * The client used to derive that from `explanations`, by dropping every leaf
+ * whose origin read `set on this person` and flattening the rest to leaf depth.
+ * Both halves were wrong, and each produced a silent, dangerous write:
+ *
+ *   - A leaf this person's own `revoke` was suppressing came back as "not
+ *     granted" — indistinguishable from a leaf nothing grants — so the revoke
+ *     agreed with the baseline, no rule was emitted for it, and the next
+ *     unrelated tick rewrote the entry without it. Fifteen AWS leaves came back
+ *     while the screen went on showing fourteen of them unticked.
+ *   - Flattening to leaf depth inverted `decideLeaf` on the client: a person's
+ *     collapsed `revoke: ["aws"]` lost to the client's leaf-depth inherited
+ *     grants and won against the server's real `aws`, so un-ticking a branch
+ *     moved no checkbox on screen and revoked fourteen leaves on save.
+ *
+ * So the server answers the question the tree actually asks, from the same
+ * evaluator that will decide it in production: `inherited`, every rule beneath
+ * this person at the depth it was written, and `baseline`, what those rules
+ * alone decide. Whatever the tree saves then resolves, through `permissionsFor`,
+ * to exactly the set the administrator saw ticked.
+ */
 router.get("/person/:login", requirePermission("admin.people.read"), async (req: Request<{ login: string }>, res: Response) => {
     try {
       // accessForOther, never accessForSelf: this is an administrator asking
@@ -317,7 +404,26 @@ router.get("/person/:login", requirePermission("admin.people.read"), async (req:
         explanations[leaf.key] = access.permissions.explain(leaf.key);
       }
 
-      res.json({ login: req.params.login, held: access.permissions.held, explanations });
+      /**
+       * Both of these are the reads `accessForOther` just made, answered from
+       * the same one-minute caches, so this costs no extra GitHub call. Read
+       * from the file rather than from `access`, because `access` applies the
+       * organization-owner exemption and the tree is editing the file.
+       */
+      const [loaded, subject] = await Promise.all([
+        loadPermissions(),
+        subjectFor(req.params.login),
+      ]);
+      const stored = isFailure(loaded) ? emptyFile() : loaded.file;
+      const { rules, baseline } = inheritedStanding(stored, subject);
+
+      res.json({
+        login: req.params.login,
+        held: access.permissions.held,
+        explanations,
+        inherited: rules.map(r => ({ node: r.node, effect: r.effect, layer: r.layer, origin: r.origin })),
+        baseline,
+      });
     } catch (err) {
       res.status(500).json({ error: sanitizeError(err, "admin") });
     }
@@ -340,7 +446,19 @@ router.get("/preset/:id/resolved", requirePermission("admin.presets.read"), asyn
     const explanations = explainPreset(file.presets ?? {}, req.params.id);
     const held = Object.entries(explanations).filter(([, e]) => e.held).map(([key]) => key).sort();
 
-    res.json({ presetId: req.params.id, held, explanations });
+    // The same pair `GET /person/:login` returns, for the Presets editor's own
+    // tree: the chain's rules at the depth they were written, and what they
+    // alone decide. A preset's tree edits its own layer against its parent's
+    // exactly the way a person's edits theirs against their teams.
+    const { rules, baseline } = presetStanding(file.presets ?? {}, req.params.id);
+
+    res.json({
+      presetId: req.params.id,
+      held,
+      explanations,
+      inherited: rules.map(r => ({ node: r.node, effect: r.effect, layer: r.layer, origin: r.origin })),
+      baseline,
+    });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }
@@ -368,7 +486,10 @@ router.get("/audit", requirePermission("admin.audit.read"), async (_req: Request
 
 // Writes a whole file too, but never over one `changeClasses` could be asked
 // to diff: it only ever creates an *empty* file, so there is nothing here to
-// launder a people/preset change past that check.
+// launder a people/preset change past that check. It still goes through
+// `writeFile` rather than `savePermissions`, because "this particular write
+// cannot widen anybody" is a fact about today's code and not a property of the
+// route, and the next person to edit it should not have to rediscover that.
 router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: Request, res: Response) => {
   const createRepo = req.body?.createRepo === true;
 
@@ -401,9 +522,9 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
 
     let fileCreated = false;
     if (loaded.source === "absent" || loaded.source === "no-repo") {
-      const result = await savePermissions(emptyFile(), null, req.user!.login, "Initialise permissions");
-      if (!result.ok) {
-        res.status(502).json({ repoCreated, fileCreated: false, error: result.detail });
+      const written = await writeFile(req, loaded.file, emptyFile(), null, "Initialise permissions");
+      if (!written.ok) {
+        res.status(written.status).json({ repoCreated, fileCreated: false, ...written.body });
         return;
       }
       fileCreated = true;
@@ -501,14 +622,20 @@ router.post("/migrate", requirePermission("admin.people.assign"), async (req: Re
      * `admin.presets.delete` and `admin.presets.create` as well, which is
      * exactly the laundering this route's own comment says cannot happen here.
      *
-     * Either table being non-empty means there is something to discard, so
-     * either one refuses.
+     * It then still ignored `teams`, which is the third table and the one
+     * `docs/auth/permissions-model.md` encourages authority to be delivered
+     * through: a file whose whole content was `teams` had both guarded tables
+     * empty, passed, and had the team that was granting the caller their one
+     * permission erased and replaced with a preset granting them the lot.
+     *
+     * `startingFile` replaces all three, so any of the three being non-empty
+     * means there is something to discard, and any of the three refuses.
      */
-    const existingPeople = Object.keys(currentFile.people ?? {}).length;
-    const existingPresets = Object.keys(currentFile.presets ?? {}).length;
-    if (existingPeople > 0 || existingPresets > 0) {
-      const what = existingPeople > 0 && existingPresets > 0 ? "people and presets"
-        : existingPeople > 0 ? "people" : "presets";
+    const occupied = (["people", "presets", "teams"] as const)
+      .filter(section => Object.keys(currentFile[section] ?? {}).length > 0);
+    if (occupied.length > 0) {
+      const what = occupied.length === 1 ? occupied[0]
+        : `${occupied.slice(0, -1).join(", ")} and ${occupied[occupied.length - 1]}`;
       res.status(409).json({
         code: "conflict",
         error: `permissions.json already has ${what} in it; refusing to overwrite it with a generated starting file.`,
@@ -520,21 +647,14 @@ router.post("/migrate", requirePermission("admin.people.assign"), async (req: Re
     const file = startingFile(members);
     const sha = isFailure(loaded) ? null : loaded.sha;
 
-    const result = await savePermissions(file, sha, req.user!.login, "Generate the starting permissions file");
-    if (!result.ok) {
-      if (result.reason === "conflict") {
-        res.status(409).json({ code: "conflict", error: result.detail });
-        return;
-      }
-      if (result.reason === "invalid") {
-        res.status(400).json({ error: result.detail, problems: fileProblems(file) });
-        return;
-      }
-      res.status(502).json({ error: result.detail });
+    const written = await writeFile(req, currentFile, file, sha,
+      "Generate the starting permissions file");
+    if (!written.ok) {
+      res.status(written.status).json(written.body);
       return;
     }
 
-    res.json({ ok: true, sha: result.sha, people: Object.keys(file.people).length });
+    res.json({ ok: true, sha: written.sha, people: Object.keys(file.people).length });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }

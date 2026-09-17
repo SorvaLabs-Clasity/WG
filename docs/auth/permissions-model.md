@@ -121,6 +121,21 @@ ones nobody has thought of yet.
 Organization owners are exempt, as they are everywhere else: they already hold
 everything, so there is nothing to widen into.
 
+The rule belongs to **writing the file**, not to one endpoint. It was
+implemented on `PUT /api/admin/file` alone, and `POST /api/admin/migrate` —
+which writes a whole file, and writes one handing the `control-hub-admin`
+preset to everybody on `control-hub-admins` — took a caller holding
+`admin.people.assign` to the entire vocabulary in one call. Every write path in
+the Admin router now goes through one function that asks the question before it
+saves; a route that reaches `savePermissions` directly is a bug.
+
+And the comparison refuses rather than guesses when the caller's own standing
+cannot be established. A subject whose GitHub teams could not be read is not a
+subject with no teams: both sides of the comparison would lose the same teams,
+so granting `admin` to a team the caller is in would register as no gain. That
+answers 503 `PERMISSIONS_UNAVAILABLE`, the same thing the gates say when they
+cannot decide — the fail-closed rule this design commits to everywhere else.
+
 ### A section you may not read is one you may not write blind
 
 `GET /api/admin/file` is reachable with either `admin.people.read` or
@@ -133,6 +148,32 @@ section back from the stored file before diffing or saving it. Without that, a
 presets-only editor's next save would delete every person in the organization.
 A section the caller *did* submit is judged normally by the diff, whatever they
 may read: quietly reverting somebody's edit is worse than refusing it.
+
+### The tree edits one layer, as a difference from the ones beneath it
+
+The permission tree on the Admin tab writes one thing: a person's own
+`grant`/`revoke`, which outranks their presets and their GitHub teams. So a
+click has to be saved as the *difference* from what those other layers already
+give — a leaf whose desired state already matches them produces no rule at all.
+Writing the resolved state instead freezes a team's grants into the person's
+entry and revokes, at the person layer, every branch the screen happened not to
+show.
+
+The baseline that difference is taken against comes from the server. `GET
+/api/admin/person/:login` answers with `inherited` — every rule from the layers
+beneath that person, **at the depth each was written** — and `baseline`, what
+those rules alone decide, leaf by leaf. Neither is derived from the
+`explanations` map, which reports the rule that won *overall* and is a
+different question: a leaf the person's own `revoke` suppresses reads there as
+"not granted", exactly like a leaf nothing grants, so filtering their own
+entries out of it loses the revoke instead of stepping beneath it. Flattening
+what is left to leaf depth then inverts the resolver, which ranks depth above
+layer.
+
+The property this exists for, and the one `frontend/repro-permissiontree.ts`
+asserts directly: **for any tree edit, what is saved resolves — through the
+server's own `permissionsFor` — to exactly the set the administrator saw
+ticked.**
 
 ## When GitHub is down
 
