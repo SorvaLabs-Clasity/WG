@@ -66,8 +66,22 @@ export async function isControlHubAdmin(login: string, userToken?: string): Prom
   return !!(await adminVia(login, CONTROL_HUB_ADMIN_TEAM, userToken));
 }
 
-/** Who may create, edit, run or delete AWS guardrails. */
+/**
+ * Who may create, edit, run or delete AWS guardrails.
+ *
+ * **The Control Hub admin team counts.** That team means "everything in this
+ * app", the AWS half included — `permissionsFor` has given them every AWS
+ * permission since the exemption was added, and this legacy gate sits *in
+ * front of* the permission gates on every AWS write route. Checking only
+ * `AWS_ADMIN_TEAM` meant a Control Hub admin was refused before the permission
+ * system was ever consulted, and told to join a team that is supposed to have
+ * stopped mattering.
+ *
+ * `AWS_ADMIN_TEAM` is still honoured, so nobody who has access today loses it.
+ * Removing that team is a separate decision, made on GitHub.
+ */
 export async function isAwsAdmin(login: string, userToken?: string): Promise<boolean> {
+  if (await adminVia(login, CONTROL_HUB_ADMIN_TEAM, userToken)) return true;
   return !!(await adminVia(login, AWS_ADMIN_TEAM, userToken));
 }
 
@@ -77,7 +91,10 @@ export async function controlHubAdminVia(login: string, userToken?: string): Pro
 }
 
 export async function awsAdminVia(login: string, userToken?: string): Promise<AdminVia> {
-  return adminVia(login, AWS_ADMIN_TEAM, userToken);
+  // Same two-team answer as `isAwsAdmin`, so the route reported to the account
+  // menu cannot disagree with the one the gates actually took.
+  return (await adminVia(login, CONTROL_HUB_ADMIN_TEAM, userToken))
+    ?? adminVia(login, AWS_ADMIN_TEAM, userToken);
 }
 
 /** Thrown when the answer is unknown, as opposed to "no". */

@@ -42,6 +42,18 @@ export interface PermissionsFile {
   teams: Record<string, TeamEntry>;
   /** Keyed by lower-cased GitHub login. */
   people: Record<string, PersonEntry>;
+  /**
+   * AWS accounts declared for this organization. Declaring one adds an
+   * `aws.account.<id>` branch to the tree; it does not give the app
+   * credentials for that account, which is a separate problem.
+   */
+  awsAccounts?: AwsAccountEntry[];
+}
+
+export interface AwsAccountEntry {
+  accountId: string;
+  name: string;
+  note?: string;
 }
 
 export function emptyFile(): PermissionsFile {
@@ -76,6 +88,8 @@ export interface VocabularyResponse {
    * twelve-digit numbers is how somebody grants remediation in the wrong one.
    */
   accounts?: Array<{ accountId: string; name: string }>;
+  /** Which of those the app can actually reach today, as opposed to merely declared. */
+  liveAccountIds?: string[];
   /** Set when the account list could not be read; the branches are simply absent. */
   accountsFailed?: string | null;
 }

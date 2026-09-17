@@ -17,7 +17,7 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import { listOrgMembers, depsFromOctokit } from "../services/orgMembersService";
 import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { resolveAccounts } from "../aws-guardrails/accounts";
-import { currentVocabulary, setConfiguredAccounts } from "../permissions/accountScope";
+import { currentVocabulary, setConfiguredAccounts, isAccountId } from "../permissions/accountScope";
 
 /**
  * The Admin tab: the one router that can grant permissions.
@@ -439,13 +439,37 @@ router.get("/vocabulary", requirePermission("admin.console.open"), async (_req: 
    * for every account. The tree shows no per-account branch, which is honest —
    * it does not know of any.
    */
+  /**
+   * Two sources, deliberately.
+   *
+   * `resolveAccounts` knows the account the app is actually running in.
+   * `awsAccounts` in the permissions file is what an administrator has
+   * *declared* — accounts the organization wants to scope permissions by,
+   * whether or not the app can reach them yet. Credentials are a separate
+   * problem; the permission tree only needs to know an account exists.
+   *
+   * Declaring one is therefore useful before any of the plumbing works: you
+   * can write "remediate in sandbox, read-only in prod" today and have it
+   * mean something the moment prod is wired up.
+   */
   let accountsFailed: string | null = null;
+  let live: Array<{ accountId: string; name: string }> = [];
   try {
-    const accounts = await resolveAccounts();
-    setConfiguredAccounts(accounts.map(a => a.accountId));
+    live = (await resolveAccounts()).map(a => ({ accountId: a.accountId, name: a.name }));
   } catch (err: any) {
     accountsFailed = err?.message ?? String(err);
   }
+
+  const loaded = await loadPermissions();
+  const declared = (isFailure(loaded) ? [] : loaded.file.awsAccounts ?? [])
+    .filter(a => isAccountId(a.accountId));
+
+  // Declared names win: somebody typed them on purpose.
+  const merged = new Map<string, { accountId: string; name: string }>();
+  for (const a of live) merged.set(a.accountId, a);
+  for (const a of declared) merged.set(a.accountId, { accountId: a.accountId, name: a.name });
+
+  setConfiguredAccounts([...merged.keys()]);
 
   res.json({
     permissions: currentVocabulary(),
@@ -455,19 +479,12 @@ router.get("/vocabulary", requirePermission("admin.console.open"), async (_req: 
      * estate of raw twelve-digit numbers is unreadable, and picking the wrong
      * one is how somebody grants remediation in production.
      */
-    accounts: await accountLabels(),
+    accounts: [...merged.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    /** Which of them the app can actually reach today, so the screen can say so. */
+    liveAccountIds: live.map(a => a.accountId),
     accountsFailed,
   });
 });
-
-/** The configured accounts as {id, name}, or an empty list if they cannot be read. */
-async function accountLabels(): Promise<Array<{ accountId: string; name: string }>> {
-  try {
-    return (await resolveAccounts()).map(a => ({ accountId: a.accountId, name: a.name }));
-  } catch {
-    return [];
-  }
-}
 
 /**
  * One person's standing, and the baseline the admin tree edits against.

@@ -11,7 +11,7 @@ import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
   type AdminFile, type PermissionsFile, type PermissionEntry, type PersonEntry, type Preset,
-  type PermissionLeaf, type AuditEntry, type FlatRule,
+  type AwsAccountEntry, type PermissionLeaf, type AuditEntry, type FlatRule,
 } from "../api/admin";
 import { ago } from "../lib/ago";
 
@@ -787,6 +787,130 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   );
 }
 
+type AdminMode = "people" | "presets" | "audit" | "aws";
+
+// ── AWS accounts ──────────────────────────────────────────────────────
+
+/**
+ * Which AWS accounts this organization wants to scope permissions by.
+ *
+ * Declaring one adds an `aws.account.<id>` branch to every permission tree, so
+ * "remediate in sandbox, read-only in production" becomes expressible. It does
+ * **not** give the app credentials for that account — that is a separate piece
+ * of setup — which is why an account can be declared here long before the
+ * guardrail engine can reach it, and why the list says which ones are live.
+ */
+function AwsAccountsView({ file, sha, live, canEdit, onSaved }: {
+  file: PermissionsFile; sha: string | null; live: string[];
+  canEdit: boolean; onSaved: () => void;
+}) {
+  const [rows, setRows] = useState<AwsAccountEntry[]>(() => file.awsAccounts ?? []);
+  const [id, setId] = useState("");
+  const [name, setName] = useState("");
+
+  useEffect(() => { setRows(file.awsAccounts ?? []); }, [file]);
+
+  const save = useMutation({
+    mutationFn: (next: AwsAccountEntry[]) =>
+      saveAdminFile({ ...file, awsAccounts: next }, sha, "Update the AWS account list"),
+    onSuccess: onSaved,
+  });
+
+  const idOk = /^[0-9]{12}$/.test(id.trim());
+  const duplicate = rows.some(r => r.accountId === id.trim());
+
+  const add = () => {
+    const next = [...rows, { accountId: id.trim(), name: name.trim() }];
+    setRows(next); setId(""); setName(""); save.mutate(next);
+  };
+
+  const remove = (accountId: string) => {
+    const next = rows.filter(r => r.accountId !== accountId);
+    setRows(next); save.mutate(next);
+  };
+
+  return (
+    <Sheet>
+      <SheetHeader title="AWS accounts"
+        subtitle="Each one becomes a branch of the permission tree, so access can be granted per account." />
+
+      <Block title="Declared">
+        {rows.length === 0 ? (
+          <p className={`${TYPE.body} text-ink-3`}>
+            None yet. Until an account is declared here, AWS permissions apply to every account at
+            once — granting <code>aws.remediate</code> means remediating anywhere.
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            {rows.map((row, i) => (
+              <RailCard key={row.accountId} intent="neutral" index={i}>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="min-w-0">
+                    <span className="display text-[1.0625rem] text-ink">{row.name}</span>
+                    <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {row.accountId}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {live.includes(row.accountId)
+                      ? <Pill intent="good">Reachable</Pill>
+                      : <Pill intent="neutral">Declared only</Pill>}
+                    {canEdit && (
+                      <Button variant="ghost" onClick={() => remove(row.accountId)}>Remove</Button>
+                    )}
+                  </div>
+                </div>
+              </RailCard>
+            ))}
+          </div>
+        )}
+      </Block>
+
+      {canEdit && (
+        <Block title="Add an account">
+          <div className="flex items-end gap-3 flex-wrap">
+            <label className="grid gap-1">
+              <span className="caps text-ink-2">Account ID</span>
+              <input value={id} onChange={e => setId(e.target.value.replace(/\D/g, "").slice(0, 12))}
+                placeholder="twelve digits" className={SURFACE.input} />
+            </label>
+            <label className="grid gap-1 flex-1 min-w-[180px]">
+              <span className="caps text-ink-2">Name</span>
+              <input value={name} onChange={e => setName(e.target.value)}
+                placeholder="prod, sandbox…" className={SURFACE.input} />
+            </label>
+            <Button variant="primary" disabled={!idOk || !name.trim() || duplicate || save.isPending}
+              onClick={add}>
+              {save.isPending ? "Saving…" : "Add"}
+            </Button>
+          </div>
+          {id.trim() !== "" && !idOk && (
+            <p className={`${TYPE.sub} text-ink-3 mt-2`}>
+              An AWS account id is twelve digits. It becomes part of every permission key for this
+              account, so anything else would invent branches nobody can grant.
+            </p>
+          )}
+          {duplicate && (
+            <p className={`${TYPE.sub} text-ink-3 mt-2`}>That account is already declared.</p>
+          )}
+          {save.isError && (
+            <p className="mt-2 text-[0.8125rem] text-crimson">{(save.error as Error).message}</p>
+          )}
+        </Block>
+      )}
+
+      <Block title="What this does not do">
+        <p className={`${TYPE.body} text-ink-2`}>
+          Declaring an account here does not give the app credentials for it. It says the account
+          exists and is worth granting permissions about — the guardrail engine reaches an account
+          only once its access is configured separately. An account marked <em>Declared only</em> can
+          still have permissions written for it today; they take effect when it becomes reachable.
+        </p>
+      </Block>
+    </Sheet>
+  );
+}
+
 // ── Audit ─────────────────────────────────────────────────────────────
 
 function AuditScreen() {
@@ -844,7 +968,7 @@ export default function AdminPage() {
   const { user } = useAuth();
   const { can, permissions } = usePermissionSet();
 
-  const [mode, setMode] = useState<"people" | "presets" | "audit">("people");
+  const [mode, setMode] = useState<AdminMode>("people");
   const [openPerson, setOpenPerson] = useState<string | null>(null);
   const [openPreset, setOpenPreset] = useState<string | "new" | null>(null);
 
@@ -857,6 +981,9 @@ export default function AdminPage() {
   // the preset editor gated on a *people* permission is the bug this fixes.
   const canPeopleRead = can("admin.people.read");
   const canPresetsRead = can("admin.presets.read");
+  // Declaring an AWS account changes what the whole organization can be
+  // granted, which is the same kind of act as editing a preset.
+  const canPresetsEdit = can("admin.presets.edit");
   const canAuditRead = can("admin.audit.read");
   const canAssign = can("admin.people.assign");
   const canOverride = can("admin.people.override");
@@ -895,10 +1022,17 @@ export default function AdminPage() {
   // The three list views, filtered to the ones the viewer actually holds —
   // `Segmented` used to offer all three unconditionally, so somebody without
   // `admin.audit.read` could open Audit and collect a 403 for their trouble.
-  const tabOptions: ["people" | "presets" | "audit", string][] = [];
+  const tabOptions: [AdminMode, string][] = [];
   if (canPeopleRead) tabOptions.push(["people", "People"]);
   if (canPresetsRead) tabOptions.push(["presets", "Presets"]);
   if (canAuditRead) tabOptions.push(["audit", "Audit"]);
+  /**
+   * Declaring an AWS account is an organization-wide change to what can be
+   * granted, so it sits behind the same permission as editing a preset rather
+   * than behind an AWS permission — the person doing it is shaping the
+   * permission tree, not operating AWS.
+   */
+  if (canPresetsRead) tabOptions.push(["aws", "AWS accounts"]);
   // Falls back to `mode` itself when `tabOptions` is empty (nothing renders
   // that reads it then) purely to keep this typed as a real mode, not
   // `| undefined`, for the branch below where it does.
@@ -1001,6 +1135,10 @@ export default function AdminPage() {
                   onOpen={setOpenPreset} onCreate={() => setOpenPreset("new")} />
               )}
               {activeMode === "audit" && <AuditScreen />}
+              {activeMode === "aws" && file && (
+                <AwsAccountsView file={file} sha={sha} live={vocab?.liveAccountIds ?? []}
+                  canEdit={canPresetsEdit} onSaved={() => qc.invalidateQueries({ queryKey: ["admin"] })} />
+              )}
             </>
           )}
         </>

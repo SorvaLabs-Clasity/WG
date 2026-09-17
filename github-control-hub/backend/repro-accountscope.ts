@@ -152,5 +152,42 @@ console.log("\nthe helpers agree with the keys they build");
     "a scoped leaf with no global form is one a global grant silently cannot cover");
 }
 
+console.log("declared accounts reach the vocabulary and the validator");
+{
+  const declared = { ...emptyFile(), awsAccounts: [
+    { accountId: PROD, name: "prod" },
+    { accountId: DEV, name: "sandbox" },
+  ] } as PermissionsFile;
+
+  check("a file declaring accounts is valid", fileProblems(declared).length === 0,
+    fileProblems(declared));
+
+  for (const [what, bad] of [
+    ["an id that is not twelve digits", [{ accountId: "12", name: "x" }]],
+    ["an id with a dot, which would invent sub-accounts", [{ accountId: "1234.5678.90", name: "x" }]],
+    ["a nameless account", [{ accountId: PROD, name: "  " }]],
+    ["the same account twice", [{ accountId: PROD, name: "a" }, { accountId: PROD, name: "b" }]],
+    ["a list that is not a list", { nope: true }],
+  ] as const) {
+    check(`  and ${what} is refused`,
+      fileProblems({ ...emptyFile(), awsAccounts: bad }).length > 0,
+      "silently dropping it leaves a branch nobody can explain the absence of");
+  }
+
+  /**
+   * Declared and reachable are different things. An account can be named here
+   * long before the app has credentials for it, and permissions written for it
+   * take effect when it becomes reachable — so the vocabulary must offer the
+   * branch on the strength of the declaration alone.
+   */
+  setConfiguredAccounts([PROD, DEV]);
+  const held = permissionsFor(
+    { ...declared, people: { alice: { grant: [scopedKey(PROD, "remediate")] } } },
+    subject("alice"));
+  check("a permission can be written for a declared account",
+    permitsInAccount(k => held.has(k), PROD, "remediate")
+      && !permitsInAccount(k => held.has(k), DEV, "remediate"));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
