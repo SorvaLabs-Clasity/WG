@@ -1506,7 +1506,50 @@ async function theAdminRouterDriven() {
 }
 
 theAdminRouterDriven().then(() => {
-  console.log("\nthe two things that broke it on a real organization");
+  console.log("\nthe administrator writes, the app reads");
+{
+  const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
+  const routes = fs.readFileSync("./src/routes/admin.ts", "utf8");
+
+  /**
+   * The founding rule of this codebase is that the app must not let anyone do
+   * something they could not do themselves on github.com. Writing the
+   * permissions file with the App's token broke it: the commit was authored by
+   * the App, GitHub checked the App's access instead of the person's, and the
+   * organization had to hand an App a ruleset bypass to allow it.
+   *
+   * Reads are the deliberate exception and must stay one — the gate in front
+   * of every request needs this file to decide whether the caller may do
+   * anything at all, including callers who cannot read the repository, which
+   * after deny-by-default is most people.
+   */
+  const save = store.slice(store.indexOf("export async function savePermissions"));
+  check("savePermissions takes the writer's token",
+    /writerToken\?:\s*string/.test(save.slice(0, 400)), save.slice(0, 200));
+  check("  and prefers it over the App's",
+    /writerToken\s*\?\?\s*getSystemToken\(\)/.test(save),
+    "falling back first would make the person's token decorative");
+
+  check("  and every write path in the router supplies it",
+    /savePermissions\([^)]*req\.user!\.accessToken\)/s.test(routes),
+    "a write that forgets the token silently reverts to the App");
+
+  const load = store.slice(store.indexOf("async function read("), store.indexOf("export async function savePermissions"));
+  check("while the read still uses the App's token",
+    /getSystemToken\(\)/.test(load) && !/accessToken/.test(load),
+    "a caller who may not read the repository still has to be gated by what is in it");
+
+  /**
+   * And the repository bootstrap grants the admin team push access, because a
+   * repository administrators cannot write is one where the next step fails.
+   */
+  check("bootstrap gives the admin team push access to what it just created",
+    /addOrUpdateRepoPermissionsInOrg/.test(routes) && /permission:\s*"push"/.test(routes));
+  check("  and survives that grant failing, rather than unmaking the repository",
+    /teamGrantError/.test(routes));
+}
+
+console.log("\nthe two things that broke it on a real organization");
 {
   const src = fs.readFileSync("./src/routes/admin.ts", "utf8");
   const store = fs.readFileSync("./src/permissions/store.ts", "utf8");

@@ -208,7 +208,12 @@ async function writeFile(
 
   // sha is the blob the editor loaded; savePermissions refuses rather than
   // clobbering a concurrent edit if it has moved on.
-  const result = await savePermissions(toSave, sha, req.user!.login, summary);
+  /**
+   * The caller's own token, so GitHub decides whether they may write this
+   * repository — and so the commit is authored by them. Every write path in
+   * this router goes through here, which is why the token is threaded once.
+   */
+  const result = await savePermissions(toSave, sha, req.user!.login, summary, req.user!.accessToken);
   if (result.ok) return { ok: true, sha: result.sha };
   if (result.reason === "conflict") {
     return { ok: false, status: 409, body: { code: "conflict", error: result.detail } };
@@ -510,6 +515,8 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
   try {
     let loaded = await loadPermissions();
     let repoCreated = false;
+    let teamGranted = false;
+    let teamGrantError: string | null = null;
 
     if (!isFailure(loaded) && loaded.source === "no-repo") {
       if (!createRepo) {
@@ -541,12 +548,35 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
       });
       repoCreated = true;
 
+      /**
+       * Give the admin team push access to what was just created.
+       *
+       * Administrators write this file with their own tokens, so a repository
+       * created without this is one nobody can write to — bootstrap would
+       * succeed and the very next step, the migration, would fail with "GitHub
+       * refused to let you write". The team that gates this screen is exactly
+       * the set that should be able to commit, so granting it here is the
+       * whole configuration rather than a shortcut around it.
+       *
+       * Not fatal if it fails: an organization can grant the access by hand,
+       * and reporting a half-made repository is better than unmaking it.
+       */
+      try {
+        await octokit.rest.teams.addOrUpdateRepoPermissionsInOrg({
+          org: getOrg(), team_slug: CONTROL_HUB_ADMIN_TEAM,
+          owner: getOrg(), repo: PERMISSIONS_REPO, permission: "push",
+        });
+        teamGranted = true;
+      } catch (err: any) {
+        teamGrantError = err?.message ?? String(err);
+      }
+
       forgetPermissions();
       loaded = await loadPermissions();
     }
 
     if (isFailure(loaded)) {
-      res.status(502).json({ repoCreated, fileCreated: false, failure: loaded });
+      res.status(502).json({ repoCreated, teamGranted, teamGrantError, fileCreated: false, failure: loaded });
       return;
     }
 
@@ -554,13 +584,13 @@ router.post("/bootstrap", requirePermission("admin.people.assign"), async (req: 
     if (loaded.source === "absent" || loaded.source === "no-repo") {
       const written = await writeFile(req, loaded.file, emptyFile(), null, "Initialise permissions");
       if (!written.ok) {
-        res.status(written.status).json({ repoCreated, fileCreated: false, ...written.body });
+        res.status(written.status).json({ repoCreated, teamGranted, teamGrantError, fileCreated: false, ...written.body });
         return;
       }
       fileCreated = true;
     }
 
-    res.json({ repoCreated, fileCreated });
+    res.json({ repoCreated, teamGranted, teamGrantError, fileCreated });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "admin") });
   }

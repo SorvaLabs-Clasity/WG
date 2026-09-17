@@ -59,9 +59,28 @@ separate, later, human decision.
 ## The permission file
 
 `permissions.json`, in a private repository in the organization
-(`control-hub-permissions` by default), committed by the App and by nothing
-else. Git is the audit log: every change is a commit with an author and a
-message, and the Admin tab's Audit screen is that history.
+(`control-hub-permissions` by default). Git is the audit log: every change is a
+commit with an author and a message, and the Admin tab's Audit screen is that
+history.
+
+**Administrators commit it with their own accounts; the App only reads it.**
+That keeps the file inside the rule at the top of this document — the app does
+nothing on GitHub the person could not have done themselves — and it means the
+author on each commit is the person who made the change rather than the App
+nine times over. It also lets the organization grant a *team* write access
+instead of granting an application a ruleset bypass.
+
+Reads are the deliberate exception: the gate in front of every request needs
+this file to decide whether the caller may do anything at all, including
+callers who cannot read the repository, which under deny-by-default is most
+people. So the App reads and the administrator writes.
+
+The trade this makes explicit: anyone with push access to that repository can
+edit the file by hand and bypass the app's own rules, including the
+self-widening refusal. That is the same trust you place in anybody you give
+write access to a repository, it is visible in the history like any other
+commit, and it is the reason the write access is granted to a named team rather
+than to everyone who can open the tab.
 
 **The dots in a key are the group tree.** `alarms.org.create` sits under
 `alarms.org`, which sits under `alarms`. A grant or a revoke may name any node
