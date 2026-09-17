@@ -25,7 +25,7 @@ import {
   type Node,
 } from "./src/components/permissionTreeModel";
 import type { PermissionLeaf, PermissionEntry, FlatRule } from "./src/api/admin";
-import { permissionsFor, type Subject } from "../backend/src/permissions/evaluate";
+import { permissionsFor, inheritedStanding, type Subject } from "../backend/src/permissions/evaluate";
 import { PERMISSIONS } from "../backend/src/permissions/vocabulary";
 import type { PermissionsFile } from "../backend/src/permissions/types";
 import fs from "node:fs";
@@ -42,26 +42,40 @@ const tree = buildTree(vocabulary);
 const knownNodes = knownNodesOf(vocabulary);
 
 /**
- * The screen's `inheritedFromExplanations`, in one line: every leaf the server
- * says this person holds through something other than their own entry becomes
- * a leaf-depth rule beneath the layer being edited.
+ * What `GET /admin/person/:login` serves the screen, run through the server's
+ * own `inheritedStanding` — the function the route calls — and relabelled the
+ * way `AdminPage.inheritedFrom` relabels it.
+ *
+ * This used to be the screen's `inheritedFromExplanations`: every leaf the
+ * server said the person held through something other than their own entry,
+ * flattened to a leaf-depth rule. Both halves of that were wrong and both
+ * wrote entries the tree had not shown — see the round-trip section at the
+ * bottom of this file, which is the property they broke.
  */
-function inheritedFor(file: PermissionsFile, subject: Subject): FlatRule[] {
-  const held = permissionsFor(file, subject);
-  const out: FlatRule[] = [];
+interface Standing { rules: FlatRule[]; baseline: Map<string, boolean> }
+
+function inheritedFor(file: PermissionsFile, subject: Subject): Standing {
+  const { rules, baseline } = inheritedStanding(file, subject);
+  return {
+    rules: rules.map(r => ({ node: r.node, effect: r.effect, layer: r.layer, origin: `From ${r.origin}` })),
+    baseline: new Map(Object.entries(baseline)),
+  };
+}
+
+/** What the tree shows as ticked, given a layer beneath and an entry above it. */
+function shownTicked(std: Standing, entry: PermissionEntry): Set<string> {
+  const ownLayer = (std.rules.length ? Math.max(...std.rules.map(r => r.layer)) : 0) + 1;
+  const allRules = [...std.rules, ...ownRulesFrom(entry, ownLayer)];
+  const out = new Set<string>();
   for (const leaf of vocabulary) {
-    const exp = held.explain(leaf.key);
-    if (!exp.origin || exp.origin === "set on this person") continue;
-    out.push({ node: leaf.key, effect: exp.held ? "grant" : "revoke", layer: 0, origin: `From ${exp.origin}` });
+    if (decideLeaf(leaf.key, allRules, knownNodes)?.effect === "grant") out.add(leaf.key);
   }
   return out;
 }
 
 /** One click, exactly as `handleToggle` performs it. */
-function click(node: Node, inherited: FlatRule[], entry: PermissionEntry): PermissionEntry {
-  const ownLayer = (inherited.length ? Math.max(...inherited.map(r => r.layer)) : 0) + 1;
-  const allRules = [...inherited, ...ownRulesFrom(entry, ownLayer)];
-  const held = (key: string) => decideLeaf(key, allRules, knownNodes)?.effect === "grant";
+function click(node: Node, std: Standing, entry: PermissionEntry): PermissionEntry {
+  const held = (key: string) => shownTicked(std, entry).has(key);
 
   const desired = new Map<string, boolean>();
   for (const leaf of vocabulary) desired.set(leaf.key, held(leaf.key));
@@ -75,7 +89,7 @@ function click(node: Node, inherited: FlatRule[], entry: PermissionEntry): Permi
     for (const key of leaves) desired.set(key, next);
   }
 
-  return collapseEntry(desired, tree, baselineOf(vocabulary, inherited, knownNodes));
+  return collapseEntry(desired, tree, std.baseline);
 }
 
 function find(key: string): Node {
@@ -302,6 +316,108 @@ console.log("\nan incomplete baseline still writes nothing about what it cannot 
   check("  so saving it loses her nothing, AWS included",
     before.held.filter(k => !after.has(k)).length === 0,
     before.held.filter(k => !after.has(k)));
+}
+
+/**
+ * ── the property the whole screen turns on ──────────────────────────────
+ *
+ * **For any tree edit, what is saved must resolve — through the server's own
+ * `permissionsFor` — to exactly the set the administrator saw ticked.**
+ *
+ * Everything above this line checks one edit's consequences one at a time,
+ * which is how two defects hid inside a suite that was entirely green: the
+ * screen and the file disagreed, and no assertion compared them. This compares
+ * them, on a person deliberately built to carry all three kinds of rule at
+ * once — a grant inherited from her team, a revoke inherited from a preset,
+ * and a revoke in her own layer — because the two defects each needed one of
+ * those and neither needed the other.
+ *
+ * `shownTicked` is what the tree renders; `permissionsFor(saved, subject)` is
+ * what the save means. Nothing may be in one and not the other.
+ */
+console.log("\nwhat is saved resolves to exactly what was ticked");
+{
+  const layered = (entry: PermissionEntry): PermissionsFile => ({
+    version: 1,
+    presets: {
+      member: { name: "Member", grant: ["me", "overview.read", "repos.read", "pulls.read", "deps.read"] },
+      aws: { name: "AWS", grant: ["aws", "activity.detailedLogging"] },
+      // Deeper than the team's `aws`, so it survives it: an inherited revoke.
+      limited: { name: "Limited", revoke: ["aws.costs"] },
+    },
+    teams: { platform: { presets: ["aws"] } },
+    people: {
+      dana: {
+        presets: ["member", "limited"],
+        grant: entry.grant,
+        // Her own layer, suppressing something her team grants her.
+        revoke: entry.revoke,
+      },
+    },
+  });
+
+  const stored = { grant: undefined, revoke: ["activity.detailedLogging"] } as PermissionEntry;
+  const file = layered(stored);
+  const std = inheritedFor(file, dana);
+  const now = permissionsFor(file, dana);
+
+  check("the world carries all three at once: an inherited grant",
+    now.has("aws.read") && now.explain("aws.read").origin?.includes("team platform"),
+    now.explain("aws.read"));
+  check("  an inherited revoke, deeper than the grant it overrides",
+    !now.has("aws.costs.read") && now.explain("aws.costs.read").origin?.includes("Limited"),
+    now.explain("aws.costs.read"));
+  check("  and a revoke in her own layer, over something her team grants",
+    !now.has("activity.detailedLogging.read")
+      && now.explain("activity.detailedLogging.read").origin === "set on this person",
+    now.explain("activity.detailedLogging.read"));
+  check("  which the baseline beneath her reports as granted, because it is",
+    std.baseline.get("activity.detailedLogging.read") === true
+      && std.baseline.get("aws.costs.read") === false
+      && std.baseline.get("aws.read") === true,
+    { dl: std.baseline.get("activity.detailedLogging.read"), costs: std.baseline.get("aws.costs.read") });
+
+  /** One click, saved, and the two answers compared leaf by leaf. */
+  const roundTrip = (what: string, key: string) => {
+    const entry = click(find(key), std, stored);
+    const shown = shownTicked(std, entry);
+    const saved = permissionsFor(layered(entry), dana);
+
+    const ticked = [...shown].sort();
+    const resolved = saved.held.slice().sort();
+    const savedNotShown = resolved.filter(k => !shown.has(k));
+    const shownNotSaved = ticked.filter(k => !saved.has(k));
+
+    check(`${what}: what is saved is exactly what was ticked`,
+      savedNotShown.length === 0 && shownNotSaved.length === 0,
+      { entry, granted_but_not_shown: savedNotShown, shown_but_not_granted: shownNotSaved });
+    return entry;
+  };
+
+  /**
+   * The Critical: one tick on an unrelated leaf used to write
+   * `{"grant":["overview.cards"]}` — her own `revoke` gone, fifteen AWS leaves
+   * back, fourteen of them still shown unticked.
+   */
+  const afterTick = roundTrip("a tick on an unrelated leaf", "overview.cards.read");
+  check("  her own revoke is still in the entry that was written",
+    (afterTick.revoke ?? []).some(n => n === "activity.detailedLogging" || n === "activity"),
+    afterTick);
+  check("  so the thing she was deliberately denied is still denied",
+    !permissionsFor(layered(afterTick), dana).has("activity.detailedLogging.read"),
+    afterTick);
+
+  /**
+   * The Major: un-ticking a branch wrote `revoke: ["aws"]`, the server lost
+   * fourteen leaves, and the checkbox did not move — so the natural response
+   * was to click it again.
+   */
+  roundTrip("un-ticking a whole branch held through a team", "aws");
+
+  // And the directions nothing had a reason to break, for completeness.
+  roundTrip("ticking back on a leaf an inherited revoke is suppressing", "aws.costs.read");
+  roundTrip("un-ticking a leaf her preset grants", "repos.read");
+  roundTrip("ticking a branch she holds none of", "access");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

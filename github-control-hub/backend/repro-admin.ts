@@ -32,25 +32,17 @@ console.log("the admin router: where each route's guard is named");
   check("  behind authentication", /app\.use\("\/api\/admin",\s*authMiddleware/.test(server));
 
   /**
-   * The gate that decides something in the configuration this ships in.
+   * The gate that decides something in the configuration this ships in is
+   * asserted by **driving it** — see "the legacy team gate, run" below.
    *
-   * Every route here was guarded exclusively by `requirePermission` /
-   * `requireAnyPermission`, whose first line is `if
-   * (process.env.PERMISSIONS_ENABLED !== "true") return next()`. The flag
-   * ships unset, so the whole router had no authorization beyond
-   * `authMiddleware`. Every other privileged router keeps its legacy team gate
-   * alongside the new one for exactly this reason.
-   *
-   * `repro-undo.ts` drives this router's real middleware chains with the flag
-   * unset and fails any route that reaches its handler; this is the cheaper
-   * statement of the same thing, at the top of the file where it belongs.
+   * It used to be asserted here, as
+   * `admin.search(/router\.use\(\s*requireControlHubAdmin\s*\)/)` against this
+   * file's text, positioned before the first route. Commenting the line out
+   * left the whole suite passing: a commented-out gate still matches the
+   * substring, and the substring was the whole assertion. That is precisely
+   * the failure this file was rewritten to stop making, and it survived the
+   * rewrite because it reads like a position check rather than a text scan.
    */
-  {
-    const blanketAt = admin.search(/router\.use\(\s*requireControlHubAdmin\s*\)/);
-    const firstRouteAt = admin.search(/router\.(get|post|put|delete)\(/);
-    check("the whole router is behind the legacy team gate, before its first route",
-      blanketAt >= 0 && blanketAt < firstRouteAt, { blanketAt, firstRouteAt });
-  }
 
   /**
    * Reading the file means reading who holds what across the organization —
@@ -535,6 +527,60 @@ console.log("\nchangeClasses: what a PUT /file write actually requires");
   }
 }
 
+console.log("\npreset ids are read as own properties, never through the prototype");
+{
+  /**
+   * The third site of the `Object.hasOwn` fix — `presets.ts`'s `own()`, used by
+   * the chain walk, the `finish` reducer and `presetProblems` — had no
+   * assertion anywhere. Reverting it to `presets[id]` left every suite in the
+   * repository green, which is the same standard M7 was raised about: a fix
+   * nothing pins is a fix the next refactor deletes.
+   *
+   * What it is for: `presets["constructor"]` on a `JSON.parse`d object is
+   * `Object` — a function, and truthy — so a preset that inherits from a name
+   * nobody defined resolved as though the parent existed. The chain then
+   * silently grants nothing, and the file reports itself clean, which is the
+   * worst combination available: an administrator sees a preset assigned and
+   * a person who holds none of it, with nothing anywhere saying why.
+   */
+  const { resolvePreset, presetProblems } = require("./src/permissions/presets");
+
+  // Parsed, not written as a literal: this is how the file actually arrives,
+  // and the prototype members below are exactly the ones it does *not* carry.
+  const presets = JSON.parse(JSON.stringify({
+    real: { name: "Real", grant: ["repos.read"] },
+    borrowed: { name: "Borrowed", inherits: "toString" },
+  }));
+
+  for (const id of ["constructor", "toString", "valueOf", "hasOwnProperty",
+                    "isPrototypeOf", "propertyIsEnumerable"]) {
+    check(`  "${id}" is not a preset, however truthy the prototype makes it`,
+      resolvePreset(presets, id, "preset").length === 0, resolvePreset(presets, id, "preset"));
+  }
+
+  const problems = presetProblems(presets);
+  check("a preset inheriting from a prototype member is reported as dangling",
+    problems.some((m: string) => m.includes('"borrowed"') && m.includes("does not exist")), problems);
+
+  check("  which matters because the chain grants nothing either way",
+    resolvePreset(presets, "borrowed", "preset").length === 0,
+    resolvePreset(presets, "borrowed", "preset"));
+
+  check("  while a real preset still resolves",
+    resolvePreset(presets, "real", "preset").map((r: any) => r.node).join() === "repos.read",
+    resolvePreset(presets, "real", "preset"));
+
+  /**
+   * And an id the file genuinely carries is still found, even when it collides
+   * with something on the prototype. `JSON.parse` makes `__proto__` an own
+   * property, so an own-property read has to keep answering with it.
+   */
+  const shadowing = JSON.parse('{"__proto__":{"name":"Shadow","grant":["pulls.read"]}}');
+  check("a preset the file really names is found even when the prototype has the name too",
+    resolvePreset(shadowing, "__proto__", "preset").map((r: any) => r.node).join() === "pulls.read",
+    resolvePreset(shadowing, "__proto__", "preset"));
+}
+
 /**
  * ── the admin router, driven ────────────────────────────────────────────
  *
@@ -586,9 +632,37 @@ async function theAdminRouterDriven() {
   /** What the next write should be answered with. */
   let writeAnswer: { status: number; body: any } = { status: 200, body: { content: { sha: "written-sha" } } };
 
+  /**
+   * The organization GitHub reports, for the one route that asks: `POST
+   * /migrate` reads every member, every owner and both legacy teams before it
+   * writes anything. Null unless a test sets it, so every other test sees the
+   * stub exactly as it was.
+   */
+  let orgSnapshot: { members: string[]; owners: string[]; teams: Record<string, string[]> } | null = null;
+
   (globalThis as any).fetch = async (url: any, init: any) => {
+    const u = String(url);
     const parsed = init?.body ? JSON.parse(init.body) : {};
     writes.push({ method: init?.method ?? "GET", sha: parsed.sha, body: parsed });
+
+    if (orgSnapshot && (init?.method ?? "GET") === "GET") {
+      const page = Number(new URL(u, "https://api.github.com").searchParams.get("page") ?? "1");
+      const asUsers = (logins: string[]) => (page > 1 ? [] : logins.map(login => ({ login, type: "User" })));
+      // `/memberships/<login>` deliberately does not match either of these:
+      // those are the single-person checks the team gate makes.
+      const team = u.match(/\/teams\/([^/]+)\/members(?:\?|$)/);
+      const list =
+        team ? asUsers(orgSnapshot.teams[team[1]] ?? [])
+        : /\/orgs\/[^/]+\/members(?:\?|$)/.test(u)
+          ? asUsers(/role=admin/.test(u) ? orgSnapshot.owners : orgSnapshot.members)
+        : null;
+      if (list) {
+        return new Response(JSON.stringify(list), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+    }
+
     return new Response(JSON.stringify(writeAnswer.body), {
       status: writeAnswer.status,
       headers: { "content-type": "application/json" },
@@ -670,7 +744,104 @@ async function theAdminRouterDriven() {
     people: { plain: { presets: ["member"], grant }, ...(extra.people ?? {}) },
   });
 
+  /**
+   * Drive one route's whole middleware chain — the router-level `use` gates in
+   * front of the per-route ones — and report what it decided. "passed" means
+   * the chain called `next()` off its end, so the handler would have run.
+   */
+  type Decision = { kind: "passed" } | { kind: "refused"; status: number; code?: string };
+
+  const runChain = (chain: any[], req: any): Promise<Decision> => new Promise(resolve => {
+    let done = false;
+    const settle = (d: Decision) => { if (!done) { done = true; resolve(d); } };
+    const res: any = {
+      statusCode: 200,
+      status(code: number) { this.statusCode = code; return this; },
+      json(body: any) { settle({ kind: "refused", status: this.statusCode, code: body?.code }); return this; },
+      send() { return this.json({}); },
+      end() { return this.json({}); },
+    };
+    let i = 0;
+    const next = () => {
+      if (done) return;
+      if (i >= chain.length) return settle({ kind: "passed" });
+      const mw = chain[i++];
+      try {
+        const out = mw(req, res, next);
+        if (out && typeof out.catch === "function") out.catch(() => settle({ kind: "passed" }));
+      } catch { settle({ kind: "passed" }); }
+    };
+    next();
+    setTimeout(() => settle({ kind: "passed" }), 5_000).unref?.();
+  });
+
+  /** Every route's guards, in the order express would run them. */
+  const guardChains = (): Array<{ what: string; chain: any[] }> => {
+    const blanket = adminRouter.stack.filter((l: any) => !l.route).map((l: any) => l.handle);
+    return adminRouter.stack.filter((l: any) => l.route).map((layer: any) => ({
+      what: `${Object.keys(layer.route.methods)[0].toUpperCase()} ${layer.route.path}`,
+      chain: [...blanket, ...layer.route.stack.map((h: any) => h.handle).slice(0, -1)],
+    }));
+  };
+
   try {
+    console.log("\nthe legacy team gate, run");
+    {
+      /**
+       * **Driven, not scanned.** This assertion used to be a search for
+       * `router.use(requireControlHubAdmin)` in this file's own text, and
+       * commenting that line out left the suite entirely green — a commented
+       * gate matches the substring just as well as a live one.
+       *
+       * So the real chains are run, with `PERMISSIONS_ENABLED` in the state it
+       * ships in. That is deliberate and it is the whole point: with the flag
+       * unset every `requirePermission` is `return next()`, so the team gate is
+       * the only thing left that can refuse anybody, and a route that reaches
+       * its handler here is a route open to every signed-in member.
+       */
+      const flagHere = process.env.PERMISSIONS_ENABLED;
+      delete process.env.PERMISSIONS_ENABLED;
+      const { invalidateAdminCache } = require("./src/services/authorizationService");
+      try {
+        // GitHub answers "not a member of anything" — the object the stub
+        // returns has neither `role: "admin"` nor `state: "active"`.
+        invalidateAdminCache();
+        const refusals = [];
+        for (const { what, chain } of guardChains()) {
+          refusals.push({ what, d: await runChain(chain, {
+            user: { login: "on-no-team", accessToken: "on-no-team-token" },
+            params: {}, query: {}, body: {},
+          }) });
+        }
+        const open = refusals.filter(r => r.d.kind === "passed").map(r => r.what);
+        check("with the flag unset, every route refuses somebody not on control-hub-admins",
+          refusals.length >= 9 && open.length === 0, { routes: refusals.length, open });
+        check("  and says which team would let them in, rather than reading as an outage",
+          refusals.every(r => r.d.kind === "refused" && r.d.status === 403
+            && r.d.code === "CONTROL_HUB_ADMIN_REQUIRED"),
+          refusals.map(r => r.d));
+
+        /**
+         * And it is a *gate*, not a wall: the premise is that a member of the
+         * team gets past it. Without this the assertion above would pass on a
+         * router that refused everybody, which is a different bug.
+         */
+        invalidateAdminCache();
+        writeAnswer = { status: 200, body: { state: "active" } };
+        const member = await runChain(guardChains()[0].chain, {
+          user: { login: "a-real-admin", accessToken: "a-real-admin-token" },
+          params: {}, query: {}, body: {},
+        });
+        writeAnswer = { status: 200, body: { content: { sha: "written-sha" } } };
+        check("  while a member of that team gets through it",
+          member.kind === "passed", member);
+      } finally {
+        invalidateAdminCache();
+        if (flagHere === undefined) delete process.env.PERMISSIONS_ENABLED;
+        else process.env.PERMISSIONS_ENABLED = flagHere;
+      }
+    }
+
     console.log("\nPUT /file: the diff decides, against the file that is really stored");
     {
       const stored = withCaller(["admin.people.assign"]);
@@ -993,9 +1164,177 @@ async function theAdminRouterDriven() {
         });
         check("  and PUT /file applies no permission check of its own",
           write.status === 200 && write.body.ok === true, write);
+
+        /**
+         * `writeFile` is the one write path now, so its inertness is the
+         * inertness of all three. `POST /migrate` over an empty file, by a
+         * caller who is nobody under the file and not an organization owner,
+         * writes the starting file exactly as it did before — the
+         * self-widening rule it would fail with the flag on decides nothing
+         * here.
+         */
+        orgSnapshot = {
+          members: ["plain", "other"], owners: [],
+          teams: { "control-hub-admins": ["plain"], "aws-guardrail-admins": [] },
+        };
+        try {
+          const migrated = await run("post", "/migrate", {
+            stored: loaded({ version: 1, presets: {}, teams: {}, people: {} }), as: "plain",
+          });
+          check("  and POST /migrate writes the starting file with no self-widening check",
+            migrated.status === 200 && migrated.body.ok === true, migrated);
+
+          /**
+           * The one behaviour this branch changes with the flag unset, besides
+           * the team gate: `/migrate` refuses a file it would have overwritten.
+           * Inside the Admin tab, a refusal rather than a loss, and the same
+           * kind of caveat the `presets` half of this guard already carried.
+           */
+          const teamsOnly = await run("post", "/migrate", {
+            stored: loaded({ version: 1, presets: {}, people: {},
+              teams: { platform: { grant: ["admin.people.assign"] } } }),
+            as: "plain",
+          });
+          check("  while a file it would have destroyed is still refused, flag or no flag",
+            teamsOnly.status === 409 && writes.filter(w => w.method === "PUT").length === 0, teamsOnly);
+        } finally {
+          orgSnapshot = null;
+        }
+
+        /**
+         * And the person route's new fields are additive: they decide nothing,
+         * here or anywhere, and the answer it gave before is still in it.
+         */
+        const person = await run("get", "/person/:login", {
+          stored: loaded(stored), as: "plain", params: { login: "dana" },
+        });
+        check("  and GET /person/:login still answers what it answered before",
+          person.status === 200 && Array.isArray(person.body.held)
+            && !!person.body.explanations && !!person.body.baseline, person.status);
       } finally {
         process.env.PERMISSIONS_ENABLED = "true";
       }
+    }
+
+    console.log("\nPUT /file: a caller whose own standing cannot be established");
+    {
+      /**
+       * `subjectFor` catches a failed team listing, logs it, and answers with
+       * `teamSlugs: []`. The self-widening check then computed **both** sides
+       * against a teamless subject, so a write handing `admin` to a team the
+       * caller is in registered as no gain at all and went through.
+       *
+       * The precondition is only a transient failure on `GET /user/teams` —
+       * the same class of window the unreadable-store check above was fixed
+       * for, and it was failing the other way: that one answers 503 when its
+       * input is missing, this one carried on as though the answer were
+       * "none".
+       */
+      const stored = withCaller(["admin.people.assign"]);
+      const widen = JSON.parse(JSON.stringify(stored));
+      widen.teams = { platform: { presets: ["control-hub-admin"] } };
+
+      const inTeam = { login: "plain", teamSlugs: ["platform"], isOrgOwner: false };
+      check("the escalation is real: granting a team you are in the admin preset widens you",
+        !permissionsFor(stored, inTeam).has("admin.presets.delete")
+          && permissionsFor(widen, inTeam).has("admin.presets.delete"),
+        { before: permissionsFor(stored, inTeam).held.length,
+          after: permissionsFor(widen, inTeam).held.length });
+
+      const readable = await run("put", "/file", {
+        stored: loaded(stored), as: "plain", teams: ["platform"],
+        body: { file: widen, sha: "stored-sha", summary: "widen my own team" },
+      });
+      check("  with the caller's teams readable it is refused",
+        readable.status === 403 && readable.body.code === "SELF_WIDENING"
+          && (readable.body.gained ?? []).includes("admin.presets.delete"), readable);
+      check("    and nothing was written", writes.filter(w => w.method === "PUT").length === 0, writes);
+
+      /**
+       * The same write, the same caller, the only difference being that the
+       * team read fails. No `ownTeams` / `teamsOf` hook, so `subjectFor` falls
+       * through to the real GitHub call, which the stub cannot satisfy — which
+       * is exactly the shape of the transient failure.
+       */
+      setPermissionsTestHooks({ loadFile: () => loaded(stored), ownerOf: () => false });
+      forgetPermissions();
+      forgetSubjects();
+      writes = [];
+      const unreadable = await answerOf(handlerFor("put", "/file"), {
+        user: { login: "plain", accessToken: "plain-token" }, params: {}, query: {},
+        body: { file: widen, sha: "stored-sha", summary: "widen my own team" },
+      });
+      check("  a team read that failed is an outage, not an empty list",
+        unreadable.status === 503 && unreadable.body.code === "PERMISSIONS_UNAVAILABLE", unreadable);
+      check("    and nothing was written", writes.filter(w => w.method === "PUT").length === 0, writes);
+    }
+
+    console.log("\nGET /person/:login: the baseline is what the layers beneath decide");
+    {
+      /**
+       * The admin tree edits one layer as a **difference** from the layers
+       * beneath it, so it needs their verdict as a thing in its own right. The
+       * screen used to derive that from `explanations` — which reports the rule
+       * that won *overall* — by dropping every leaf whose origin read `set on
+       * this person`. A leaf her own `revoke` was suppressing came back as "not
+       * granted", indistinguishable from a leaf nothing grants, so the revoke
+       * agreed with the baseline and the next unrelated tick dropped it.
+       *
+       * `frontend/repro-permissiontree.ts` drives the round trip this exists
+       * for. This is the server half: what the route actually answers.
+       */
+      const stored: PermissionsFile = {
+        version: 1,
+        presets: {
+          member: { name: "Member", grant: ["me", "overview.read"] },
+          aws: { name: "AWS", grant: ["aws"] },
+        },
+        teams: { platform: { presets: ["aws"] } },
+        people: {
+          plain: { presets: ["member"], grant: ["admin.people.read"] },
+          dana: { presets: ["member"], revoke: ["aws"] },
+        },
+      };
+
+      const answer = await run("get", "/person/:login", {
+        stored: loaded(stored), as: "plain", teams: ["platform"], params: { login: "dana" },
+      });
+
+      check("dana does not hold aws.read, because her own layer revokes it",
+        !answer.body.held.includes("aws.read")
+          && answer.body.explanations["aws.read"].origin === "set on this person",
+        answer.body.explanations?.["aws.read"]);
+
+      check("  but the baseline beneath her says granted, because her team grants it",
+        answer.body.baseline?.["aws.read"] === true, answer.body.baseline?.["aws.read"]);
+
+      check("  and her own rule is not in `inherited` — that is the layer being edited",
+        Array.isArray(answer.body.inherited)
+          && !answer.body.inherited.some((r: any) => r.origin === "set on this person"),
+        answer.body.inherited);
+
+      /**
+       * At the depth it was written, not flattened to leaf depth. `decideLeaf`
+       * ranks depth above layer on both sides of the wire, so a leaf-depth copy
+       * of a branch rule outranks, in the client's tree, the rule it loses to
+       * on the server — which is how un-ticking a branch moved no checkbox and
+       * revoked fourteen leaves on save.
+       */
+      const teamRule = (answer.body.inherited ?? []).find((r: any) => r.origin.includes("team platform"));
+      check("  the team's rule arrives at the depth it was written",
+        teamRule?.node === "aws" && teamRule?.effect === "grant", teamRule);
+      check("    and no rule was manufactured per leaf",
+        !(answer.body.inherited ?? []).some((r: any) => r.node === "aws.read"),
+        (answer.body.inherited ?? []).map((r: any) => r.node));
+
+      /**
+       * A leaf nothing beneath her decides is `false`, not missing: the tree
+       * reads this map for every leaf in the vocabulary and an absent key would
+       * read as "not granted" by accident rather than by answer.
+       */
+      check("  every leaf in the vocabulary has a verdict",
+        PERMISSIONS.every(l => typeof answer.body.baseline?.[l.key] === "boolean"),
+        Object.keys(answer.body.baseline ?? {}).length);
     }
 
     console.log("\nPOST /migrate: it generates a starting file, it does not overwrite one");
@@ -1029,16 +1368,82 @@ async function theAdminRouterDriven() {
       check("  and the curated presets are still there", writes.length === 0, writes);
 
       /**
-       * And it still does its job on the state it exists for. The member list
-       * comes from GitHub, which is not reachable here, so this asserts the
-       * guard let it past rather than what it then wrote.
+       * And the third table, which the guard did not look at — and which is the
+       * shape `docs/auth/permissions-model.md` encourages authority to be
+       * delivered in.
+       *
+       * `startingFile` replaces `teams` with `{}` wholesale, so a file whose
+       * entire content was a team grant had the caller's own source of
+       * authority erased and replaced by a preset granting them everything.
+       * Both guarded tables were empty, so it passed.
        */
-      // The member list comes from GitHub, which is not reachable here, so this
-      // asserts only that the guard let it past — the "[admin] TypeError" logged
-      // below is that unreachable call, and is what "not 409" means here.
-      const fresh = await run("post", "/migrate", { stored: loaded(empty), as: "plain" });
-      check("an organization with neither is not refused by the guard",
-        fresh.status !== 409, fresh);
+      const viaTeams: PermissionsFile = {
+        version: 1, presets: {}, people: {},
+        teams: { platform: { grant: ["admin.people.assign"] } },
+      };
+      const caller = { login: "plain", teamSlugs: ["platform", "control-hub-admins"], isOrgOwner: false };
+      const generated = startingFile([
+        { login: "plain", isControlHubAdmin: true, isAwsAdmin: false, isOrgOwner: false },
+      ]);
+      check("the escalation is real: one leaf through `teams` becomes the whole vocabulary",
+        permissionsFor(viaTeams, caller).held.join() === "admin.people.assign"
+          && permissionsFor(generated, caller).held.length > 90
+          && permissionsFor(generated, caller).has("admin.presets.delete"),
+        { before: permissionsFor(viaTeams, caller).held,
+          after: permissionsFor(generated, caller).held.length });
+
+      const hasTeams = await run("post", "/migrate", {
+        stored: loaded(viaTeams), as: "plain", teams: ["platform", "control-hub-admins"],
+      });
+      check("a file that delivers authority through `teams` is refused too",
+        hasTeams.status === 409 && hasTeams.body.code === "conflict"
+          && /teams/.test(String(hasTeams.body.error)), hasTeams);
+      check("  and the team that was granting the caller their one permission is still there",
+        writes.filter(w => w.method === "PUT").length === 0, writes);
+
+      /**
+       * And the rule itself, rather than the guard that happens to cover
+       * today's route to it: **no write may widen the writer** is a property of
+       * writing the file, and `POST /migrate` writes a whole file. The stored
+       * file here cannot be read at all, so the 409 guard sees nothing to
+       * discard and lets it through — and the write is still refused, because
+       * generating a file that hands the caller the `control-hub-admin` preset
+       * is a write that widens them.
+       */
+      orgSnapshot = {
+        members: ["plain", "other"], owners: [],
+        teams: { "control-hub-admins": ["plain", "other"], "aws-guardrail-admins": [] },
+      };
+      try {
+        const unread = await run("post", "/migrate", {
+          stored: { reason: "unreachable", detail: "GitHub is not answering" },
+          as: "plain", teams: ["control-hub-admins"],
+        });
+        check("generating a file that would widen the caller is refused, on this route too",
+          unread.status === 403 && unread.body.code === "SELF_WIDENING"
+            && (unread.body.gained ?? []).includes("admin.presets.delete"), unread);
+        check("  and nothing was written", writes.filter(w => w.method === "PUT").length === 0, writes);
+
+        /**
+         * It still does the job it exists for. An organization owner is exempt
+         * — they already hold everything, so there is nothing to widen into —
+         * and the migration is the thing they run before the flip.
+         */
+        const fresh = await run("post", "/migrate", {
+          stored: loaded(empty), as: "plain", owner: true, teams: ["control-hub-admins"],
+        });
+        check("an organization with none of the three still gets its starting file",
+          fresh.status === 200 && fresh.body.ok === true && fresh.body.people === 2, fresh);
+
+        const written = JSON.parse(Buffer.from(
+          writes.find(w => w.method === "PUT")!.body.content, "base64").toString("utf8"));
+        check("  which reproduces today's access rather than inventing it",
+          permissionsFor(written, { login: "plain", teamSlugs: [], isOrgOwner: false })
+            .has("admin.presets.delete"),
+          Object.keys(written.people));
+      } finally {
+        orgSnapshot = null;
+      }
     }
   } finally {
     setPermissionsTestHooks(null);
