@@ -1603,7 +1603,50 @@ async function theAdminRouterDriven() {
 }
 
 theAdminRouterDriven().then(() => {
-  console.log("\nthe file is the switch, not this machine's environment");
+  console.log("\nowning the organization confers nothing");
+{
+  const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
+  const evaluate = fs.readFileSync("./src/permissions/evaluate.ts", "utf8");
+  const svc = fs.readFileSync("./src/services/authorizationService.ts", "utf8");
+
+  /**
+   * Org ownership used to be an exemption from every check, as a net against
+   * an empty or deleted admin team. It meant somebody who removed themselves
+   * from that team kept full access to the whole app — the GitHub half and the
+   * AWS half — with nothing on any screen able to explain it. From the inside
+   * that reads as the permission system being broken, and it was reported as
+   * such more than once.
+   */
+  const owner = permissionsFor(emptyFile(), { login: "an-owner", teamSlugs: [], isOrgOwner: true });
+  check("an organization owner holds nothing by virtue of owning it",
+    owner.held.length === 0, owner.held.slice(0, 8));
+
+  check("  and the engine no longer short-circuits on it",
+    !/if \(subject\.isOrgOwner\) return allPermissions/.test(evaluate));
+
+  check("  nor does the team check admit them",
+    !/return "owner";/.test(svc),
+    "this is what let an owner reach the Admin tab while on no team at all");
+
+  /**
+   * One bypass remains, and it is the recovery path: the admin team holds
+   * everything under every condition, including a file that cannot be read.
+   * Checked before the failure branch, so an unreadable file locks out
+   * everybody except the people who can fix it.
+   */
+  const admin = permissionsFor(emptyFile(), {
+    login: "an-admin", teamSlugs: [CONTROL_HUB_ADMIN_TEAM], isOrgOwner: false });
+  check("the admin team is the only bypass, and it is total",
+    admin.held.length === PERMISSIONS.length, admin.held.length);
+
+  const teamBeforeFailure = index.indexOf("resolvedSubject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM)");
+  const failureBranch = index.indexOf("if (isFailure(loaded))");
+  check("  and it is answered before the read failure, so it survives an outage",
+    teamBeforeFailure >= 0 && teamBeforeFailure < failureBranch,
+    { teamBeforeFailure, failureBranch });
+}
+
+console.log("\nthe file is the switch, not this machine's environment");
 {
   const index = fs.readFileSync("./src/permissions/index.ts", "utf8");
   const gate = fs.readFileSync("./src/middleware/permissionGate.ts", "utf8");

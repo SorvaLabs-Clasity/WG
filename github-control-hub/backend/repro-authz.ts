@@ -78,8 +78,15 @@ globalThis.fetch = (async (input: any) => {
     if (!ok) failures++;
   };
 
-  await check("org owner is always admin, even with no team",
-    { orgRole: "admin", teamError: 404 }, true);
+  /**
+   * Owning the organization used to be sufficient, as a net against an empty
+   * or deleted admin team. It meant somebody removed from that team kept full
+   * access to the whole app, AWS included, with nothing able to explain it —
+   * which from the inside reads as the permission system being broken.
+   * Membership of the team is now the only way in.
+   */
+  await check("an org owner with no team membership is NOT admin",
+    { orgRole: "admin", teamError: 404 }, false);
   await check("member of the admin team is admin",
     { orgRole: "member", teamState: "active" }, true);
   await check("plain org member is NOT admin",
@@ -134,7 +141,7 @@ globalThis.fetch = (async (input: any) => {
 
     scenario = { orgRole: "admin", memberOf: [] };
     [gh, aws] = await both("org-owner");
-    assert("an org owner still gets both", gh === true && aws === true, { gh, aws });
+    assert("an org owner on neither team gets neither", gh === false && aws === false, { gh, aws });
 
     // The cache is keyed per team as well as per user, so one answer must not
     // stand in for the other.
@@ -241,7 +248,10 @@ globalThis.fetch = (async (input: any) => {
     };
 
     invalidateAdminCache();
-    scenario = { orgRole: "admin", memberOf: [] };
+    // On the team, so recovery is observable: an owner off the team is denied
+    // whether or not the token works, which would make the assertion below
+    // pass for the wrong reason.
+    scenario = { orgRole: "member", memberOf: [CONTROL_HUB_ADMIN_TEAM] };
 
     __resetTokenManagerForTests();
     const duringOutage = await isControlHubAdmin("owner-person");
@@ -287,9 +297,18 @@ globalThis.fetch = (async (input: any) => {
 
     const svc = fs.readFileSync("src/services/authorizationService.ts", "utf8");
 
-    claim("an owner is reported as an owner, not merely as a yes",
-      /return "owner";/.test(svc) && /export type AdminVia/.test(svc),
+    /**
+     * The route is still reported rather than a bare yes — that is what stopped
+     * a deliberate rule reading as a broken one. What changed is that there is
+     * only one route left: ownership confers nothing, so "owner" is never
+     * returned and the answer is team membership or nothing.
+     */
+    claim("the answer says how, not merely yes",
+      /export type AdminVia/.test(svc) && /\? "team" : null/.test(svc),
       "a bare boolean is what made a deliberate rule look like a broken one");
+    claim("  and ownership is no longer one of the ways",
+      !/return "owner";/.test(svc),
+      "owning the organization silently conferred every permission in the app");
     claim("  and team membership as team membership",
       /\? "team" : null/.test(svc));
     claim("  while the boolean the gates use is unchanged",

@@ -173,9 +173,11 @@ async function readableSections(
  * file, and what would I hold under the one being written, per `permissionsFor`
  * — the same evaluator the gates use — over the caller's real subject. It
  * permits an administrator to narrow themselves and to edit a preset they hold
- * in ways that do not widen them. Organization owners are exempt, as they are
- * everywhere else here: they already hold everything, so there is nothing to
- * widen into.
+ * in ways that do not widen them. Nobody is exempt from it — organization
+ * owners used to be, because they held everything and so had nothing to widen
+ * into, and now they hold whatever the file says like anybody else. Members of
+ * the admin team still hold everything, so for them it is a rule with nothing
+ * to catch rather than an exemption from one.
  *
  * Inert until a file exists, like every other permission decision
  * in this router.

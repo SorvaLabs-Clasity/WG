@@ -144,8 +144,10 @@ and editing a preset you hold is ordinary work as long as it does not widen
 you. It is also wider than any list of known escalations, because it closes the
 ones nobody has thought of yet.
 
-Organization owners are exempt, as they are everywhere else: they already hold
-everything, so there is nothing to widen into.
+Nobody is exempt from it. Members of the admin team already hold everything, so
+for them it is a rule with nothing to catch rather than an exemption from one —
+and organization owners, who used to be exempt because they held everything, now
+hold whatever the file says like anybody else.
 
 The rule belongs to **writing the file**, not to one endpoint. It was
 implemented on `PUT /api/admin/file` alone, and `POST /api/admin/migrate` —
@@ -210,31 +212,35 @@ refused, with a 503 that says the permissions could not be read rather than a
 purpose — serving yesterday's permissions is exactly what you do not want on
 the day somebody's access was revoked this morning.
 
-Organization owners are exempt, as they are from every other gate here. The
-people who can fix it can still get in.
+Members of the admin team are exempt, and they are the only ones — their
+standing comes from GitHub's team API rather than from the file, so it survives
+the file being unreadable. If GitHub itself is unreachable then team membership
+cannot be read either and nobody is recognised; that is not a gap this app can
+close, because the answer lives on GitHub.
 
-## Organization owners pass every check
+## Only the admin team is exempt
 
-Always, whatever team they are on and whatever the permission file says. Otherwise an empty, renamed or deleted team
-locks everyone out of their own settings, including out of the screen that would
-let them fix it.
+Membership of `control-hub-admins` confers every permission in the app — the
+GitHub half and the AWS half — under every condition, including a permissions
+file that cannot be read. It is checked before the read failure, so an
+unreadable file locks out everybody except the people who can fix it.
 
-**This is the rule that gets reported as a bug.** Somebody removes themselves
-from both teams to satisfy themselves that the gate works, nothing whatsoever
-changes, and the honest conclusion from the inside is that the permissions are
-broken. They are not — an owner was never being admitted by the team.
+**Organization owners are not exempt, and used to be.** The old rule existed as
+a net: an empty, renamed or deleted team could otherwise lock everyone out of
+the screen that would fix it. The cost was that owning the GitHub organization
+silently conferred everything here, so somebody who removed themselves from the
+admin team kept full access with nothing on screen able to account for it. That
+was reported as a bug more than once, and it was not one — which is exactly the
+problem with it.
 
-So `/auth/permissions` reports the *route* alongside the verdict:
+Ownership now decides nothing. It is still *reported* — the dry-run names the
+owners, because an operator choosing who to put on the admin team wants to know
+who they are — but nothing grants on it.
 
-```json
-{ "isAwsAdmin": true, "awsAdminVia": "owner", "awsAdminTeam": "aws-guardrail-admins" }
-```
-
-`"owner"` | `"team"` | `null`, and the account menu says which in a sentence. To
-actually test the team gate, use an account that is a plain org **member**.
-
-Removing yourself from an admin team while remaining an owner changes nothing,
-and the app now says so before you go looking for what broke.
+The recovery path for a deleted admin team is GitHub: an owner recreates the
+team and adds themselves. That is the same act the exemption performed, done
+where it is visible and auditable rather than as a standing bypass nobody can
+see.
 
 ## What "the app's own settings" covers
 
