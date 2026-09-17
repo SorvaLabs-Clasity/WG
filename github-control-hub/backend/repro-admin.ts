@@ -1506,7 +1506,63 @@ async function theAdminRouterDriven() {
 }
 
 theAdminRouterDriven().then(() => {
-  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+  console.log("\nthe two things that broke it on a real organization");
+{
+  const src = fs.readFileSync("./src/routes/admin.ts", "utf8");
+  const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
+  const page = fs.readFileSync("../frontend/src/pages/AdminPage.tsx", "utf8");
+
+  /**
+   * A repository created without `auto_init` has no commits, and the Contents
+   * API answers 409 on an empty repository. `savePermissions` mapped every 409
+   * to "somebody else saved while this was open" — so the first thing an
+   * operator did after creating the repo was the migration, and the first
+   * thing they saw was a concurrency error about a repository nobody had ever
+   * written to. The advice it gave could not work.
+   */
+  const create = src.match(/createInOrg\(\{[^}]*\}/s)?.[0] ?? "";
+  check("the permissions repo is created with a first commit",
+    /auto_init:\s*true/.test(create), create.slice(0, 120));
+
+  /**
+   * Three different refusals arrive as 409/422, and only one of them is a
+   * concurrent edit. Told the wrong one, an operator reloads and retries
+   * forever: reloading changes nothing about an empty repo or a ruleset.
+   */
+  const conflictBranch = store.indexOf("Somebody else saved");
+  for (const [what, needle] of [
+    ["an empty repository", "no commits yet"],
+    ["a ruleset refusal", "bypass list"],
+  ] as const) {
+    check(`  and ${what} is distinguished from it`,
+      store.includes(needle) && store.indexOf(needle) < conflictBranch,
+      "the specific case has to be tested before the catch-all, or it never runs");
+  }
+
+  check("  and an empty repository is not reported as somebody else's edit",
+    /empty/i.test(store) && store.indexOf("no commits yet") < store.indexOf("Somebody else saved"),
+    "409 means both; the message has to read GitHub's own to tell them apart");
+
+  /**
+   * The People screen searched `permissions.json`, so the only people it could
+   * offer were the ones already granted something. Adding anybody new meant
+   * typing their login exactly right from memory, and a typo made an entry
+   * that matched no account and said nothing about it.
+   */
+  check("the People screen can search the organization, not only the file",
+    /\/admin\/org-members/.test(fs.readFileSync("../frontend/src/api/admin.ts", "utf8"))
+      && /fetchOrgMembers/.test(page),
+    "a screen that can only offer people it has already been told about cannot add the first one");
+
+  check("  and the roster route is gated like the screen it feeds",
+    /router\.get\("\/org-members",\s*requirePermission\("admin\.people\.read"\)/.test(src));
+
+  check("  while a roster that cannot be read still leaves the file's own people listable",
+    /rosterFailed/.test(page) && /roster \?\? \[\]/.test(page),
+    "the organization being unreachable must not empty a screen that has its own data");
+}
+
+console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 }, (err) => {
   console.log(`  FAIL  the admin router could not be driven -> ${err?.stack ?? err}`);
