@@ -1,6 +1,14 @@
 import type { PermissionsFile, PermissionEntry, Preset } from "./types";
 import { resolvePreset, type Rule } from "./presets";
-import { isKnownNode, isUnder, PERMISSIONS } from "./vocabulary";
+import { isUnder } from "./vocabulary";
+/**
+ * The vocabulary is read through `currentVocabulary()`, not the fixed
+ * `PERMISSIONS` list, because per-account AWS leaves exist only for the
+ * accounts an install has configured. Everything else about resolution is
+ * unchanged: an account id is a path segment, so prefix grants, revokes at any
+ * depth and longest-prefix-wins already work on it.
+ */
+import { currentVocabulary, isKnownNodeNow } from "./accountScope";
 import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 /**
@@ -104,7 +112,7 @@ export function decideLeaf(leaf: string, rules: LayeredRule[]): Decision {
   let best: LayeredRule | null = null;
 
   for (const rule of rules) {
-    if (!isKnownNode(rule.node)) continue;
+    if (!isKnownNodeNow(rule.node)) continue;
     if (!isUnder(leaf, rule.node)) continue;
     if (!best) { best = rule; continue; }
 
@@ -179,7 +187,7 @@ export interface PermissionSet {
  * question, and `held` is the enumerable form for the admin screen.
  */
 export function allPermissions(reason: Explanation["reason"], origin: string): PermissionSet {
-  const all = PERMISSIONS.map(p => p.key).sort();
+  const all = currentVocabulary().map(p => p.key).sort();
   return {
     has: () => true,
     held: all,
@@ -221,7 +229,7 @@ export function permissionsFor(file: PermissionsFile, subject: Subject): Permiss
 
   const rules = collectRules(file, subject.login, subject.teamSlugs);
   const decisions = new Map<string, Decision>();
-  for (const { key } of PERMISSIONS) decisions.set(key, decideLeaf(key, rules));
+  for (const { key } of currentVocabulary()) decisions.set(key, decideLeaf(key, rules));
 
   const held = [...decisions.entries()]
     .filter(([, d]) => d.held).map(([key]) => key).sort();
@@ -267,7 +275,7 @@ export function presetRules(presets: Record<string, Preset>, id: string): Layere
 export function explainPreset(presets: Record<string, Preset>, id: string): Record<string, Explanation> {
   const rules = presetRules(presets, id);
   const out: Record<string, Explanation> = {};
-  for (const { key } of PERMISSIONS) {
+  for (const { key } of currentVocabulary()) {
     const decision = decideLeaf(key, rules);
     out[key] = decision.rule
       ? { held: decision.held, reason: decision.held ? "granted" : "revoked", origin: decision.rule.origin }
@@ -285,7 +293,7 @@ export function explainPreset(presets: Record<string, Preset>, id: string): Reco
  */
 export function baselineOf(rules: LayeredRule[]): Record<string, boolean> {
   const out: Record<string, boolean> = {};
-  for (const { key } of PERMISSIONS) out[key] = decideLeaf(key, rules).held;
+  for (const { key } of currentVocabulary()) out[key] = decideLeaf(key, rules).held;
   return out;
 }
 

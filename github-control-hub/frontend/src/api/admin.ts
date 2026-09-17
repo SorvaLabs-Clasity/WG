@@ -70,6 +70,14 @@ export interface PermissionLeaf {
 export interface VocabularyResponse {
   permissions: PermissionLeaf[];
   version: number;
+  /**
+   * The configured AWS accounts. The vocabulary carries one branch per
+   * account, and these are the names to render them under — a tree of
+   * twelve-digit numbers is how somebody grants remediation in the wrong one.
+   */
+  accounts?: Array<{ accountId: string; name: string }>;
+  /** Set when the account list could not be read; the branches are simply absent. */
+  accountsFailed?: string | null;
 }
 
 export const fetchVocabulary = () => apiGet<VocabularyResponse>("/admin/vocabulary");

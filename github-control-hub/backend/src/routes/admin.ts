@@ -15,6 +15,8 @@ import { startingFile, dryRun, type MemberSnapshot } from "../permissions/migrat
 import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import { listOrgMembers, depsFromOctokit } from "../services/orgMembersService";
 import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { resolveAccounts } from "../aws-guardrails/accounts";
+import { currentVocabulary, setConfiguredAccounts } from "../permissions/accountScope";
 
 /**
  * The Admin tab: the one router that can grant permissions.
@@ -419,9 +421,47 @@ router.put(
 
 // So the tree renders from the server's own list rather than a copy that can
 // drift from it as the vocabulary grows.
-router.get("/vocabulary", requirePermission("admin.console.open"), (_req: Request, res: Response) => {
-  res.json({ permissions: PERMISSIONS, version: VOCABULARY_VERSION });
+router.get("/vocabulary", requirePermission("admin.console.open"), async (_req: Request, res: Response) => {
+  /**
+   * Refreshed here rather than cached at boot, because an account added this
+   * morning has to be grantable this morning — and this is the one request
+   * that exists to tell the tree what can be granted. Everything else reads
+   * the registry.
+   *
+   * A failure to resolve accounts is not fatal: the fixed leaves are still the
+   * whole of the non-AWS vocabulary, and the global `aws.*` keys still answer
+   * for every account. The tree shows no per-account branch, which is honest —
+   * it does not know of any.
+   */
+  let accountsFailed: string | null = null;
+  try {
+    const accounts = await resolveAccounts();
+    setConfiguredAccounts(accounts.map(a => a.accountId));
+  } catch (err: any) {
+    accountsFailed = err?.message ?? String(err);
+  }
+
+  res.json({
+    permissions: currentVocabulary(),
+    version: VOCABULARY_VERSION,
+    /**
+     * So the tree can label `aws.account.<id>` with the name people use — an
+     * estate of raw twelve-digit numbers is unreadable, and picking the wrong
+     * one is how somebody grants remediation in production.
+     */
+    accounts: await accountLabels(),
+    accountsFailed,
+  });
 });
+
+/** The configured accounts as {id, name}, or an empty list if they cannot be read. */
+async function accountLabels(): Promise<Array<{ accountId: string; name: string }>> {
+  try {
+    return (await resolveAccounts()).map(a => ({ accountId: a.accountId, name: a.name }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * One person's standing, and the baseline the admin tree edits against.

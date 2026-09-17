@@ -14,6 +14,7 @@
  */
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 import type { AwsAccount, Scope } from "./types";
+import { setConfiguredAccounts } from "../permissions/accountScope";
 
 const REGION = awsRegion();
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
@@ -90,6 +91,17 @@ export const __resetHomeAccountCache = resetHomeAccountCache;
  */
 export async function resolveAccounts(): Promise<AwsAccount[]> {
   const accountId = await homeAccountId();
+
+  /**
+   * Keep the permission vocabulary in step with the estate.
+   *
+   * `aws.account.<id>.*` leaves exist only for accounts that are configured,
+   * and every permission decision reads that list. Refreshing it here means
+   * any path that resolves accounts keeps it current, rather than the registry
+   * depending on a scheduled job somebody has to remember exists.
+   */
+  setConfiguredAccounts([accountId]);
+
   return [{
     accountId,
     name: "This account",

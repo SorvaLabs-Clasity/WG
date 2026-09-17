@@ -16,7 +16,7 @@ import { callerMayRemediate, liveProbe, type ResourceRef, type WriteIntent } fro
 import type { Guardrail, AwsExclusionList, GuardrailMode, GuardrailKind, AwsAccount } from "../aws-guardrails/types";
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 import { requireAwsAdmin } from "../middleware/teamGate";
-import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
+import { requirePermission, requireAnyPermission, requirePermissionInAccounts } from "../middleware/permissionGate";
 
 const router = Router();
 
@@ -294,7 +294,7 @@ async function refuseIfCallerCannotWrite(
   return true;
 }
 
-router.post("/run", requireAdmin, requirePermission("aws.sweep.run"), async (req: Request, res: Response) => {
+router.post("/run", requireAdmin, requirePermissionInAccounts("sweep.run"), async (req: Request, res: Response) => {
   const { ruleIds, resourceIds, accountIds } = req.body ?? {};
   const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
@@ -328,7 +328,7 @@ router.post("/run", requireAdmin, requirePermission("aws.sweep.run"), async (req
  * `resourceId` is required, and the engine refuses without it. Omitting it
  * would turn this into enforcing the entire rule.
  */
-router.post("/remediate", requireAdmin, requirePermission("aws.remediate"), async (req: Request, res: Response) => {
+router.post("/remediate", requireAdmin, requirePermissionInAccounts("remediate"), async (req: Request, res: Response) => {
   const { ruleId, resourceId, accountId } = req.body ?? {};
   if (!ruleId || !resourceId) {
     res.status(400).json({ error: "ruleId and resourceId are both required" });
@@ -414,7 +414,7 @@ router.post("/remediate", requireAdmin, requirePermission("aws.remediate"), asyn
 });
 
 /** Evaluate without writing, whatever mode the rules are in. */
-router.post("/preview", requireAdmin, requirePermission("aws.preview"), async (req: Request, res: Response) => {
+router.post("/preview", requireAdmin, requirePermissionInAccounts("preview"), async (req: Request, res: Response) => {
   const { ruleIds, resourceIds, accountIds } = req.body ?? {};
   const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
