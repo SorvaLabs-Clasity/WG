@@ -165,8 +165,27 @@ const code = (src: string) => src
 
     // A pass whose real job is alarms must not become a long walk through the
     // activity table because one organization has a lot of readers.
-    check("  capped, so one large organization cannot take the pass over",
-      /\.slice\(0, 40\)/.test(handler));
+    /**
+     * Bounded by time, not by a count.
+     *
+     * This asserted `.slice(0, 40)`. Forty is a number whose cost nobody knows
+     * until it is paid: each row is a scan of the organization-wide activity
+     * table through a free-text filter, reading up to four hundred entries. On
+     * a large table forty of them is most of a five-minute invocation, every
+     * five minutes, which is how the function came to cost $21 a month and run
+     * essentially without stopping.
+     *
+     * The bound that matters is the clock, and the clock is Lambda's own.
+     */
+    check("  bounded by the invocation's remaining time, so a large organization cannot take the pass over",
+      /if \(outOfTime\(\)\) \{ ranOut = true; break; \}/.test(handler),
+      "a fixed count is a bound on rows, not on time, and only time is billed");
+    check("    with the clock taken from Lambda rather than assumed",
+      /getRemainingTimeInMillis/.test(handler),
+      "a handler that takes no context cannot know it is about to be killed");
+    check("    and something left unspent, so the pass can finish cleanly",
+      /RESERVE_MS/.test(handler),
+      "a pass killed mid-write is an error, and an errored schedule is retried on top of the next one");
     check("  oldest first, so a capped pass does not starve the same rows",
       /computedAt\.localeCompare/.test(handler));
 
