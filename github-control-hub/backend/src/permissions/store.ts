@@ -87,6 +87,21 @@ export function forgetPermissions(): void {
   cache = null;
 }
 
+/**
+ * Reads stay on the App's token, and must.
+ *
+ * The gate in front of every request needs this file to decide whether the
+ * caller may do anything at all — including callers with no read access to the
+ * repository, which after "deny by default" is most people. Reading it with
+ * the caller's own token would mean nobody could be gated until they could
+ * read the rules that gate them.
+ *
+ * Two more consumers have no caller at all: `accessForOther`, which answers
+ * for somebody who is not making the request, and the scheduled passes, which
+ * run with nobody signed in.
+ *
+ * So: the App reads, the administrator writes. See `savePermissions`.
+ */
 export async function loadPermissions(now = Date.now()): Promise<LoadedPermissions | LoadFailure> {
   if (cache && now - cache.at < (isFailure(cache.value) ? FAILURE_TTL_MS : TTL_MS)) {
     return cache.value;
@@ -232,14 +247,42 @@ export function commitMessageFor(actor: string, summary: string): string {
  */
 export async function savePermissions(
   next: PermissionsFile, sha: string | null, actor: string, summary: string,
+  writerToken?: string,
 ): Promise<WriteResult> {
   if (!isUsable(next)) {
     const problems = fileProblems(next).map(p => `${p.where}: ${p.what}`);
     return { ok: false, reason: "invalid", detail: problems.join("; ") };
   }
 
-  const token = getSystemToken();
-  if (!token) return { ok: false, reason: "failed", detail: "The GitHub App's credentials are not loaded." };
+  /**
+   * The write goes out with the administrator's own token, not the App's.
+   *
+   * This is the rule the rest of the app already follows — "it must not let
+   * anyone do something they could not do themselves on github.com" — and this
+   * was the one write that broke it. Three things follow from fixing it:
+   *
+   * - The commit is authored by the person who made the change, so the git
+   *   history that *is* the audit log names them rather than naming the App
+   *   nine times.
+   * - GitHub decides, natively and per-commit. Somebody removed from the admin
+   *   team loses the ability to write the file at the moment they are removed,
+   *   without the app being told or being correct.
+   * - The organization's rulesets can grant a *team* push access instead of
+   *   granting an App a blanket bypass. A team is a smaller, auditable set, and
+   *   its membership is already the thing that gates this screen.
+   *
+   * Reads stay on the App's token deliberately — see `loadPermissions`. The
+   * App needs Contents: Read here; it no longer needs write.
+   */
+  const token = writerToken ?? getSystemToken();
+  if (!token) {
+    return {
+      ok: false, reason: "failed",
+      detail: writerToken === undefined
+        ? "The GitHub App's credentials are not loaded."
+        : "You are not signed in to GitHub, so this change has nobody to attribute it to.",
+    };
+  }
 
   const body = JSON.stringify(next, null, 2) + "\n";
   try {
@@ -311,6 +354,22 @@ export async function savePermissions(
      * whether a rule allows the write. GitHub names the rule in the message;
      * passing it through is the difference between a dead end and a fix.
      */
+    /**
+     * With the administrator's own token doing the writing, "you may not" is a
+     * live answer from GitHub rather than a misconfiguration — and it is the
+     * one an operator will hit first, because granting the team push access is
+     * a separate step from putting somebody on the team.
+     */
+    if (status === 403 || status === 404) {
+      return {
+        ok: false, reason: "failed",
+        detail: `GitHub refused to let you write ${PERMISSIONS_REPO}. `
+          + "Opening this screen needs team membership; committing the file needs push access "
+          + "to that repository, which is granted on GitHub and not here. "
+          + "Ask an organization owner to give the Control Hub admin team write access to it.",
+      };
+    }
+
     if (/rule|ruleset|protected branch|pull request/i.test(message)) {
       return {
         ok: false, reason: "failed",

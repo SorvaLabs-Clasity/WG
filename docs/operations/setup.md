@@ -323,7 +323,28 @@ with *Restrict who can push* set to the GitHub App and nobody else. Direct
 pushes by humans should be impossible. The app is the only writer; the Admin
 tab is the only way in; git history is the audit log.
 
-Grant the GitHub App **Contents: Read and write** on this repository only.
+**Who writes it.** Administrators commit this file with **their own GitHub
+accounts**, not the App's. The App only ever *reads* it, so it needs
+**Contents: Read** here and nothing more.
+
+That is the same rule the rest of the app follows — it never does anything on
+GitHub that the person could not have done themselves — and it has three
+consequences worth knowing:
+
+- Each commit is authored by the person who made the change, so the git history
+  that serves as the audit log names them.
+- GitHub enforces it per commit. Somebody removed from the admin team loses the
+  ability to change permissions the moment they are removed, whether or not the
+  app has noticed.
+- **Your rulesets grant a team, not an App.** Give the Control Hub admin team
+  write access to this repository (Repository → Settings → Collaborators and
+  teams → Add team → **Write**). The Bootstrap button does this for you when it
+  creates the repository.
+
+Opening the Admin tab and committing the file are two different permissions on
+purpose: team membership opens the screen, repository write access lands the
+change. Somebody on the team without write access can read the whole console
+and is refused at save, with a message saying so.
 
 #### Organization rulesets apply here too
 
@@ -342,17 +363,21 @@ is only escapable through its own bypass list. Two ways, either is fine:
 org ruleset, under *Target repositories*, exclude `control-hub-permissions` by
 name. This is the narrower change: nothing gains a bypass anywhere else.
 
-**Or add the GitHub App to each ruleset's bypass list.** Edit the ruleset →
-**Bypass list** → *Add bypass* → **GitHub Apps** → your Control Hub app, with
-the mode set to **Always** rather than *For pull requests only* (the app never
-opens one, so pull-requests-only grants it nothing). The app must be installed
-on the organization to appear in that list.
+**Or add the Control Hub admin team to each ruleset's bypass list.** Edit the
+ruleset → **Bypass list** → *Add bypass* → **Teams** → your admin team, with the
+mode set to **Always** rather than *For pull requests only* (the app commits
+directly and never opens one, so pull-requests-only grants it nothing).
+
+Bypassing a *team* rather than the App is the narrower change of the two, and
+the reason writes use each administrator's own token: the set of people who can
+get past the rule is a list you can read, on a team whose membership already
+gates the screen, rather than an application credential that is equally valid
+for anybody who can reach the app.
 
 Which rules actually bite: *require a pull request before merging* and *require
 status checks* both block a direct commit. *Require signed commits* does not —
-commits the app makes through the Contents API are signed by GitHub. *Restrict
-who can push* needs the app in its own actor list, which is what the repository
-ruleset above already does.
+commits made through the Contents API are signed by GitHub whoever authored
+them. *Restrict who can push* needs the admin team in its actor list.
 
 Check it worked by running the migration. If a ruleset is still in the way the
 app reports the refusal GitHub gave it, naming the rule.
