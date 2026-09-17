@@ -15,6 +15,7 @@ import { emptyFile, type PermissionsFile } from "./src/permissions/types";
 import {
   collectRules, LAYER, decideLeaf, permissionsFor, type LayeredRule,
 } from "./src/permissions/evaluate";
+import { CONTROL_HUB_ADMIN_TEAM } from "./src/services/authorizationService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -293,11 +294,20 @@ console.log("\nthe answer, and why");
     !nobody.has("activity.read.own") && !nobody.has("repos.read"));
 
   /**
-   * Owners are exempt from every check, deliberately: otherwise an empty or
-   * broken file locks everybody out of the screen that would fix it. This is
-   * the same rule the old team check had, kept and made visible.
+   * The one bypass in the system is membership of the Control Hub admin team.
+   *
+   * It used to be organization ownership as well, as a net against an empty or
+   * broken file. That net meant owning the GitHub organization silently
+   * conferred every permission here, including the AWS half, so somebody
+   * removed from the admin team kept full access with nothing able to explain
+   * it. Ownership now decides nothing; the team decides everything.
    */
-  const owner = permissionsFor(file, { ...plain, isOrgOwner: true });
+  const owner = permissionsFor(file, { ...plain, teamSlugs: [CONTROL_HUB_ADMIN_TEAM] });
+
+  const justAnOwner = permissionsFor(file, { ...plain, login: "an-owner", isOrgOwner: true });
+  check("owning the organization confers nothing by itself",
+    justAnOwner.held.length === 0,
+    justAnOwner.held.slice(0, 8));
 
   /**
    * Set equality, not a count. `held` is built by mapping over the vocabulary
@@ -309,7 +319,7 @@ console.log("\nthe answer, and why");
   const ownerHeld = new Set(owner.held);
   const missing = [...vocabulary].filter(k => !ownerHeld.has(k));
   const unknown = owner.held.filter(k => !vocabulary.has(k));
-  check("an organization owner holds exactly the vocabulary, key for key",
+  check("a Control Hub admin holds exactly the vocabulary, key for key",
     ownerHeld.size === vocabulary.size && missing.length === 0 && unknown.length === 0,
     { missing, unknown, held: owner.held.length, vocabulary: vocabulary.size });
   check("  and says yes to named leaves from across the tree",
@@ -317,7 +327,8 @@ console.log("\nthe answer, and why");
     && owner.has("aws.rules.delete") && owner.has("org.members.read")
     && owner.has("config.export") && owner.has("admin.presets.delete"));
   check("  and is told that is why",
-    owner.explain("aws.rules.delete").reason === "owner");
+    owner.explain("aws.rules.delete").reason === "controlHubAdmin",
+    owner.explain("aws.rules.delete"));
 
   const person = permissionsFor(file, { ...plain, login: "granted-person" });
   check("a preset's branch grant reaches its leaves", person.has("me.work.read"));

@@ -133,12 +133,17 @@ export interface Subject {
   /** GitHub team slugs this person is in. Read by the caller; this is pure. */
   teamSlugs: string[];
   /**
-   * Organization owners are exempt from every check.
+   * Whether GitHub says this person owns the organization.
    *
-   * Otherwise an empty file, a broken file, or an administrator who removed
-   * their own access locks everybody out of the one screen that could fix it.
-   * The old team check had the same exemption; this keeps it and makes it
-   * visible in `explain`, because access nobody can account for reads as a bug.
+   * **Reported, never decisive.** It used to be an exemption from every check,
+   * as a net against an empty or deleted admin team — and it meant owning the
+   * GitHub organization silently conferred every permission in this app,
+   * including the AWS half. Somebody removed from the admin team kept full
+   * access with nothing able to explain it, which reads from the inside as the
+   * permission system being broken.
+   *
+   * It is kept because the dry-run reports it: an operator deciding who to put
+   * on the admin team wants to know who the owners are. Nothing grants on it.
    */
   isOrgOwner: boolean;
   /**
@@ -203,7 +208,20 @@ export function allPermissions(reason: Explanation["reason"], origin: string): P
  * a set that cannot change under a request is one fewer thing to reason about.
  */
 export function permissionsFor(file: PermissionsFile, subject: Subject): PermissionSet {
-  if (subject.isOrgOwner) return allPermissions("owner", "organization owner");
+  /**
+   * Organization owners are **not** exempt.
+   *
+   * They were, as a safety net against an empty or deleted admin team. The
+   * cost was that owning the GitHub organization silently conferred every
+   * permission in this app — somebody removed from the admin team kept full
+   * access, with nothing on screen able to explain it, which reads from the
+   * inside as the permission system being broken.
+   *
+   * Only membership of the Control Hub admin team confers everything, and it
+   * does so under every condition including an unreadable file. Recovering a
+   * deleted team is done on GitHub, where it is visible, rather than by an
+   * exemption nobody can see.
+   */
 
   /**
    * The Control Hub admin team holds everything, and is not configurable.

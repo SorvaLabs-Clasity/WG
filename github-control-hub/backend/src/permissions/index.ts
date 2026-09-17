@@ -3,6 +3,7 @@ import { subjectFor } from "./subject";
 import { permissionsFor, allPermissions, type PermissionSet, type Subject } from "./evaluate";
 import { unknownNodesIn } from "./validate";
 import { emptyFile } from "./types";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 export * from "./types";
 export { PERMISSIONS, isLeaf, isKnownNode, leavesUnder } from "./vocabulary";
@@ -68,6 +69,32 @@ export interface Access {
 async function access(login: string, subject: Promise<Subject>): Promise<Access> {
   try {
     const [loaded, resolvedSubject] = await Promise.all([loadPermissions(), subject]);
+
+    /**
+     * The admin team holds everything under every condition, including a file
+     * that cannot be read.
+     *
+     * This is the recovery path, and it is the only one: the organization-owner
+     * exemption that used to serve this purpose is gone, because owning the
+     * GitHub organization silently conferred every permission in the app.
+     * Membership of the admin team is visible, revocable and deliberate, and
+     * it is checked here — before the failure branch below — so an unreadable
+     * file locks out everybody except the people who can fix it.
+     *
+     * If GitHub itself is unreachable then team membership cannot be read
+     * either, `teamSlugs` is empty and nobody is recognised. That is not a
+     * gap this code can close: the answer lives on GitHub.
+     */
+    if (resolvedSubject.teamSlugs.includes(CONTROL_HUB_ADMIN_TEAM)) {
+      return {
+        permissions: allPermissions("controlHubAdmin", `member of ${CONTROL_HUB_ADMIN_TEAM}`),
+        inert: false,
+        failure: null,
+        unknownNodes: [],
+        source: isFailure(loaded) ? null : loaded.source,
+        sha: isFailure(loaded) ? null : loaded.sha,
+      };
+    }
 
     if (isFailure(loaded)) {
       const inert = loaded.reason === "aws-only";

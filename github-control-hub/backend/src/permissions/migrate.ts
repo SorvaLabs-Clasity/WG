@@ -161,6 +161,8 @@ function subjectOf(member: MemberSnapshot): Subject {
   return {
     login: member.login,
     teamSlugs: member.isControlHubAdmin ? [CONTROL_HUB_ADMIN_TEAM] : [],
+    // Reported in the row, never decisive: ownership stopped conferring
+    // anything when the organization-owner exemption was removed.
     isOrgOwner: member.isOrgOwner,
   };
 }

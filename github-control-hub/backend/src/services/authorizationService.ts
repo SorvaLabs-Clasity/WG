@@ -23,7 +23,7 @@ export const CONTROL_HUB_ADMIN_TEAM = process.env.CONTROL_HUB_ADMIN_TEAM || "con
  * account-wide AWS changes belong to whoever administers the account. Sharing
  * one team would mean granting both to grant either.
  *
- * Org owners always qualify, so an unset or deleted team cannot lock everyone
+ * Only the team qualifies. Org owners used to, so an unset or deleted team could not lock everyone
  * out of their own account settings.
  */
 export const AWS_ADMIN_TEAM = process.env.AWS_ADMIN_TEAM || "aws-guardrail-admins";
@@ -31,7 +31,11 @@ export const AWS_ADMIN_TEAM = process.env.AWS_ADMIN_TEAM || "aws-guardrail-admin
 /**
  * How somebody qualifies, not merely whether.
  *
- * "owner" is the one that surprises people. An organization owner passes every
+ * "owner" is no longer returned — see `adminVia`. The value is kept in the type
+ * so an older client reading `adminVia` off the wire still parses, and so the
+ * history of why it existed stays readable.
+ *
+ * It used to mean: an organization owner passes every
  * check here by design — otherwise an empty or deleted team could lock everyone
  * out of their own settings — and nothing in the app used to say so. Somebody
  * who removes themselves from both teams, sees no change whatsoever, and is
@@ -52,7 +56,7 @@ export function invalidateAdminCache(login?: string): void {
 }
 
 /**
- * True when the user is an org owner or a member of the admin team.
+ * True when the user is a member of the admin team. Org ownership does not count.
  *
  * Membership is read with the App/system token rather than the caller's: a user
  * cannot necessarily see a team they do not belong to, and "cannot see it"
@@ -131,16 +135,21 @@ async function resolve(login: string, team: string, userToken?: string): Promise
   }
   const octokit: Octokit = createOctokit(token, "Signing in");
 
-  // Org owners always qualify, otherwise an empty or deleted team could lock
-  // everyone out of their own settings.
-  try {
-    const { data } = await octokit.rest.orgs.getMembershipForUser({ org, username: login });
-    if (data.role === "admin") return "owner";
-  } catch (err: any) {
-    if (err?.status !== 404) {
-      console.warn(`[authorization] Org membership check failed for "${login}": ${err?.message ?? err}`);
-    }
-  }
+  /**
+   * Organization owners no longer qualify.
+   *
+   * They used to, as a safety net: an empty, renamed or deleted team could
+   * otherwise lock everybody out of the screen that would fix it. That net had
+   * a cost nobody wanted — owning the GitHub organization silently conferred
+   * every permission in this app, including the AWS ones, and a person removed
+   * from the admin team kept full access with nothing on screen explaining
+   * why.
+   *
+   * Membership of the admin team is now the only way in, deliberately. The
+   * recovery path for a deleted team is GitHub: an owner can still recreate it
+   * and add themselves, which is the same act, done where it is visible,
+   * instead of a permanent exemption nobody can see.
+   */
 
   try {
     const { data } = await octokit.rest.teams.getMembershipForUserInOrg({

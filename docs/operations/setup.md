@@ -270,9 +270,13 @@ trusted with GitHub settings should not require being trusted with the AWS
 account. `repro-authz` asserts that split against the routes as shipped, so a
 new admin gate copied from the wrong neighbour fails a test.
 
-**Neither team requires org ownership.** Owners qualify automatically, as a
-safety net so a deleted or empty team cannot lock everyone out, but membership
-of the team is the intended path and is sufficient on its own.
+**Membership of the team is the only way in.** Organization owners used to
+qualify automatically, as a safety net so a deleted or empty team could not lock
+everyone out. They no longer do: owning the GitHub organization silently
+conferred every permission in this app, so somebody who left the admin team kept
+full access with nothing able to explain it. If the team is deleted, an owner
+recreates it on GitHub and adds themselves — the same recovery, done where it is
+visible.
 
 The slugs must be exactly these, membership is checked by slug, and both are
 overridable only by environment variable. Anyone outside them gets a read-only
@@ -419,7 +423,10 @@ before granting anybody anything. It can no longer force enforcement *off*.
 file, so it refuses everyone with a 503 rather than guessing. There is
 deliberately no cached fallback — serving yesterday's permissions is the wrong
 behaviour on the day somebody's access was revoked this morning. Organization
-owners are exempt and can still get in to fix it.
+members of the Control Hub admin team are exempt and can still get in to fix
+it — their standing comes from GitHub's team API rather than from the file. If
+GitHub itself is unreachable, nobody is recognised, because the answer lives
+there.
 
 `aws-guardrail-admins` stops being read once the flag is on. Leave the team in
 place until the flip has held for a while; deleting it is a separate decision
