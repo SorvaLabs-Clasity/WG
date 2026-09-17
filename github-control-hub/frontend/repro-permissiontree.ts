@@ -452,5 +452,45 @@ console.log("\nwhat is saved resolves to exactly what was ticked");
   roundTrip("ticking a branch she holds none of", "access");
 }
 
+console.log("\nthe person screen: clearing overrides, and who cannot be edited");
+{
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+
+  /**
+   * Un-ticking a scatter of earlier overrides by hand means finding each one,
+   * and a missed one is invisible — a person-layer tick looks exactly like an
+   * inherited one. "Clear this person's overrides" is the way to say "give
+   * them what the preset says and nothing else".
+   *
+   * It must clear to an empty entry, not to a set of revokes: revoking
+   * everything would beat the preset rather than defer to it, which is the
+   * opposite of what the button says.
+   */
+  check("the person screen offers to clear overrides",
+    /Clear this person's overrides/.test(page));
+  check("  and clearing defers to the preset rather than revoking past it",
+    /onClick=\{\(\) => setEntry\(\{\}\)\}/.test(page),
+    "setEntry({}) leaves the inherited layers deciding; a revoke list would override them");
+  check("  and is offered only when there is something to clear",
+    /hasOverrides &&/.test(page));
+
+  /**
+   * Nobody on the Control Hub admin team is configurable: they hold everything
+   * by membership, so an entry here would decide nothing, and an entry that
+   * decides nothing reads as a restriction that is quietly not in force.
+   */
+  check("an exempt person's tree is read-only",
+    /readOnly=\{[^}]*\bexempt\b[^}]*\}/.test(page), "the tree must not accept an edit that cannot apply");
+  check("  and their preset checkboxes are disabled too",
+    /disabled=\{!canAssign \|\| exempt\}/.test(page));
+  check("  and the save block is gone rather than merely inert",
+    /\(canOverride \|\| canAssign\) && !exempt &&/.test(page));
+  check("  and the screen says why, and what to do instead",
+    /Control Hub admin team/.test(page) && /take them off that team/.test(page),
+    "a locked screen with no reason reads as a broken one");
+  check("  while the exemption comes from the server, not guessed at",
+    /exempt\s*=\s*access\?\.exempt/.test(page));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

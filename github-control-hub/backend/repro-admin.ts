@@ -15,6 +15,7 @@ import { fileProblems } from "./src/permissions/validate";
 import { permissionsFor } from "./src/permissions/evaluate";
 import { emptyFile, type PermissionsFile } from "./src/permissions/types";
 import { changeClasses } from "./src/permissions/changeClasses";
+import { CONTROL_HUB_ADMIN_TEAM } from "./src/services/authorizationService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -110,8 +111,21 @@ console.log("\nthe starting file");
    * flip changes nothing on day one — it reproduces today's behaviour, and the
    * narrowing happens afterwards, deliberately, one person at a time.
    */
-  check("every member is named", Object.keys(file.people).length === members.length,
+  const admins = members.filter(m => m.isControlHubAdmin).map(m => m.login);
+
+  check("every member is named", 
+    Object.keys(file.people).length === members.length - admins.length,
     Object.keys(file.people));
+
+  /**
+   * Except the Control Hub admins, who need no entry: `permissionsFor` grants
+   * them everything on the strength of their membership, so an entry naming
+   * one of them would decide nothing. The write path refuses such an entry for
+   * the same reason — a restriction that cannot take effect reads, to whoever
+   * finds it next, as one that has.
+   */
+  check("  except the Control Hub admins, whose membership is the grant",
+    admins.every(login => !(login in file.people)), Object.keys(file.people));
 
   check("there are presets rather than per-person permission lists",
     Object.keys(file.presets).length >= 3, Object.keys(file.presets));
@@ -123,11 +137,19 @@ console.log("\nthe starting file");
 
   // Today's two teams become two presets; everybody else gets the one that
   // reproduces what a plain member can do now.
-  const adminAccess = permissionsFor(file, { login: "an-admin", teamSlugs: [], isOrgOwner: false });
+  // The admin is evaluated *with* their team, because the team is what grants
+  // them anything at all now. Evaluating them without it asks a question about
+  // a person who does not exist.
+  const adminAccess = permissionsFor(file, {
+    login: "an-admin", teamSlugs: [CONTROL_HUB_ADMIN_TEAM], isOrgOwner: false });
   const member = permissionsFor(file, { login: "everybody-else", teamSlugs: [], isOrgOwner: false });
   const aws = permissionsFor(file, { login: "aws-person", teamSlugs: [], isOrgOwner: false });
 
   check("a Control Hub admin keeps the admin screens", adminAccess.has("access.read"));
+  check("  and now the AWS ones too, which the two-team split kept from them",
+    adminAccess.has("aws.rules.enforce") && adminAccess.has("aws.remediate"));
+  check("  with no entry in the file doing any of it",
+    !("an-admin" in file.people));
   check("  and the AWS person keeps the AWS ones", aws.has("aws.rules.edit"));
   check("  while a plain member does not", !member.has("access.read") && !member.has("aws.rules.edit"));
 
@@ -158,8 +180,19 @@ console.log("\nthe dry run");
 
   // An empty file is what the flip would use if nobody ran the migration.
   const rows = dryRun(emptyFile(), members);
-  check("with an empty file, everybody loses everything",
-    rows.length === 3 && rows.every(r => r.losing.length > 0 && r.keeping === 0), rows);
+  /**
+   * Everybody the file governs, which is everybody except the Control Hub
+   * admins — their permissions come from team membership, so an empty file
+   * costs them nothing. Reporting otherwise would send an operator looking for
+   * a problem that does not exist.
+   */
+  const governed = rows.filter(r => r.login !== "an-admin");
+  check("with an empty file, everybody the file governs loses everything",
+    governed.length === 2 && governed.every(r => r.losing.length > 0 && r.keeping === 0), governed);
+
+  const exemptRow = rows.find(r => r.login === "an-admin")!;
+  check("  while a Control Hub admin loses nothing, because the team is what grants them",
+    exemptRow.losing.length === 0 && exemptRow.keeping > 0, exemptRow);
 
   // With the starting file, nobody loses anything — that is the whole point.
   const safe = dryRun(startingFile(members), members);
@@ -195,14 +228,23 @@ console.log("\nthe dry run");
     const aws = stripped.find(r => r.login === "aws-person")!;
     const plain = stripped.find(r => r.login === "everybody-else")!;
 
-    check("a file that drops the admin presets reports the administrator losing what they hold",
-      admin.losing.length > 0, admin);
-    check("  and names the admin screens among the losses",
-      admin.losing.includes("access.read") && admin.losing.includes("scanners.manage"), admin.losing);
-    check("  and reports the AWS operator losing the AWS leaves",
+    /**
+     * The AWS operator is the subject here, not the Control Hub admin. Since
+     * membership grants the admin everything, they can no longer be narrowed
+     * by anything the file does — which makes them useless for proving the
+     * dry-run can see above member level. The AWS operator is still governed
+     * by the file and still holds far more than a plain member, so the
+     * property C3 exists to protect is tested on them instead.
+     */
+    check("a file that drops the admin presets reports the AWS operator losing what they hold",
+      aws.losing.length > 0, aws);
+    check("  and names the AWS leaves among the losses",
       aws.losing.includes("aws.rules.edit") && aws.losing.includes("aws.remediate"), aws.losing);
     check("  while the plain member, whose standing did not change, loses nothing",
       plain.losing.length === 0, plain);
+    check("  and the Control Hub admin loses nothing either, for a different reason",
+      admin.losing.length === 0 && admin.keeping > plain.keeping,
+      "the preset was never what granted them; their team is");
 
     /**
      * The direction that matters: everybody still holds *something* here, so a
@@ -210,7 +252,7 @@ console.log("\nthe dry run");
      * tell the difference between "narrowed to member" and "unchanged".
      */
     check("  which a `keeping` count alone could not have told you",
-      admin.keeping > 0 && aws.keeping > 0 && admin.keeping === plain.keeping,
+      aws.keeping > 0 && plain.keeping > 0 && aws.keeping === plain.keeping,
       { admin: admin.keeping, aws: aws.keeping, plain: plain.keeping });
   }
 
@@ -219,18 +261,28 @@ console.log("\nthe dry run");
     //    alone — a baseline that over-reports would flag the whole organization
     //    and be read as noise.
     const narrowed = startingFile(members);
-    narrowed.people["an-admin"] = { presets: ["member"] };
+    narrowed.people["aws-person"] = { presets: ["member"] };
 
     const rows2 = dryRun(narrowed, members);
-    const admin = rows2.find(r => r.login === "an-admin")!;
-    check("narrowing one administrator reports that administrator, and only them",
-      admin.losing.length > 0 && rows2.filter(r => r.losing.length > 0).length === 1,
+    const aws2 = rows2.find(r => r.login === "aws-person")!;
+    check("narrowing one person reports that person, and only them",
+      aws2.losing.length > 0 && rows2.filter(r => r.losing.length > 0).length === 1,
       rows2.map(r => [r.login, r.losing.length]));
-    check("  and the leaves named are the ones the admin preset was carrying",
-      admin.losing.every(leaf => !dryRun(startingFile([members[2]]), [members[2]])[0]
+    check("  and the leaves named are the ones the AWS preset was carrying",
+      aws2.losing.every(leaf => !dryRun(startingFile([members[2]]), [members[2]])[0]
         .losing.includes(leaf))
-      && admin.losing.includes("admin.people.assign"),
-      admin.losing);
+      && aws2.losing.includes("aws.rules.enforce"),
+      aws2.losing);
+
+    /**
+     * And the row for somebody the file cannot narrow is not silently absent.
+     * A Control Hub admin appears with nothing lost, because "we did not
+     * evaluate them" and "they lose nothing" must not look the same in a
+     * column an operator reads before flipping enforcement on.
+     */
+    check("  while an exempt person still gets a row, saying they lose nothing",
+      rows2.some(r => r.login === "an-admin" && r.losing.length === 0 && r.keeping > 0),
+      rows2.find(r => r.login === "an-admin"));
   }
 
   {
@@ -1428,16 +1480,32 @@ async function theAdminRouterDriven() {
         version: 1, presets: {}, people: {},
         teams: { platform: { grant: ["admin.people.assign"] } },
       };
-      const caller = { login: "plain", teamSlugs: ["platform", "control-hub-admins"], isOrgOwner: false };
+      /**
+       * The caller is on `platform` and on `aws-guardrail-admins`, not on
+       * `control-hub-admins`: a member of that team holds every permission by
+       * membership, so no generated file could widen them and the escalation
+       * would not be expressible. `startingFile` hands an AWS admin the
+       * `aws-admin` preset, which is a genuine widening for somebody whose one
+       * leaf today is `admin.people.assign`.
+       */
+      const caller = { login: "plain", teamSlugs: ["platform", "aws-guardrail-admins"], isOrgOwner: false };
       const generated = startingFile([
-        { login: "plain", isControlHubAdmin: true, isAwsAdmin: false, isOrgOwner: false },
+        { login: "plain", isControlHubAdmin: false, isAwsAdmin: true, isOrgOwner: false },
       ]);
-      check("the escalation is real: one leaf through `teams` becomes the whole vocabulary",
-        permissionsFor(viaTeams, caller).held.join() === "admin.people.assign"
-          && permissionsFor(generated, caller).held.length > 90
-          && permissionsFor(generated, caller).has("admin.presets.delete"),
-        { before: permissionsFor(viaTeams, caller).held,
-          after: permissionsFor(generated, caller).held.length });
+      /**
+       * Asserted as the *relationship* — one leaf becomes many, including the
+       * power to enforce AWS guardrails — rather than as a count. The count
+       * moved once already, when Control Hub admins stopped being governed by
+       * the file, and a threshold pinned to the old shape would have read as a
+       * closed hole rather than a changed model.
+       */
+      const beforeHeld = permissionsFor(viaTeams, caller).held;
+      const afterSet = permissionsFor(generated, caller);
+      check("the escalation is real: one leaf through `teams` becomes a whole branch",
+        beforeHeld.join() === "admin.people.assign"
+          && afterSet.held.length > beforeHeld.length * 10
+          && afterSet.has("aws.rules.enforce"),
+        { before: beforeHeld, after: afterSet.held.length });
 
       const hasTeams = await run("post", "/migrate", {
         stored: loaded(viaTeams), as: "plain", teams: ["platform", "control-hub-admins"],
@@ -1457,18 +1525,27 @@ async function theAdminRouterDriven() {
        * generating a file that hands the caller the `control-hub-admin` preset
        * is a write that widens them.
        */
+      /**
+       * The caller here is on `aws-guardrail-admins` and *not* on
+       * `control-hub-admins`, which is the only shape in which this rule can
+       * still be tested: somebody on the Control Hub team already holds every
+       * permission by membership, so no file can widen them and the check has
+       * nothing to refuse. An AWS operator is still governed by the file, and
+       * `startingFile` would hand them the `aws-admin` preset — a widening, if
+       * what they hold today is less than that.
+       */
       orgSnapshot = {
         members: ["plain", "other"], owners: [],
-        teams: { "control-hub-admins": ["plain", "other"], "aws-guardrail-admins": [] },
+        teams: { "control-hub-admins": ["other"], "aws-guardrail-admins": ["plain"] },
       };
       try {
         const unread = await run("post", "/migrate", {
           stored: { reason: "unreachable", detail: "GitHub is not answering" },
-          as: "plain", teams: ["control-hub-admins"],
+          as: "plain", teams: ["aws-guardrail-admins"],
         });
         check("generating a file that would widen the caller is refused, on this route too",
           unread.status === 403 && unread.body.code === "SELF_WIDENING"
-            && (unread.body.gained ?? []).includes("admin.presets.delete"), unread);
+            && (unread.body.gained ?? []).includes("aws.rules.enforce"), unread);
         check("  and nothing was written", writes.filter(w => w.method === "PUT").length === 0, writes);
 
         /**
@@ -1477,17 +1554,24 @@ async function theAdminRouterDriven() {
          * and the migration is the thing they run before the flip.
          */
         const fresh = await run("post", "/migrate", {
-          stored: loaded(empty), as: "plain", owner: true, teams: ["control-hub-admins"],
+          stored: loaded(empty), as: "plain", owner: true, teams: ["aws-guardrail-admins"],
         });
+        /**
+         * One person, not two: `other` is on `control-hub-admins` and so gets
+         * no entry — their membership is the grant, and an entry naming them
+         * would decide nothing.
+         */
         check("an organization with none of the three still gets its starting file",
-          fresh.status === 200 && fresh.body.ok === true && fresh.body.people === 2, fresh);
+          fresh.status === 200 && fresh.body.ok === true && fresh.body.people === 1, fresh);
 
         const written = JSON.parse(Buffer.from(
           writes.find(w => w.method === "PUT")!.body.content, "base64").toString("utf8"));
         check("  which reproduces today's access rather than inventing it",
           permissionsFor(written, { login: "plain", teamSlugs: [], isOrgOwner: false })
-            .has("admin.presets.delete"),
+            .has("aws.rules.enforce"),
           Object.keys(written.people));
+        check("  and leaves the Control Hub admin out of it entirely",
+          !("other" in written.people), Object.keys(written.people));
       } finally {
         orgSnapshot = null;
       }
@@ -1506,7 +1590,53 @@ async function theAdminRouterDriven() {
 }
 
 theAdminRouterDriven().then(() => {
-  console.log("\nthe administrator writes, the app reads");
+  console.log("\nthe Control Hub admin team holds everything and is not configurable");
+{
+  const admin = { login: "an-admin", teamSlugs: [CONTROL_HUB_ADMIN_TEAM], isOrgOwner: false };
+  const plain = { login: "plain", teamSlugs: [], isOrgOwner: false };
+
+  /**
+   * Membership is the grant. Splitting "may open the Admin tab" from "may use
+   * the app" produced a role nobody wanted — somebody trusted to hand out
+   * `aws.rules.enforce` to anyone but themselves — and left entries in the file
+   * that looked like they governed those people while deciding nothing.
+   */
+  const empty = emptyFile();
+  check("an empty file still gives a Control Hub admin everything",
+    permissionsFor(empty, admin).held.length === PERMISSIONS.length,
+    permissionsFor(empty, admin).held.length);
+  check("  including the AWS half, which the old two-team split withheld",
+    permissionsFor(empty, admin).has("aws.rules.enforce"));
+  check("  while the same empty file gives a plain member nothing",
+    permissionsFor(empty, plain).held.length === 0);
+
+  /**
+   * And a revoke aimed at one of them changes nothing — which is exactly why
+   * the write path refuses to store one. A restriction that cannot take effect
+   * reads, to whoever finds it next, as one that has.
+   */
+  const revoked: PermissionsFile = {
+    ...emptyFile(), people: { "an-admin": { revoke: ["aws", "admin"] } },
+  };
+  check("a revoke written against one of them decides nothing",
+    permissionsFor(revoked, admin).has("aws.rules.enforce")
+      && permissionsFor(revoked, admin).has("admin.people.assign"));
+  check("  and explain() names the membership rather than leaving it unaccounted for",
+    permissionsFor(revoked, admin).explain("aws.rules.enforce").reason === "controlHubAdmin",
+    permissionsFor(revoked, admin).explain("aws.rules.enforce"));
+
+  /**
+   * The exemption is read off `teamSlugs`, so a team listing that failed
+   * denies rather than grants — the same direction every other check here
+   * takes when it cannot establish somebody's standing.
+   */
+  const unknown = { login: "an-admin", teamSlugs: [], isOrgOwner: false, teamsUnavailable: true };
+  check("a team read that failed does not hand out the exemption",
+    permissionsFor(empty, unknown).held.length === 0,
+    "an exemption granted on a failed read is one granted to anybody during an outage");
+}
+
+console.log("\nthe administrator writes, the app reads");
 {
   const store = fs.readFileSync("./src/permissions/store.ts", "utf8");
   const routes = fs.readFileSync("./src/routes/admin.ts", "utf8");
