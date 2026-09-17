@@ -193,12 +193,23 @@ undone.
 ```bash
 cd github-control-hub
 
-# Install dependencies
-npm install
+# Install dependencies — `ci`, not `install`
+npm ci
 
 # Start backend (port 4000) and frontend (port 5173) concurrently
 npm run dev
 ```
+
+**`npm ci`, not `npm install`.** `install` re-resolves every caret range and
+takes the newest version that satisfies it, so two machines cloning the same
+commit on different days get different trees. The AWS SDK publishes many times
+a week, and a version released hours ago is one a corporate registry mirror may
+not have yet — which arrives as a 404 on a tarball that plainly exists, and
+looks like the package is broken rather than like the install command is wrong.
+
+`ci` installs exactly what `package-lock.json` says, which is the tree the tests
+were run against. Use `npm install` only when you mean to change a dependency,
+and commit the lockfile change that results.
 
 No `.env` file is needed. The backend reads its configuration from AWS Secrets Manager at startup
 using whatever AWS credentials are active, which is the same path the desktop app and the Lambdas
