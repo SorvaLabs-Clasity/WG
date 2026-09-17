@@ -71,6 +71,38 @@ export function fileProblems(raw: unknown): FileProblem[] {
       problems.push({ where: section, what: "is not an object" });
     }
   }
+
+  /**
+   * The declared AWS accounts.
+   *
+   * An id that is not twelve digits cannot be a path segment — one containing
+   * a dot would invent sub-accounts that a prefix grant then covers — so it is
+   * refused here rather than silently dropped by the vocabulary, where the
+   * result is a branch that never appears and nobody can explain.
+   */
+  if (raw.awsAccounts !== undefined) {
+    if (!Array.isArray(raw.awsAccounts)) {
+      problems.push({ where: "awsAccounts", what: "is not a list" });
+    } else {
+      const seen = new Set<string>();
+      raw.awsAccounts.forEach((entry: any, i: number) => {
+        const where = `awsAccounts[${i}]`;
+        if (!isObject(entry)) { problems.push({ where, what: "is not an object" }); return; }
+        if (typeof entry.accountId !== "string" || !/^[0-9]{12}$/.test(entry.accountId)) {
+          problems.push({ where, what: "has no twelve-digit accountId" });
+          return;
+        }
+        if (seen.has(entry.accountId)) {
+          problems.push({ where, what: `names ${entry.accountId} twice` });
+        }
+        seen.add(entry.accountId);
+        if (typeof entry.name !== "string" || entry.name.trim() === "") {
+          problems.push({ where, what: "has no name — an estate of raw digits is unreadable" });
+        }
+      });
+    }
+  }
+
   if (problems.length > 0) return problems;
 
   const presets = (isObject(raw.presets) ? raw.presets : {}) as Record<string, Preset>;

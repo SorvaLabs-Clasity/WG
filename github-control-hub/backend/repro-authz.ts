@@ -127,9 +127,23 @@ globalThis.fetch = (async (input: any) => {
     assert("the two teams are not the same slug", CONTROL_HUB_ADMIN_TEAM !== AWS_ADMIN_TEAM,
       [CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM]);
 
+    /**
+     * The separation is one-way now, deliberately.
+     *
+     * It used to run both ways: curating branch protection did not imply being
+     * trusted with production S3. The Control Hub admin team has since become
+     * the team that means *everything in this app*, AWS included — and the AWS
+     * gate sits in front of the permission gates on every AWS write route, so
+     * checking only `AWS_ADMIN_TEAM` refused a Control Hub admin before the
+     * permission system was consulted at all, and told them to join a team the
+     * app is retiring.
+     *
+     * The other direction still holds and still matters: being trusted with
+     * the AWS account says nothing about the GitHub side.
+     */
     scenario = { orgRole: "member", memberOf: [CONTROL_HUB_ADMIN_TEAM] };
     let [gh, aws] = await both("github-only-person");
-    assert("GitHub admin is NOT automatically an AWS admin", gh === true && aws === false, { gh, aws });
+    assert("a Control Hub admin IS an AWS admin", gh === true && aws === true, { gh, aws });
 
     scenario = { orgRole: "member", memberOf: [AWS_ADMIN_TEAM] };
     [gh, aws] = await both("aws-only-person");

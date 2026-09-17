@@ -47,6 +47,28 @@ export interface PermissionsFile {
   teams: Record<string, TeamEntry>;
   /** Keyed by lower-cased GitHub login. */
   people: Record<string, PersonEntry>;
+  /**
+   * AWS accounts this organization wants to scope permissions by.
+   *
+   * Declaring an account here is not the same as the app being able to reach
+   * it: credentials are a separate, later problem. It is a statement that this
+   * account exists and is worth talking about, which is all the permission
+   * tree needs in order to offer `aws.account.<id>.*` for it.
+   *
+   * Kept in this file rather than in a database because it is the same kind of
+   * thing as everything else here — an organization-wide decision somebody
+   * should be able to read, review and revert in git.
+   */
+  awsAccounts?: AwsAccountEntry[];
+}
+
+export interface AwsAccountEntry {
+  /** The twelve-digit account id. Becomes a segment of every scoped key. */
+  accountId: string;
+  /** What people call it: "prod", "sandbox". Shown instead of the digits. */
+  name: string;
+  /** Free text, for whoever finds this in six months. */
+  note?: string;
 }
 
 /**

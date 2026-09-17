@@ -47,6 +47,14 @@ export const requireControlHubAdmin = gate(
   isControlHubAdmin, CONTROL_HUB_ADMIN_REQUIRED, CONTROL_HUB_ADMIN_TEAM,
   "This screen");
 
+/**
+ * Named after the Control Hub team, not the AWS one.
+ *
+ * `isAwsAdmin` admits either, but the message has to name the team somebody
+ * should actually be asking to join — telling a person to join
+ * `aws-guardrail-admins` sends them after a team the app is in the middle of
+ * retiring, and which nobody may be maintaining.
+ */
 export const requireAwsAdmin = gate(
-  isAwsAdmin, AWS_ADMIN_REQUIRED, AWS_ADMIN_TEAM,
+  isAwsAdmin, AWS_ADMIN_REQUIRED, CONTROL_HUB_ADMIN_TEAM,
   "The AWS tab");

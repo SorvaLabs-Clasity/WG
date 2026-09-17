@@ -1,4 +1,5 @@
 import { createOctokit, getSystemToken, getOrg } from "../github/client";
+import { setConfiguredAccounts, configuredAccounts } from "./accountScope";
 import { emptyFile, type PermissionsFile } from "./types";
 import { fileProblems, isUsable } from "./validate";
 import { testHooks } from "./testing";
@@ -108,6 +109,28 @@ export async function loadPermissions(now = Date.now()): Promise<LoadedPermissio
   }
   const value = await read();
   cache = { at: now, value };
+
+  /**
+   * Keep the account registry in step with the file.
+   *
+   * `aws.account.<id>.*` leaves exist only for accounts the engine knows
+   * about, and every permission decision reads that list — so an account
+   * declared in the file has to reach the registry before the next gate runs,
+   * not only when the Admin tab asks for the vocabulary. This is the one
+   * function every permission decision already goes through.
+   *
+   * Merged rather than replaced: `resolveAccounts` registers the account the
+   * app runs in, which is not in the file and must not be dropped.
+   */
+  if (!isFailure(value)) {
+    const declared = (value.file.awsAccounts ?? [])
+      .map(a => a?.accountId)
+      .filter((id): id is string => typeof id === "string");
+    if (declared.length > 0) {
+      setConfiguredAccounts([...configuredAccounts(), ...declared]);
+    }
+  }
+
   return value;
 }
 
