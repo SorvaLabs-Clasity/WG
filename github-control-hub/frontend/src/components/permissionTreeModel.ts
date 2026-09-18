@@ -37,6 +37,18 @@ export function prettyLabel(segment: string): string {
  */
 export type AccountNames = Readonly<Record<string, string>>;
 
+/** Branches whose segment name says less than the things underneath it. */
+const BRANCH_LABELS: Readonly<Record<string, string>> = {
+  "alarms.feeds": "Vulnerability notifications",
+  "alarms.teamsFlow": "Shared Teams webhook",
+  "activity.detailedLogging": "Detailed AWS logging",
+  "repos.blastRadius": "Blast radius",
+  "org.webhookHealth": "Webhook health",
+  "deps.dependabot": "Dependabot",
+  "deps.renovate": "Renovate",
+  "me.work": "My work",
+};
+
 function labelFor(key: string, segment: string, accounts: AccountNames): string {
   const parts = key.split(".");
   if (parts.length === 3 && parts[0] === "aws" && parts[1] === "account") {
@@ -49,7 +61,14 @@ function labelFor(key: string, segment: string, accounts: AccountNames): string 
    * them rather than as the place per-person, per-account access lives.
    */
   if (key === "aws.account") return "Per-account access";
-  return prettyLabel(segment);
+
+  /**
+   * Branch names taken straight from the path segment. Most read fine —
+   * "Rules", "Groups" — but a few are what the code calls a thing rather than
+   * what anybody else does, and a heading somebody has to tick to understand
+   * is a heading that will be ticked wrongly.
+   */
+  return BRANCH_LABELS[key] ?? prettyLabel(segment);
 }
 
 export function buildTree(
