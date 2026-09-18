@@ -252,10 +252,23 @@ console.log("\nresolution: the longest match decides");
       [r("access.read", "grant", LAYER.team), r("access.read", "revoke", LAYER.team)],
     ).held === false);
 
-  // Within a preset chain, the child outranks what it inherits.
-  check("within a layer, a higher sublayer wins",
+  /**
+   * At the preset layer the tie-break is the other way round: presets add up.
+   *
+   * `resolvePreset` collapses each preset's own chain before anything gets
+   * here, so two rules for one node at this layer can only be two *different*
+   * presets the person holds — and holding two is a statement that they should
+   * have what both give. A child narrowing its parent is still a revoke that
+   * wins; that happens inside the collapse, below.
+   */
+  check("at the preset layer, grant wins, because two presets add up",
     decideLeaf("me.work.read",
       [r("me.work.read", "grant", LAYER.preset, 0), r("me.work.read", "revoke", LAYER.preset, 1)],
+    ).held === true);
+
+  check("  while at the team layer the same tie still goes to revoke",
+    decideLeaf("me.work.read",
+      [r("me.work.read", "grant", LAYER.team), r("me.work.read", "revoke", LAYER.team)],
     ).held === false);
 
   check("the deciding rule is reported, for the admin screen",
@@ -390,14 +403,21 @@ console.log("\nsublayer stays inside the chain it came from");
       return nodes.length === 1 && nodes[0].effect === "revoke";
     })());
 
-  // Two presets on one person, one of them with a parent. Same node, same
-  // depth, same layer — and the grant used to win on chain position alone.
+  /**
+   * Two presets on one person, disagreeing about a node.
+   *
+   * This asserted revoke-wins, which made assigning a second preset able to
+   * take away what the first gave — so two presets that were each other's
+   * opposite left somebody with nothing instead of everything. Holding two
+   * bundles is a statement that somebody should have what both give;
+   * `repro-presetunion.ts` covers the whole rule.
+   */
   const siblings: PermissionsFile = {
     version: 1, presets, teams: {},
     people: { "somebody": { presets: ["limits", "escalated"] } },
   };
-  check("two sibling presets disagreeing on a node: revoke wins",
-    permissionsFor(siblings, plain).has("config.export") === false,
+  check("two sibling presets disagreeing on a node: they add up",
+    permissionsFor(siblings, plain).has("config.export") === true,
     permissionsFor(siblings, plain).explain("config.export"));
 
   // The same question one layer down: a team's own entry against another

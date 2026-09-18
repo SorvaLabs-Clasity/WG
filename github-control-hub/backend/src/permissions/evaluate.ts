@@ -138,8 +138,31 @@ export function decideLeaf(leaf: string, rules: LayeredRule[]): Decision {
     if (!isUnder(leaf, rule.node)) continue;
     if (!best) { best = rule; continue; }
 
-    const a = [depthOf(rule.node), rule.layer, rule.effect === "revoke" ? 1 : 0];
-    const b = [depthOf(best.node), best.layer, best.effect === "revoke" ? 1 : 0];
+    /**
+     * Longest prefix, then layer, then the tie-break — and the tie-break is
+     * not the same at every layer.
+     *
+     * **Presets add up.** `resolvePreset` has already collapsed each assigned
+     * preset's own inheritance chain to one rule per node, so two rules for
+     * one node at the preset layer can only have come from two *different*
+     * presets the person holds. Holding two of them is a statement that they
+     * should have what both give: assign one granting half the app and
+     * revoking the rest, and another doing the exact opposite, and the person
+     * ends up with all of it rather than none of it.
+     *
+     * Revoke still wins everywhere else. A person-layer revoke is somebody
+     * saying "not this one, for this person", and a team's is the same
+     * sentence about a team; neither is a bundle being combined with another.
+     * Within a single preset's chain, a child narrowing its parent is also
+     * still a revoke that wins — that collapse happens before this sees it.
+     */
+    const tieBreak = (r: LayeredRule) =>
+      r.layer === LAYER.preset
+        ? (r.effect === "grant" ? 1 : 0)
+        : (r.effect === "revoke" ? 1 : 0);
+
+    const a = [depthOf(rule.node), rule.layer, tieBreak(rule)];
+    const b = [depthOf(best.node), best.layer, tieBreak(best)];
     for (let i = 0; i < a.length; i++) {
       if (a[i] === b[i]) continue;
       if (a[i] > b[i]) best = rule;

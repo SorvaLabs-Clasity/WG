@@ -98,5 +98,58 @@ console.log("\nthe screen wires the tabs, the copy and the preview");
     /filter\(d => !d\.unchanged\)/.test(page));
 }
 
+console.log("\nthe diff is reviewed before it is saved, not after");
+{
+  const dialog = fs.readFileSync("./src/components/PermissionDiffDialog.tsx", "utf8");
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+
+  /**
+   * A count of gains and losses answers "is this roughly right". Somebody
+   * about to change what a colleague can do in production is asking something
+   * else: what exactly, and where. So the changes are listed one permission
+   * per line, marked the way a diff is read.
+   */
+  check("changes are listed per permission, gained and lost marked apart",
+    /current\.gained\.map/.test(dialog) && /current\.lost\.map/.test(dialog));
+  check("  each line names the permission in words and in key",
+    /\{l\.label\}/.test(dialog) && /\{l\.key\}/.test(dialog),
+    "the label is what the tree shows; the key is what the file stores");
+  check("  and the markers are not colour alone",
+    /\+<\/span>/.test(dialog) && /−<\/span>/.test(dialog) && /sr-only/.test(dialog),
+    "colour alone is unreadable to anybody who cannot see it");
+
+  /**
+   * Grouped by account and navigable, because the changes are per account and
+   * one flat list would put a production change beside a sandbox one with
+   * nothing but a label between them.
+   */
+  check("accounts are navigable rather than concatenated",
+    /Previous account/.test(dialog) && /Next account/.test(dialog));
+  check("  with an account picker when there is more than one",
+    /changed\.length > 1/.test(dialog));
+  check("  and accounts with nothing to say are left out",
+    /diffs\.filter\(d => !d\.unchanged\)/.test(dialog));
+
+  check("saving goes through the review, not straight to the file",
+    /Review and save/.test(page) && /onClick=\{\(\) => setConfirming\(true\)\}/.test(page),
+    "a Save button that writes immediately makes the preview decorative");
+  check("  and the summary under the button is still there",
+    /dirty && diffs\.length > 0/.test(page));
+
+  /**
+   * The preset page gets the same review. Applying a bundle to twenty people
+   * is the change most worth seeing before it lands.
+   */
+  check("mass apply and remove are offered from the preset's own page",
+    /Apply to people/.test(page) && /assignMode/.test(page));
+  check("  scoped to chosen accounts, since a preset is held per account",
+    /assignAccounts/.test(page));
+  check("  reviewed per person before saving",
+    /assignDiffs/.test(page) && /setAssignOpen\(true\)/.test(page));
+  check("  and honest that it cannot see team-derived access",
+    /access from their GitHub teams is not included/.test(page),
+    "the client knows the signed-in person's teams and nobody else's");
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

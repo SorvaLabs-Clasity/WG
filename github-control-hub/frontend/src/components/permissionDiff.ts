@@ -67,3 +67,67 @@ export function diffAccount(
 
   return { accountId, name, gained, lost, unchanged: gained.length === 0 && lost.length === 0 };
 }
+
+/**
+ * What one person holds according to the file alone, in one account.
+ *
+ * Presets resolve additively — holding two is a statement that somebody should
+ * have what both give — and the person's own grants and revokes sit on top,
+ * where a revoke wins. This mirrors the server's `permissionsFor`; it is not a
+ * second opinion, and where the two could disagree the server is right.
+ *
+ * **Teams are not in it.** The client knows which teams the signed-in person is
+ * on and nobody else's, so a diff built from this understates what somebody
+ * with team-derived access already holds. It is used only where the question is
+ * "what does adding or removing *this preset* change", which is a question
+ * about the file, and the screen says so rather than implying a full picture.
+ */
+export function heldFromFile(
+  vocabulary: readonly PermissionLeaf[],
+  presets: Record<string, { grant?: string[]; revoke?: string[]; inherits?: string }>,
+  assigned: readonly string[],
+  own: PermissionEntry | undefined,
+  knownNodes: ReadonlySet<string>,
+): Set<string> {
+  const chainRules = (id: string): FlatRule[] => {
+    const seen = new Set<string>();
+    const chain: string[] = [];
+    let cursor: string | undefined = id;
+    while (cursor && !seen.has(cursor) && presets[cursor] && chain.length < 5) {
+      seen.add(cursor);
+      chain.push(cursor);
+      cursor = presets[cursor].inherits;
+    }
+    // Deepest-first, so a child's rule for a node outranks its parent's.
+    const byNode = new Map<string, FlatRule>();
+    for (const pid of [...chain].reverse()) {
+      for (const node of presets[pid].grant ?? []) {
+        byNode.set(node, { node, effect: "grant", layer: 1, origin: `preset ${pid}` });
+      }
+      for (const node of presets[pid].revoke ?? []) {
+        byNode.set(node, { node, effect: "revoke", layer: 1, origin: `preset ${pid}` });
+      }
+    }
+    return [...byNode.values()];
+  };
+
+  const held = new Set<string>();
+  const ownRules = ownRulesFrom(own ?? {}, 2);
+
+  for (const leaf of vocabulary) {
+    // Presets add up: held if any assigned preset holds it on its own.
+    const byAnyPreset = assigned.some(id => {
+      const decided = decideLeaf(leaf.key, chainRules(id), knownNodes);
+      return decided?.effect === "grant";
+    });
+
+    // The person's own layer decides over the presets, revoke winning on a tie.
+    const mine = decideLeaf(leaf.key, ownRules, knownNodes);
+    if (mine) {
+      if (mine.effect === "grant") held.add(leaf.key);
+      continue;
+    }
+    if (byAnyPreset) held.add(leaf.key);
+  }
+  return held;
+}

@@ -7,7 +7,9 @@ import {
 } from "../design";
 import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
-import { diffAccount } from "../components/permissionDiff";
+import { knownNodesOf } from "../components/permissionTreeModel";
+import { diffAccount, heldFromFile } from "../components/permissionDiff";
+import PermissionDiffDialog from "../components/PermissionDiffDialog";
 import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
@@ -389,6 +391,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "file"] });
       qc.invalidateQueries({ queryKey: ["admin", "person", loginKey] });
+      setConfirming(false);
       onSaved();
     },
   });
@@ -716,12 +719,30 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                 <div className="flex items-center gap-4 flex-wrap">
                   <input value={summary} onChange={e => setSummary(e.target.value)}
                     placeholder="What changed, and why" className={SURFACE.input} style={{ maxWidth: "32rem" }} />
-                  <Button variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
-                    {save.isPending ? "Saving…" : "Save"}
+                  {/*
+                    * Review, then save. The summary above answers "is this
+                    * roughly right"; the dialog answers "what exactly am I
+                    * about to do", which is the question worth asking before
+                    * changing what somebody can do in production.
+                    */}
+                  <Button variant="primary" disabled={!dirty || save.isPending}
+                    onClick={() => setConfirming(true)}>
+                    {save.isPending ? "Saving…" : "Review and save"}
                   </Button>
                 </div>
                 {save.isError && (
                   <p className="mt-3 text-[0.8125rem] text-crimson">{(save.error as Error).message}</p>
+                )}
+
+                {confirming && (
+                  <PermissionDiffDialog
+                    title={`Changes to ${loginKey}`}
+                    subtitle={scoped ? "Reviewed one account at a time." : undefined}
+                    diffs={diffs}
+                    confirming={save.isPending}
+                    onCancel={() => setConfirming(false)}
+                    onConfirm={() => save.mutate()}
+                  />
                 )}
               </Block>
             )}
@@ -789,8 +810,14 @@ function PresetsListView({ file, canCreate, onOpen, onCreate }: {
   );
 }
 
-function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelete, onBack, onSaved, accounts,}: {
+function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelete, canAssign, onBack, onSaved, accounts,}: {
   presetId: string | "new"; file: PermissionsFile; sha: string | null; vocabulary: PermissionLeaf[];
+  /**
+   * `admin.people.assign` — handing this preset to people is assigning a
+   * preset, which is a different authority from editing the preset itself.
+   * Somebody who may hand out bundles need not be able to redefine them.
+   */
+  canAssign: boolean;
   /** `admin.presets.create` for a new preset, `admin.presets.edit` for an existing one. */
   canEditFields: boolean;
   /** `admin.presets.delete`. Independent of `canEditFields`: holding one does not imply the other. */
@@ -821,6 +848,111 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     () => Object.entries(file.presets).filter(([pid]) => pid !== presetId),
     [file, presetId],
   );
+
+  /**
+   * Handing this preset to people, or taking it back, from the preset's own
+   * page.
+   *
+   * The alternative is opening each person in turn, and a preset exists
+   * precisely because the same decision applies to several people — so making
+   * them one-at-a-time work is making the feature argue with itself.
+   *
+   * Accounts: a preset is assigned *per account*, so applying one means
+   * choosing where. "Every account" is the common case and the default; the
+   * per-account tabs are for when somebody should have it in sandbox only.
+   */
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignTo, setAssignTo] = useState<Set<string>>(new Set());
+  const [assignAccounts, setAssignAccounts] = useState<Set<string>>(
+    () => new Set(Object.keys(accounts)));
+  const [assignMode, setAssignMode] = useState<"apply" | "remove">("apply");
+  const [assignSearch, setAssignSearch] = useState("");
+
+  const scopedHere = Object.keys(accounts).length > 0;
+
+  const qcAssign = useQueryClient();
+  const assignSave = useMutation({
+    mutationFn: () => saveAdminFile(assignedFile, sha,
+      `${assignMode === "apply" ? "Apply" : "Remove"} the ${existing?.name ?? presetId} preset `
+      + `${assignMode === "apply" ? "to" : "from"} ${assignTo.size} `
+      + `${assignTo.size === 1 ? "person" : "people"}`),
+    onSuccess: () => {
+      qcAssign.invalidateQueries({ queryKey: ["admin"] });
+      setAssignOpen(false);
+      setAssignTo(new Set());
+    },
+  });
+
+  /** Who holds this preset, per account, so the list can say where. */
+  const holdsIn = (login: string): string[] => {
+    const person = file.people[login];
+    if (!person) return [];
+    if (!scopedHere) return (person.presets ?? []).includes(presetId) ? [""] : [];
+    return Object.entries(person.accounts ?? {})
+      .filter(([, a]) => (a.presets ?? []).includes(presetId))
+      .map(([id]) => id);
+  };
+
+  /** The file as it would be after applying or removing this preset. */
+  const assignedFile = useMemo((): PermissionsFile => {
+    const people = { ...file.people };
+    const targetAccounts = scopedHere ? [...assignAccounts] : [""];
+
+    for (const login of assignTo) {
+      const person: PersonEntry = { ...(people[login] ?? {}) };
+
+      if (!scopedHere) {
+        const held = new Set(person.presets ?? []);
+        if (assignMode === "apply") held.add(presetId); else held.delete(presetId);
+        person.presets = held.size ? [...held] : undefined;
+      } else {
+        const byAccount = { ...(person.accounts ?? {}) };
+        for (const accountId of targetAccounts) {
+          const slice = { ...(byAccount[accountId] ?? {}) };
+          const held = new Set(slice.presets ?? []);
+          if (assignMode === "apply") held.add(presetId); else held.delete(presetId);
+          slice.presets = held.size ? [...held] : undefined;
+          byAccount[accountId] = slice;
+        }
+        person.accounts = byAccount;
+      }
+      people[login] = person;
+    }
+    return { ...file, people };
+  }, [file, assignTo, assignAccounts, assignMode, presetId, scopedHere]);
+
+  /**
+   * One entry per person, not per account: on this screen the question is
+   * "what does this do to each of these people", and grouping by account would
+   * bury the person's name under a heading they all share.
+   */
+  const assignDiffs = useMemo(() => {
+    const known = knownNodesOf(vocabulary);
+    const at = (f: PermissionsFile, login: string, accountId: string) => {
+      const person = f.people[login];
+      const slice = scopedHere ? person?.accounts?.[accountId] : person;
+      return heldFromFile(vocabulary, f.presets, slice?.presets ?? [], slice, known);
+    };
+
+    const accountsToShow = scopedHere ? Object.keys(accounts) : [""];
+
+    return [...assignTo].sort().flatMap(login =>
+      accountsToShow.map(accountId => {
+        const before = at(file, login, accountId);
+        const after = at(assignedFile, login, accountId);
+        const gained = vocabulary.filter(l => !before.has(l.key) && after.has(l.key))
+          .map(l => ({ key: l.key, label: l.label }));
+        const lost = vocabulary.filter(l => before.has(l.key) && !after.has(l.key))
+          .map(l => ({ key: l.key, label: l.label }));
+        return {
+          accountId: `${login}:${accountId}`,
+          name: scopedHere ? `${login} — ${accounts[accountId] ?? accountId}` : login,
+          gained, lost,
+          unchanged: gained.length === 0 && lost.length === 0,
+        };
+      }));
+  }, [assignTo, file, assignedFile, vocabulary, accounts, scopedHere]);
+
 
   /**
    * What `inherits` actually grants, resolved by the server's own
@@ -931,6 +1063,95 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         {holders.length > 0 && (
           <Block title="Who holds this">
             <p className="text-[0.8125rem] text-ink-2">{holders.join(", ")}</p>
+          </Block>
+        )}
+
+        {assignOpen && (
+          <PermissionDiffDialog
+            title={`${assignMode === "apply" ? "Applying" : "Removing"} ${existing?.name ?? presetId}`}
+            subtitle={`${assignTo.size} ${assignTo.size === 1 ? "person" : "people"}. `
+              + "Shows what the file gives them; access from their GitHub teams is not included."}
+            diffs={assignDiffs}
+            confirming={assignSave.isPending}
+            onCancel={() => setAssignOpen(false)}
+            onConfirm={() => assignSave.mutate()}
+          />
+        )}
+
+        {!isNew && canAssign && (
+          <Block title="Apply to people">
+            <div className="flex items-center gap-3 flex-wrap mb-3">
+              <Segmented value={assignMode} onChange={m => { setAssignMode(m); setAssignTo(new Set()); }}
+                options={[["apply", "Apply to"], ["remove", "Remove from"]]} />
+              <div className="flex-1 min-w-[200px]">
+                <SearchInput value={assignSearch} onChange={setAssignSearch}
+                  placeholder="Find people" />
+              </div>
+            </div>
+
+            {scopedHere && assignMode === "apply" && (
+              <div className="mb-3">
+                <span className="caps text-ink-2">In which accounts</span>
+                <div className="grid gap-1.5 mt-1.5">
+                  {Object.entries(accounts).map(([accountId, label]) => (
+                    <label key={accountId} className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={assignAccounts.has(accountId)}
+                        onChange={() => setAssignAccounts(prev => {
+                          const next = new Set(prev);
+                          if (next.has(accountId)) next.delete(accountId); else next.add(accountId);
+                          return next;
+                        })} />
+                      <span className={`${TYPE.body} text-ink`}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/*
+              * Everybody the file knows about, with where they already hold it
+              * shown beside them — so "apply to everyone" is a decision made
+              * with the current state visible rather than a guess.
+              */}
+            <div className="grid gap-1.5 max-h-[18rem] overflow-y-auto">
+              {Object.keys(file.people)
+                .filter(login => !assignSearch.trim() || login.includes(assignSearch.trim().toLowerCase()))
+                .sort()
+                .map(login => {
+                  const where = holdsIn(login);
+                  const already = where.length > 0;
+                  const relevant = assignMode === "apply" ? !already || scopedHere : already;
+                  return (
+                    <label key={login}
+                      className={`flex items-center gap-2.5 ${relevant ? "cursor-pointer" : "opacity-45"}`}>
+                      <input type="checkbox" checked={assignTo.has(login)} disabled={!relevant}
+                        onChange={() => setAssignTo(prev => {
+                          const next = new Set(prev);
+                          if (next.has(login)) next.delete(login); else next.add(login);
+                          return next;
+                        })} />
+                      <span className={`${TYPE.body} text-ink`}>{login}</span>
+                      {already && (
+                        <span className={`${TYPE.sub} text-ink-3`}>
+                          holds it{scopedHere && ` in ${where.map(a => accounts[a] ?? a).join(", ")}`}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+            </div>
+
+            <div className="mt-3 flex items-center gap-3 flex-wrap">
+              <Button variant="ghost"
+                onClick={() => setAssignTo(new Set(Object.keys(file.people)))}>
+                Select everyone
+              </Button>
+              <Button variant="ghost" onClick={() => setAssignTo(new Set())}>Clear</Button>
+              <Button variant="primary" disabled={assignTo.size === 0}
+                onClick={() => setAssignOpen(true)}>
+                Review {assignMode === "apply" ? "applying" : "removing"} for {assignTo.size}
+              </Button>
+            </div>
           </Block>
         )}
 
@@ -1266,7 +1487,7 @@ export default function AdminPage() {
     const isNew = openPreset === "new";
     return (
       <Page user={user}>
-        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary} accounts={accountNames}
+        <PresetDetail presetId={openPreset} file={file} sha={sha} vocabulary={vocabulary} canAssign={canAssign} accounts={accountNames}
           canEditFields={isNew ? canCreatePreset : canEditPresets} canDelete={canDeletePresets}
           onBack={() => setOpenPreset(null)} onSaved={() => setOpenPreset(null)} />
       </Page>
