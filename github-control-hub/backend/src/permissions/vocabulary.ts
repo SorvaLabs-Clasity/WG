@@ -108,10 +108,24 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("aws.findings.read", "Guardrail findings"),
   L("aws.sweep.run", "Run a guardrail sweep"),
   L("aws.remediate", "Fix a finding"),
-  L("aws.preview", "Preview a remediation"),
+  /**
+   * Not "preview a remediation" — it is a dry run of the whole evaluation.
+   * Every rule is checked against real resources, every violation is counted,
+   * and the branch that would fix anything is unreachable, so a rule sitting
+   * in enforce mode does nothing during a preview. That is the useful half to
+   * grant on production without granting the two above it.
+   */
+  L("aws.preview", "Check every rule without changing anything"),
   L("aws.exclusions.read", "Guardrail exclusions"),
   L("aws.exclusions.manage", "Create and remove guardrail exclusions"),
-  L("aws.accounts.read", "The AWS accounts in scope"),
+  /**
+   * A list, not a key. It answers "which accounts and regions do the
+   * guardrails cover", and carries account ids, names, regions and whether
+   * each is enabled — no credentials, and no access to any of them. Somebody
+   * holding this can see the estate's shape; acting in it is every other
+   * permission here.
+   */
+  L("aws.accounts.read", "Which AWS accounts and regions guardrails cover"),
   L("aws.costs.read", "AWS cost figures"),
 
   // ── Access ─────────────────────────────────────────────────────────
