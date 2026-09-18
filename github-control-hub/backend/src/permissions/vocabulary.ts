@@ -89,8 +89,14 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("alarms.teamsFlow.manage", "Change the shared Teams webhook"),
   L("alarms.security.read", "Security alert settings"),
   L("alarms.security.manage", "Change security alert settings"),
-  L("alarms.feeds.read", "Per-feed notification settings"),
-  L("alarms.feeds.manage", "Change per-feed notification settings"),
+  /**
+   * "Feeds" is what the code calls them and it tells a reader nothing. There
+   * are exactly two, both on the Vulnerabilities tab, and naming them is the
+   * difference between a checkbox somebody can decide about and one they tick
+   * to find out.
+   */
+  L("alarms.feeds.read", "Renovate and Dependabot notification settings"),
+  L("alarms.feeds.manage", "Change how Renovate and Dependabot notify"),
 
   // ── AWS ────────────────────────────────────────────────────────────
   L("aws.read", "Open the AWS tab"),
