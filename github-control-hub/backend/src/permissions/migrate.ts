@@ -68,7 +68,7 @@ const PRESETS: Record<string, Preset> = {
     description: "What today's control-hub-admins team unlocks, on top of member.",
     inherits: "member",
     grant: [
-      "alarms", "scanners", "widgets", "access", "config", "activity", "pulls", "deps", "repos", "admin",
+      "alarms", "overview", "access", "config", "activity", "pulls", "deps", "repos", "admin",
     ],
   },
   "aws-admin": {
