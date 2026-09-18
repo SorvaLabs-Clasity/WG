@@ -10,8 +10,7 @@ export * from "./types";
 export { PERMISSIONS, isLeaf, isKnownNode, leavesUnder } from "./vocabulary";
 export {
   currentVocabulary, setConfiguredAccounts, configuredAccounts, isKnownNodeNow,
-  leavesUnderNow, permitsInAccount, scopedKey, accountNode, accountOf,
-  isAccountId, globalKeyFor, SCOPED_SUFFIXES,
+  leavesUnderNow, isAccountId, installAccountId, setInstallAccount,
 } from "./accountScope";
 export { forgetPermissions, savePermissions, loadPermissions, isFailure } from "./store";
 export { forgetSubjects, subjectFor } from "./subject";

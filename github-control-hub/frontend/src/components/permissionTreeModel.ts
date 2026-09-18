@@ -27,17 +27,11 @@ export function prettyLabel(segment: string): string {
 }
 
 /**
- * Account ids are not names.
- *
- * A branch reading as twelve raw digits tells nobody which estate they are about to
- * grant remediation in, and picking the wrong twelve-digit number is precisely
- * how somebody grants it in production. Given the configured accounts, the
- * branch is labelled the way people refer to it, with the id kept alongside
- * because two accounts can share a name.
+ * Branch names taken straight from the path segment. Most read fine — "Rules",
+ * "Groups" — but a few are what the code calls a thing rather than what anybody
+ * else does, and a heading somebody has to tick to understand is a heading that
+ * will be ticked wrongly.
  */
-export type AccountNames = Readonly<Record<string, string>>;
-
-/** Branches whose segment name says less than the things underneath it. */
 const BRANCH_LABELS: Readonly<Record<string, string>> = {
   "alarms.feeds": "Vulnerability notifications",
   "alarms.teamsFlow": "Shared Teams webhook",
@@ -49,31 +43,7 @@ const BRANCH_LABELS: Readonly<Record<string, string>> = {
   "me.work": "My work",
 };
 
-function labelFor(key: string, segment: string, accounts: AccountNames): string {
-  const parts = key.split(".");
-  if (parts.length === 3 && parts[0] === "aws" && parts[1] === "account") {
-    const name = accounts[segment];
-    return name ? `${name} (${segment})` : segment;
-  }
-  /**
-   * "Account" is what the segment says and it is useless: it sits beside a
-   * dozen AWS leaves that also concern accounts, so it reads as one more of
-   * them rather than as the place per-person, per-account access lives.
-   */
-  if (key === "aws.account") return "Per-account access";
-
-  /**
-   * Branch names taken straight from the path segment. Most read fine —
-   * "Rules", "Groups" — but a few are what the code calls a thing rather than
-   * what anybody else does, and a heading somebody has to tick to understand
-   * is a heading that will be ticked wrongly.
-   */
-  return BRANCH_LABELS[key] ?? prettyLabel(segment);
-}
-
-export function buildTree(
-  vocabulary: readonly PermissionLeaf[], accounts: AccountNames = {},
-): Node[] {
+export function buildTree(vocabulary: readonly PermissionLeaf[]): Node[] {
   const roots: Node[] = [];
   const branches = new Map<string, Node>();
 
@@ -81,7 +51,7 @@ export function buildTree(
     const existing = branches.get(key);
     if (existing) return existing;
     const parts = key.split(".");
-    const node: Node = { key, label: labelFor(key, parts[parts.length - 1], accounts), isLeaf: false, children: [] };
+    const node: Node = { key, label: BRANCH_LABELS[key] ?? prettyLabel(parts[parts.length - 1]), isLeaf: false, children: [] };
     branches.set(key, node);
     if (parts.length === 1) roots.push(node);
     else ensureBranch(parts.slice(0, -1).join(".")).children.push(node);

@@ -649,7 +649,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                 </p>
               )}
 
-              <PermissionTree vocabulary={vocabulary} accounts={accounts} inherited={inherited} baseline={baseline} entry={entry}
+              <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
                 onChange={setEntry} readOnly={!canOverride || presetsChanged || baselineIncomplete || exempt} />
 
               {canOverride && !presetsChanged && !baselineIncomplete && hasOverrides && (
@@ -924,7 +924,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         </Block>
 
         <Block title="Permissions">
-          <PermissionTree vocabulary={vocabulary} accounts={accounts} inherited={inherited} baseline={baseline} entry={entry}
+          <PermissionTree vocabulary={vocabulary} inherited={inherited} baseline={baseline} entry={entry}
             onChange={setEntry} readOnly={!canEditFields} />
         </Block>
 
@@ -987,7 +987,7 @@ type AdminMode = "people" | "presets" | "audit" | "aws";
 /**
  * Which AWS accounts this organization wants to scope permissions by.
  *
- * Declaring one adds an `aws.account.<id>` branch to every permission tree, so
+ * Declaring one adds a tab to every person's permissions, so
  * "remediate in sandbox, read-only in production" becomes expressible. It does
  * **not** give the app credentials for that account — that is a separate piece
  * of setup — which is why an account can be declared here long before the
