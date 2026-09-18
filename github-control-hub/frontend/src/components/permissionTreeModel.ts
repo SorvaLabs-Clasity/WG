@@ -41,6 +41,16 @@ const BRANCH_LABELS: Readonly<Record<string, string>> = {
   "deps.dependabot": "Dependabot",
   "deps.renovate": "Renovate",
   "me.work": "My work",
+  /**
+   * These two read as categories and are not: they are the permissions no tab
+   * owns. "Widgets" holds only the *shared* dashboard — somebody's own cards
+   * live under "My work" — and "Org" is the organization-wide reads several
+   * tabs draw on. Unlabelled, both look like duplicates of things elsewhere.
+   */
+  "widgets": "Shared dashboard",
+  "widgets.org": "Shared dashboard",
+  "org": "Organization-wide reads",
+  "me.widgets": "Your own cards",
 };
 
 export function buildTree(vocabulary: readonly PermissionLeaf[]): Node[] {
