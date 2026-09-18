@@ -1,8 +1,5 @@
 import type { RequestHandler } from "express";
 import { accessForSelf } from "../permissions";
-import {
-  configuredAccounts, permitsInAccount, scopedKey, globalKeyFor, isAccountId,
-} from "../permissions/accountScope";
 
 /**
  * One permission, in front of one route.
@@ -96,87 +93,4 @@ export function requirePermission(key: string): RequestHandler {
 /** The route needs at least one of these — for a screen reachable two ways. */
 export function requireAnyPermission(...keys: string[]): RequestHandler {
   return gate(keys, false);
-}
-
-/**
- * Which AWS accounts this request is about.
- *
- * The guardrail routes name them in the body — `accountIds` for the sweep and
- * preview, `accountId` for a single remediation — and a request that names
- * none is asking about the whole estate.
- */
-function accountsInRequest(req: any): string[] | "all" {
-  const body: any = req.body ?? {};
-  const named = [
-    ...(Array.isArray(body.accountIds) ? body.accountIds : []),
-    ...(typeof body.accountId === "string" ? [body.accountId] : []),
-    ...(typeof req.query?.accountId === "string" ? [req.query.accountId] : []),
-  ].filter(id => typeof id === "string" && isAccountId(id));
-
-  return named.length > 0 ? [...new Set(named)] : "all";
-}
-
-/**
- * The route needs this permission **in every account it touches**.
- *
- * `suffix` is the per-account form — `remediate`, `rules.enforce`,
- * `findings.read` — and the global key it corresponds to (`aws.remediate`)
- * answers for every account, so somebody granted the global form is unaffected
- * by any of this.
- *
- * A request naming no account is asking about the whole estate, and is
- * therefore held to the whole estate: every configured account must permit it.
- * The alternative — treating "unspecified" as "the ones you happen to hold" —
- * turns a sweep into a silent partial sweep whose result looks complete, which
- * is worse than a refusal because nobody can see what is missing.
- *
- * With no accounts configured the estate is empty, so this reduces to the
- * global key and behaves exactly as the un-scoped gate did.
- */
-export function requirePermissionInAccounts(suffix: string): RequestHandler {
-  return (req, res, next) => {
-    // As `gate` above: the file decides, not this machine's environment.
-    accessForSelf(req.user!.login, req.user!.accessToken)
-      .then(access => {
-        if (access.inert) return next();
-        if (access.failure) {
-          return res.status(503).json({
-            code: "PERMISSIONS_UNAVAILABLE",
-            error: `Permissions could not be read, so this cannot be allowed or refused. ${access.failure.detail}`,
-          });
-        }
-
-        const asked = accountsInRequest(req);
-        const accounts = asked === "all" ? configuredAccounts() : asked;
-        const has = (key: string) => access.permissions.has(key);
-
-        // No accounts at all: nothing is scoped, so the global key decides.
-        if (accounts.length === 0) {
-          if (has(globalKeyFor(suffix))) return next();
-          return res.status(403).json({
-            code: PERMISSION_DENIED,
-            permission: globalKeyFor(suffix),
-            error: `This needs the "${globalKeyFor(suffix)}" permission, which you do not have.`,
-          });
-        }
-
-        const refused = accounts.filter(id => !permitsInAccount(has, id, suffix));
-        if (refused.length === 0) return next();
-
-        res.status(403).json({
-          code: PERMISSION_DENIED,
-          permission: scopedKey(refused[0], suffix),
-          accounts: refused,
-          error: `This needs "${suffix}" in ${refused.length === 1 ? "account" : "accounts"} `
-            + `${refused.join(", ")}, which you do not have. `
-            + `"${globalKeyFor(suffix)}" would cover every account.`,
-        });
-      })
-      .catch(err => {
-        res.status(503).json({
-          code: "PERMISSIONS_UNAVAILABLE",
-          error: `Permissions could not be read: ${err?.message ?? err}`,
-        });
-      });
-  };
 }

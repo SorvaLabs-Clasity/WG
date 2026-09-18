@@ -492,52 +492,43 @@ console.log("\nthe person screen: clearing overrides, and who cannot be edited")
     /exempt\s*=\s*access\?\.exempt/.test(page));
 }
 
-console.log("\nper-account AWS access is findable and grantable");
+console.log("\nper-account access is a tab, not a branch of the AWS keys");
 {
   const model = fs.readFileSync("./src/components/permissionTreeModel.ts", "utf8");
   const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
 
-  const PROD = "0".repeat(11) + "1";
-  const vocab = [
-    { key: "aws.remediate", label: "Fix a finding", addedIn: 1 },
-    { key: `aws.account.${PROD}.remediate`, label: "Fix a finding", addedIn: 4 },
-  ];
+  /**
+   * There were briefly two mechanisms for one idea: a generated
+   * `aws.account.<id>.*` branch of keys, and a per-account entry on the person.
+   * The key branch could only scope a subset of the AWS permissions — so it
+   * could never say "read Activity in sandbox but not production" — and it put
+   * per-account access three levels down inside the AWS branch, where the
+   * person looking for it reasonably asked why it was there at all.
+   *
+   * The entry-based one survived. Nothing should generate account keys again.
+   */
+  check("the tree does not special-case an account branch",
+    !/aws\.account/.test(model),
+    "a generated key branch is a second way to say what the account tabs already say");
+
+  check("  and buildTree takes no account names, because no key carries one",
+    !/AccountNames/.test(model));
+
+  check("per-account access is a tab on the person screen",
+    /options=\{accountIds\.map/.test(page) && /Copy this account's permissions to/.test(page));
 
   /**
-   * The leaves existing is not the same as somebody being able to find them.
-   * They sit three levels down — AWS, then a branch the segment calls
-   * "account", then twelve digits — which reads as one more AWS leaf rather
-   * than as the place per-person, per-account access lives.
+   * Branch headings that read as the code's word for a thing rather than
+   * anybody else's. "Feeds" is the one somebody had to tick to find out what
+   * it meant, which on a permissions screen is how the wrong box gets ticked.
    */
-  const tree = buildTree(vocab, { [PROD]: "prod" });
-  const aws = tree.find(n => n.key === "aws")!;
-  const perAccount = aws.children.find(n => n.key === "aws.account")!;
-
-  check("the per-account branch exists under aws", !!perAccount);
-  check("  and is named for what it is, not for its path segment",
-    perAccount.label === "Per-account access", perAccount.label);
-
-  const account = perAccount.children.find(n => n.key === `aws.account.${PROD}`)!;
-  check("  and each account is named the way people refer to it",
-    account.label === `prod (${PROD})`, account.label);
-  check("    falling back to the id when no name is known",
-    buildTree(vocab, {}).find(n => n.key === "aws")!
-      .children.find(n => n.key === "aws.account")!
-      .children[0].label === PROD);
-
-  check("the person screen says where per-account access lives",
-    /Per-account access/.test(page) && /applies to every account/.test(page),
-    "a branch three levels down that nobody is pointed at is a branch nobody finds");
-
-  /**
-   * And the vocabulary must not be cached forever. That was correct while it
-   * was a fixed list and became wrong the moment declaring an account could
-   * add branches to it — the account you just added would have nothing to
-   * grant until a reload.
-   */
-  check("the vocabulary is refetched, not cached forever",
-    !/queryKey: \["admin", "vocabulary"\][^}]*staleTime: Infinity/s.test(page),
-    "declaring an account changes the vocabulary, so it cannot be immutable");
+  const tree = buildTree([
+    { key: "alarms.feeds.read", label: "Renovate and Dependabot notification settings", addedIn: 1 },
+    { key: "org.webhookHealth.read", label: "Webhook health", addedIn: 1 },
+  ]);
+  const feeds = tree.find(n => n.key === "alarms")!.children.find(n => n.key === "alarms.feeds")!;
+  check("the branches that said nothing are named",
+    feeds.label === "Vulnerability notifications", feeds.label);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
