@@ -1,6 +1,5 @@
 import type { Repo, RepoDetails } from "../types/Repo";
 import type { Activity } from "../types/Activity";
-import type { Scanner, ScanResult } from "../types/Scanner";
 import type { SecurityAlert } from "../types/Alert";
 import type { DependencyAlert, DependencySummary } from "../types/Dependabot";
 
@@ -9082,117 +9081,6 @@ export async function mockFetchRepoDetails(repo: string): Promise<RepoDetails> {
     hygiene: { hasReadme: true, hasLicense: true, hasCodeowners: false, hasDescription: true, hasTopics: true },
   };
 }
-
-// ── Scanner mock data ────────────────────────────────────────────
-
-let mockScanners: Scanner[] = [
-  {
-    id: "s1",
-    name: "Standard Org Compliance",
-    description: "Ensures main and uat branches exist and are protected via Rulesets with PRs required.",
-    targetRepos: "all",
-    includeFutureRepos: true,
-    createdAt: "2026-03-08T10:00:00Z",
-    updatedAt: "2026-03-08T10:00:00Z",
-    lastRunAt: "2026-03-09T08:00:00Z",
-    conditions: [
-      {
-        branchPatterns: ["main"],
-        requiresProtection: true,
-        protectionType: "ruleset",
-        rules: { requirePr: true, minApprovals: 2, requireStatusChecks: true }
-      },
-      {
-        branchPatterns: ["uat"],
-        requiresProtection: true,
-        protectionType: "ruleset",
-        rules: { requirePr: true, minApprovals: 1 }
-      }
-    ]
-  }
-];
-
-let mockScanResults: Map<string, ScanResult> = new Map([
-  ["s1", {
-    scannerId: "s1",
-    runAt: "2026-03-09T08:00:00Z",
-    totalScanned: MOCK_REPOS.length,
-    compliantCount: 2,
-    nonCompliantCount: MOCK_REPOS.length - 2,
-    violations: [
-      { repo: "web-platform", branch: "uat", reason: "Required branch does not exist" },
-      { repo: "api-gateway", branch: "main", reason: "Branch lacks Repository Ruleset (has Classic instead)" },
-      { repo: "design-system", branch: "main", reason: "Ruleset requires 1 approvals, expected >= 2" }
-    ]
-  }]
-]);
-
-export async function mockFetchScanners(): Promise<Scanner[]> {
-  await delay(300);
-  return [...mockScanners];
-}
-
-export async function mockCreateScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">): Promise<Scanner> {
-  await delay(500);
-  const scanner: Scanner = {
-    ...data,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-  mockScanners = [scanner, ...mockScanners];
-  return scanner;
-}
-
-export async function mockUpdateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>): Promise<Scanner> {
-  await delay(400);
-  const idx = mockScanners.findIndex((s) => s.id === id);
-  if (idx === -1) throw new Error("Scanner not found");
-  mockScanners[idx] = { ...mockScanners[idx], ...data, updatedAt: new Date().toISOString() };
-  return mockScanners[idx];
-}
-
-export async function mockDeleteScanner(id: string): Promise<{ message: string }> {
-  await delay(400);
-  mockScanners = mockScanners.filter((s) => s.id !== id);
-  mockScanResults.delete(id);
-  return { message: "Scanner deleted" };
-}
-
-export async function mockGetScanResult(id: string): Promise<ScanResult> {
-  await delay(300);
-  const result = mockScanResults.get(id);
-  if (!result) throw new Error("Result not found");
-  return result;
-}
-
-export async function mockRunScan(id: string): Promise<ScanResult> {
-  await delay(1000);
-  const scanner = mockScanners.find(s => s.id === id);
-  if (!scanner) throw new Error("Scanner not found");
-
-  const runAt = new Date().toISOString();
-  scanner.lastRunAt = runAt;
-
-  // Generate fake result
-  const totalScanned = scanner.targetRepos === "all" ? MOCK_REPOS.length : scanner.targetRepos.length;
-  const compliantCount = Math.floor(Math.random() * totalScanned);
-  
-  const result: ScanResult = {
-    scannerId: id,
-    runAt,
-    totalScanned,
-    compliantCount,
-    nonCompliantCount: totalScanned - compliantCount,
-    violations: [
-      { repo: "random-repo", branch: "main", reason: "Simulated violation" }
-    ]
-  };
-
-  mockScanResults.set(id, result);
-  return result;
-}
-
 
 const mockActivityLog: Activity[] = [
   {

@@ -119,7 +119,6 @@ function check(name: string, ok: boolean, got?: unknown) {
     const ROUTES: Array<[string, string]> = [
       ["routes/graph.ts", "aggregate + query re-check"],
       ["routes/access.ts", "access map recompute"],
-      ["routes/scanners.ts", "scanner run"],
       ["routes/pulls.ts", "manual reminder pass"],
     ];
     for (const [file, what] of ROUTES) {
@@ -145,7 +144,6 @@ function check(name: string, ok: boolean, got?: unknown) {
       ["routes/graph.ts",         /logSync\("graph"/,      "graph sync"],
       ["routes/graph.ts",         /logSync\("query"/,      "check re-run"],
       ["routes/access.ts",        /logSync\("access"/,     "access recompute"],
-      ["routes/scanners.ts",      /logSync\("scanner"/,    "scanner run"],
       ["routes/pulls.ts",         /logSync\("reminders"/,  "reminder pass"],
       ["routes/awsGuardrails.ts", /aws\.guardrail\.run/,   "guardrail sweep"],
       ["routes/awsGuardrails.ts", /aws\.guardrail\.preview/, "guardrail preview"],
@@ -158,7 +156,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     // None of the route files may borrow the gate the scheduled jobs use. A
     // route is only ever reached because somebody asked.
-    for (const file of ["graph.ts", "access.ts", "scanners.ts", "pulls.ts", "awsGuardrails.ts"]) {
+    for (const file of ["graph.ts", "access.ts", "pulls.ts", "awsGuardrails.ts"]) {
       const src = fs.readFileSync(`${__dirname}/src/routes/${file}`, "utf8");
       check(`  ${file} does not gate a press on having changed something`,
         !/didSomething/.test(src));
@@ -167,7 +165,6 @@ function check(name: string, ok: boolean, got?: unknown) {
     // And both outcomes are recorded, not just the happy one.
     for (const [file, kind] of [
       ["routes/graph.ts", "query"],
-      ["routes/scanners.ts", "scanner"], ["routes/pulls.ts", "reminders"],
     ] as const) {
       const src = fs.readFileSync(`${__dirname}/src/${file}`, "utf8");
       const calls = [...src.matchAll(new RegExp(`logSync\\("${kind}"`, "g"))].length;

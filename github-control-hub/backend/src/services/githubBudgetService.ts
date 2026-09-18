@@ -253,22 +253,6 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "repositories is about 280 requests, which is the easiest way to spend "
       + "a lot without doing anything that feels expensive.",
   },
-  "Scanner run": {
-    trigger: "A saved scanner, the run button, or a matching webhook",
-    endpoints: [
-      "GET /orgs/{org}/repos", "GET /repos/{o}/{r}/branches",
-      "GET /repos/{o}/{r}/branches/{b}/protection",
-    ],
-    files: [
-      "services/scannerService.ts", "routes/scanners.ts",
-      "webhooks/processDelivery.ts",
-    ],
-    scalesWith: "repositories in scope and branch conditions",
-    note: "A scanner limited to a few repositories costs a few requests; one "
-      + "left org-wide with branch conditions walks every repository's branches. "
-      + "A webhook matching a scanner starts one too, which is the only GitHub "
-      + "spend a delivery causes.",
-  },
   "Expertise lookup": {
     trigger: "The expertise panel",
     endpoints: [

@@ -52,11 +52,17 @@ const HOUR = 3_600_000;
     // The templates feature is gone. A bundle must stop claiming to carry it,
     // otherwise an import would report writing sections that no longer have a
     // writer behind them.
-    const removed = ["templates", "ruleTemplates", "exclusions"]
+    /**
+     * `scanners` joined this list when the feature was removed. Import was the
+     * last path that could create one — the routes were gone and the webhook
+     * no longer ran them — so a bundle exported from an older install would
+     * otherwise have written straight back into a table nothing reads.
+     */
+    const removed = ["templates", "ruleTemplates", "exclusions", "scanners"]
       .filter(n => (SECTION_ORDER as readonly string[]).includes(n));
     check("no deleted section is still exported or imported", removed.length === 0, removed);
     check("  and what remains is the configuration that still exists",
-      [...SECTION_ORDER].join() === "scanners,widgets,awsGuardrails,awsExclusions", SECTION_ORDER);
+      [...SECTION_ORDER].join() === "widgets,awsGuardrails,awsExclusions", SECTION_ORDER);
   }
 
   // ── a format-1 bundle predates the templates removal ────────────────
@@ -74,11 +80,11 @@ const HOUR = 3_600_000;
       exportedAt: "2025-01-01T00:00:00.000Z",
       exportedBy: "past-user",
       org: "test-org",
-      counts: { templates: 1, ruleTemplates: 1, exclusions: 1, scanners: 1 },
+      counts: { templates: 1, ruleTemplates: 1, exclusions: 1, widgets: 1 },
       templates: [{ id: "t1", name: "Old Template" }],
       ruleTemplates: [{ id: "rt1", name: "Old Rule Template" }],
       exclusions: [{ id: "ex1", pattern: "*-archived" }],
-      scanners: [{ id: "s1" }],
+      widgets: [{ id: "w1" }],
     } as any;
 
     check("format 1 is not rejected as newer than this app reads",
@@ -107,7 +113,7 @@ const HOUR = 3_600_000;
         && !("exclusions" in result.applied),
       result?.applied);
     check("  while the section that still exists today is applied normally",
-      written.join() === "scanners/s1", written);
+      written.join() === "widgets/w1", written);
   }
 
   // ── importing a bundle ─────────────────────────────────────────────
@@ -123,19 +129,20 @@ const HOUR = 3_600_000;
       format: FORMAT,
       // Listed out of SECTION_ORDER on purpose, sections are written in the
       // order the app decides, not the order the file happens to list them.
-      widgets: [{ id: "w1" }],
-      scanners: [{ id: "s1" }, { id: "s2" }],
+      awsExclusions: [{ id: "x1" }],
+      widgets: [{ id: "w1" }, { id: "w2" }],
       // A section a bundle from another account simply would not have.
       awsGuardrails: undefined,
+      // and one omitted entirely, which is the other way a section goes absent.
     } as any;
 
     // Dry run.
     const dry = await applyBundle(bundle, true, writers);
     check("a dry run writes nothing at all", written.length === 0, written);
     check("  but still counts what it would write",
-      dry.applied.scanners === 2 && dry.applied.widgets === 1, dry.applied);
+      dry.applied.widgets === 2 && dry.applied.awsExclusions === 1, dry.applied);
     check("  and does not invent counts for sections the bundle omits",
-      !("awsGuardrails" in dry.applied) && !("awsExclusions" in dry.applied), dry.applied);
+      !("awsGuardrails" in dry.applied), dry.applied);
 
     // For real.
     const real = await applyBundle(bundle, false, writers);

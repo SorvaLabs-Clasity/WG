@@ -263,7 +263,6 @@ async function attempt(octokit: any, url: string): Promise<void> {
       ["services/dependencyService.ts", "Dependabot alert sweep"],
       ["services/renovateService.ts", "Renovate pull request search"],
       ["services/prNudgeService.ts", "Open pull request walk"],
-      ["services/scannerService.ts", "Scanner run"],
       ["services/repoDetailsService.ts", "Repository detail page"],
       ["jobs/lightGraphRefresh.ts", "Light access graph refresh"],
       ["jobs/graphAggregator.ts", "Nightly access graph rebuild"],

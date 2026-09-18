@@ -4,7 +4,6 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM, isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { logActivity } from "../services/activityService";
 import { listWidgets, putWidgetRaw } from "../services/widgetService";
-import { listScanners, putScannerRaw } from "../services/scannerService";
 import { listGuardrails, putGuardrail, listAwsExclusions, putAwsExclusion } from "../aws-guardrails/store";
 import { CATALOG } from "../aws-guardrails/catalog";
 import { canRemediate } from "../aws-guardrails/remediators";
@@ -42,7 +41,6 @@ export interface ConfigBundle {
   exportedBy: string;
   org: string | null;
   counts: Record<string, number>;
-  scanners: any[];
   widgets: any[];
   awsGuardrails: any[];
   awsExclusions: any[];
@@ -127,9 +125,9 @@ async function refuseAwsSections(
 router.get("/export", requirePermission("config.export"), async (req: Request, res: Response) => {
   if (await refuseUnlessAdmin(res, req.user!.login, "export", req.user!.accessToken)) return;
   try {
-    const [scanners, widgets, awsGuardrails, awsExclusions] =
+    const [widgets, awsGuardrails, awsExclusions] =
       await Promise.all([
-        listScanners(), listWidgets(), listGuardrails(), listAwsExclusions(),
+        listWidgets(), listGuardrails(), listAwsExclusions(),
       ]);
 
     const bundle: ConfigBundle = {
@@ -138,10 +136,10 @@ router.get("/export", requirePermission("config.export"), async (req: Request, r
       exportedBy: req.user!.login,
       org: process.env.GITHUB_ORG ?? null,
       counts: {
-        scanners: scanners.length, widgets: widgets.length,
+        widgets: widgets.length,
         awsGuardrails: awsGuardrails.length, awsExclusions: awsExclusions.length,
       },
-      scanners, widgets, awsGuardrails, awsExclusions,
+      widgets, awsGuardrails, awsExclusions,
     };
 
     res.setHeader("Content-Disposition",
@@ -159,12 +157,21 @@ export type BundleWriters = Record<string, (x: any) => Promise<unknown>>;
  * an import idempotent, and inventing one would turn a re-import into a
  * duplicate rather than an update.
  */
+/**
+ * `scanners` is deliberately absent, and its absence is load-bearing.
+ *
+ * Import was the last path that could create a scanner once the feature was
+ * removed — the routes were gone, the webhook no longer ran them, and a bundle
+ * exported from an older install would have written straight back into the
+ * table anyway. A section nothing can act on must not be one import silently
+ * accepts; `applyBundle` reports an unknown section rather than ignoring it,
+ * so an old bundle says so instead of half-importing.
+ */
 export const SECTION_ORDER = [
-  "scanners", "widgets", "awsGuardrails", "awsExclusions",
+  "widgets", "awsGuardrails", "awsExclusions",
 ] as const;
 
 const DEFAULT_WRITERS: BundleWriters = {
-  scanners: putScannerRaw,
   widgets: putWidgetRaw,
   awsGuardrails: putGuardrail,
   awsExclusions: putAwsExclusion,

@@ -113,19 +113,23 @@ const code = page.split("\n")
   {
     const src = (f: string) => fs.readFileSync(`./src/${f}`, "utf8");
     const modal = src("pages/AnalyticsPage.tsx");
-    const scanner = src("components/ScannerModal.tsx");
     const options = src("utils/queryOptions.ts");
     const { QUERY_OPTIONS, paramNoun } = await import("./src/utils/queryOptions");
 
     // Scoped to the tag input, since a branch *query* legitimately shows a
     // branch icon in the picker.
-    const tagInputs = [...modal.matchAll(/<TagInput[\s\S]{0,900}?\/>/g),
-                       ...scanner.matchAll(/<TagInput[\s\S]{0,900}?\/>/g)].map(m => m[0]);
-    check("every query's tag input exists to check", tagInputs.length >= 3, String(tagInputs.length));
+    // `ScannerModal.tsx` was the second source here until the scanner feature
+    // was removed; the property is about every tag input driven by a query,
+    // wherever they live.
+    const tagInputs = [...modal.matchAll(/<TagInput[\s\S]{0,900}?\/>/g)].map(m => m[0]);
+    // One now, not three: the other two lived in `ScannerModal.tsx`, which went
+    // with the scanner feature. The threshold is "at least one to check",
+    // because the property is about how they are written, not how many exist.
+    check("every query's tag input exists to check", tagInputs.length >= 1, String(tagInputs.length));
 
     const queryTagInputs = tagInputs.filter(t => t.includes("selectedQuery"));
     check("  and the ones driven by a query hard-code neither icon nor prompt",
-      queryTagInputs.length >= 3 &&
+      queryTagInputs.length >= 1 &&
       queryTagInputs.every(t => !/icon="/.test(t) && !/placeholder="/.test(t)),
       "a literal here is a promise that every future query is about branches");
 
