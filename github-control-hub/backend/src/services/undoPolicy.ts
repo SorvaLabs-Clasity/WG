@@ -38,7 +38,6 @@ export const ALLOWED_UNDO_ACTIONS = new Set<string>([
   "delete_ruleset", "recreate_ruleset", "undo_override_ruleset",
   "enable_dependabot", "disable_dependabot",
   "delete_widget", "restore_widget", "revert_widget",
-  "delete_scanner", "restore_scanner", "revert_scanner",
 ]);
 
 /**
@@ -131,9 +130,6 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
 
   // Scanners search every repository with the app's own credentials, so they
   // are gated on the way in and on the way out.
-  delete_scanner:           { adminTeam: true },
-  restore_scanner:          { adminTeam: true },
-  revert_scanner:           { adminTeam: true },
 
   // One dashboard, shared by everyone, listWidgets does not scope by user,
   // so a widget is shared configuration, not a personal preference.

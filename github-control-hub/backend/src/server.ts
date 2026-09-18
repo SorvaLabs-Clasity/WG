@@ -9,7 +9,6 @@ import repoRoutes from "./routes/repos";
 import branchRoutes from "./routes/branches";
 import protectionRoutes from "./routes/protection";
 import activityRoutes from "./routes/activity";
-import scannerRoutes from "./routes/scanners";
 import alertRoutes from "./routes/alerts";
 import dependencyRoutes from "./routes/dependencies";
 import orgRoutes from "./routes/org";
@@ -151,7 +150,6 @@ app.use("/api/repos", authMiddleware, githubGateMiddleware, protectionRoutes);
 // run them, so the router stays reachable and drops the GitHub rows itself.
 // See awsOnlyActivityMiddleware.
 app.use("/api/activity", authMiddleware, activityRoutes);
-app.use("/api/scanners", authMiddleware, githubGateMiddleware, scannerRoutes);
 app.use("/api/alerts", authMiddleware, githubGateMiddleware, alertRoutes);
 app.use("/api/security", authMiddleware, githubGateMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, githubGateMiddleware, orgRoutes);

@@ -127,7 +127,10 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     at({ id: "b", repo: "acme-web", undoPayload: { action: "restore_protection", params: {} } }),
     at({ id: "c", repo: "acme-api", undoPayload: { action: "delete_ruleset", params: {} } }),
     aws,
-    at({ id: "d", repo: "acme-docs", undoPayload: { action: "delete_scanner", params: {} } }),
+    // An org-wide operation: the row carries a repo, and the operation does not
+    // act on it, so it must not be collected as one needing a write check.
+    // This was `delete_scanner` until the scanner feature was removed.
+    at({ id: "d", repo: "acme-docs", undoPayload: { action: "delete_widget", params: {} } }),
   ]);
   check("every repo an undo would touch is collected, once",
     [...repos.admin, ...repos.push].sort().join() === "acme-api,acme-web", repos);
@@ -294,7 +297,6 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   const read = (f: string) => fs.readFileSync(path.join(__dirname, "src/routes", f), "utf8");
 
   const GUARDED: [string, RegExp, RegExp][] = [
-    ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
     // Two gates since personal dashboards existed. Creating still asks
     // `refusedWidgetChange`, admin, for the one board everybody sees, while
     // editing and deleting ask `refusedWidgetEdit`, which reads the stored
@@ -485,7 +487,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   /**
    * The routers whose gating is middleware, so a chain can be driven through
-   * it. `scanners.ts`, `widgets.ts`, `alerts.ts`, `config.ts`, `activity.ts`
+   * it. `widgets.ts`, `alerts.ts`, `config.ts`, `activity.ts`
    * and `pulls.ts` decide inside their handlers instead — which the text check
    * above covers and this cannot, since reaching the handler is the point there
    * rather than the bug.

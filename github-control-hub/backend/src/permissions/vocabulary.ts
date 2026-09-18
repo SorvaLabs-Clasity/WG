@@ -162,27 +162,10 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("repos.branches.manage", "Create, delete or rename a branch", 3),
   L("repos.protection.manage", "Change branch protection or rulesets", 3),
 
-  // ── Scanners ───────────────────────────────────────────────────────
-  //
-  // Missing from v1: scanners.ts already existed and was written against a
-  // "scanners.*" branch that was never added here, so every route in it was
-  // unnameable without inventing a key. Added now, in v2, rather than left for
-  // a route to invent one, which is exactly what this vocabulary exists to
-  // prevent.
-  L("scanners.read", "Scanner definitions and their past results", 2),
-  L("scanners.manage", "Create, edit and delete scanners, which decides what is searched org-wide", 2),
-  /**
-   * The one AWS-free permission in this app that reaches data through the
-   * App's credentials rather than the holder's own.
-   *
-   * `POST /:id/run` builds its client from `getSystemToken()`, so a scan reads
-   * every repository the App can see — which is more than most members can.
-   * Everywhere else here the rule is "nothing you could not do yourself on
-   * github.com"; this is the documented exception, and somebody deciding
-   * whether to grant it should be told so on the checkbox rather than in a
-   * comment they will never read.
-   */
-  L("scanners.run", "Run a scanner now, reading repositories with the app's own access", 2),
+  // Scanners were here in v2 and v3. The feature is gone — no screen ever
+  // opened it, the webhook that ran scans is removed, and import no longer
+  // accepts the section — so the three keys went with it rather than staying
+  // as choices in a console that could not act on them.
 
   // ── Pull requests ──────────────────────────────────────────────────
   L("pulls.read", "Open the Pull requests tab"),

@@ -1,6 +1,5 @@
 import { Octokit } from "octokit";
 import { getOrg, createOctokit } from "../github/client";
-import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
 import {
@@ -616,35 +615,6 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     }
   } catch (graphErr) {
     console.error(`[Webhook] Graph edge update failed:`, (graphErr as Error).message);
-  }
-
-  // Background compliance scans.
-  //
-  // The one-second setTimeout this replaces existed to let the HTTP response
-  // go out first. There is no response to get out of the way of here.
-  if (repoName) {
-    console.log(`[Webhook] Scheduling compliance scan for repository: ${repoName}`);
-    background.push((async () => {
-      try {
-        if (!token) {
-          console.warn("[Webhook] No GitHub token available. Cannot run automated background scan.");
-          return;
-        }
-        const octokit = createOctokit(token, "Scanner run");
-        const scanners = await listScanners();
-        const relevantScanners = scanners.filter(s =>
-          s.targetRepos === "all" ||
-          (Array.isArray(s.targetRepos) && s.targetRepos.includes(repoName!)) ||
-          s.includeFutureRepos
-        );
-        for (const scanner of relevantScanners) {
-          console.log(`[Webhook] Running scanner '${scanner.name}' against repo '${repoName}'`);
-          await runScan(octokit, scanner.id, [repoName!]);
-        }
-      } catch (err) {
-        console.error(`[Webhook] Error executing background tasks for ${repoName}:`, err);
-      }
-    })());
   }
 
   await awaitBackground(background);

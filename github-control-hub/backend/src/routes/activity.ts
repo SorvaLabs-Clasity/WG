@@ -46,10 +46,6 @@ import {
   putWidgetRaw,
   deleteWidgetRaw,
 } from "../services/widgetService";
-import {
-  putScannerRaw,
-  deleteScannerRaw,
-} from "../services/scannerService";
 
 const router = Router();
 
@@ -940,21 +936,6 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
         await putWidgetRaw({ ...params.previousState, updatedAt: new Date().toISOString() });
       }
       break;
-    case "delete_scanner":
-      if (params.scannerId) {
-        await deleteScannerRaw(params.scannerId);
-      }
-      break;
-    case "restore_scanner":
-      if (params.scannerData) {
-        await putScannerRaw(params.scannerData);
-      }
-      break;
-    case "revert_scanner":
-      if (params.previousState && params.scannerId) {
-        await putScannerRaw({ ...params.previousState, updatedAt: new Date().toISOString() });
-      }
-      break;
     case "disable_dependabot": {
       const depOctokit = createOctokit(accessToken, "Branch and protection changes");
       await depOctokit.rest.repos.disableVulnerabilityAlerts({ owner: org, repo: params.repo });
@@ -1151,24 +1132,6 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
     case "revert_widget":
       if (params.currentState && params.widgetId) {
         await putWidgetRaw({ ...params.currentState, updatedAt: new Date().toISOString() });
-      }
-      break;
-
-    case "delete_scanner":
-      if (params.scannerData) {
-        await putScannerRaw(params.scannerData);
-      }
-      break;
-
-    case "restore_scanner":
-      if (params.scannerData) {
-        await deleteScannerRaw(params.scannerData.id);
-      }
-      break;
-
-    case "revert_scanner":
-      if (params.currentState && params.scannerId) {
-        await putScannerRaw({ ...params.currentState, updatedAt: new Date().toISOString() });
       }
       break;
 

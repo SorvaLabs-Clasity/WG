@@ -68,7 +68,6 @@ const strip = (s: string) => s.split("\n")
       "services/alarmService.ts": "ALARMS_TABLE",
       "services/alertService.ts": "ALERTS_TABLE",
       "services/widgetService.ts": "WIDGETS_TABLE",
-      "services/scannerService.ts": "SCANNERS_TABLE",
       "services/graphService.ts": "GRAPH_EDGES_TABLE",
       "services/graphEdgeService.ts": "GRAPH_EDGES_TABLE",
     };
