@@ -63,7 +63,25 @@ function sliceFor(
 ): AccountEntry | undefined {
   if (!entry) return undefined;
   if (accountId === undefined) return entry;
-  return entry.accounts?.[accountId];
+
+  /**
+   * An entry with no `accounts` map at all is a **legacy entry**, and it
+   * applies in every account.
+   *
+   * This used to return nothing for it, which is how a real install lost
+   * everybody: the migration writes top-level entries, accounts were declared
+   * afterwards, and forty-eight people who held `member` on Monday held
+   * nothing on Tuesday. Nobody edited anything — declaring an account did it.
+   *
+   * Once an entry has *any* per-account entry, those are authoritative and the
+   * top-level fields stop being consulted. That keeps the guarantee the split
+   * exists for: an account somebody has deliberately been left out of does not
+   * inherit a general grant. What it no longer does is treat "written before
+   * accounts existed" as "deliberately left out of all of them".
+   */
+  const byAccount = entry.accounts;
+  if (!byAccount || Object.keys(byAccount).length === 0) return entry;
+  return byAccount[accountId];
 }
 
 export function collectRules(

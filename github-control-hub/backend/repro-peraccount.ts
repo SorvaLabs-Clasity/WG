@@ -88,9 +88,23 @@ console.log("\na file written before accounts existed still works");
   check("with no account in play its top-level fields decide",
     permissionsFor(old, alice).has("overview.read"));
   check("  and it is still a valid file", fileProblems(old).length === 0, fileProblems(old));
-  check("  while asking about an account it never mentioned grants nothing",
-    !permissionsFor(old, alice, PROD).has("overview.read"),
-    "an entry written before accounts cannot silently apply to all of them");
+  /**
+   * This asserted the opposite — that an entry written before accounts could
+   * not apply to all of them — on the reasoning that a general grant must not
+   * leak into an account somebody was deliberately left out of.
+   *
+   * The reasoning was right about the danger and wrong about the case. An
+   * entry with no per-account entries at all was never a decision to leave
+   * anybody out; it is a file written before the question existed. Reading it
+   * as an exclusion stripped every person the migration wrote the moment an
+   * account was declared, which is what happened to a real install.
+   *
+   * The guarantee it was protecting still holds, one line down: once an entry
+   * has any per-account entry, those are the whole answer.
+   */
+  check("  and it applies in an account it never mentioned, because it predates them",
+    permissionsFor(old, alice, PROD).has("overview.read"),
+    "declaring an account must not silently strip everybody the migration wrote");
 }
 
 console.log("\nthe tree's baseline is per account too");
@@ -127,6 +141,48 @@ console.log("the validator holds the per-account shape to the same standard");
   const notObject = { ...emptyFile(), people: { alice: { accounts: ["nope"] } } } as any;
   check("  and an accounts that is not an object is refused",
     fileProblems(notObject).length > 0);
+}
+
+console.log("an entry written before accounts existed applies in all of them");
+{
+  /**
+   * The bug this pins cost a real install everybody.
+   *
+   * The migration writes top-level entries. Accounts were declared afterwards,
+   * and `sliceFor` returned nothing for an entry with no per-account entry —
+   * so forty-eight people who held `member` on Monday held nothing on Tuesday.
+   * Nobody edited anything; declaring an account did it.
+   *
+   * A legacy entry now applies everywhere. The moment it has *any* per-account
+   * entry, those are authoritative — which keeps the guarantee the split
+   * exists for: an account somebody was deliberately left out of does not
+   * inherit a general grant.
+   */
+  const legacy: PermissionsFile = {
+    ...emptyFile(),
+    presets: { member: { name: "Member", grant: ["overview.read", "me"] } },
+    people: { alice: { presets: ["member"] } },
+  };
+
+  check("a migrated entry grants in an account it never mentioned",
+    permissionsFor(legacy, alice, PROD).has("overview.read"),
+    "declaring an account must not silently strip everybody the migration wrote");
+  check("  and in every other account too", permissionsFor(legacy, alice, DEV).has("overview.read"));
+  check("  and still with no account in play", permissionsFor(legacy, alice).has("overview.read"));
+
+  /**
+   * Once per-account entries exist, they are the whole answer: a person given
+   * access in dev only does not keep a general grant in prod.
+   */
+  const scoped: PermissionsFile = {
+    ...legacy,
+    people: { alice: { presets: ["member"], accounts: { [DEV]: { presets: ["member"] } } } },
+  };
+  check("once one account is written, the top-level fields stop deciding",
+    permissionsFor(scoped, alice, DEV).has("overview.read")
+      && !permissionsFor(scoped, alice, PROD).has("overview.read"),
+    { dev: permissionsFor(scoped, alice, DEV).has("overview.read"),
+      prod: permissionsFor(scoped, alice, PROD).has("overview.read") });
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

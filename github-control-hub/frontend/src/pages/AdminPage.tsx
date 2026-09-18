@@ -14,7 +14,7 @@ import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
   bootstrapAdmin, fetchDryRun, runMigration, isAdminFileFailure, fetchResolvedPreset,
   type AdminFile, type PermissionsFile, type PermissionEntry, type PersonEntry, type Preset,
-  type AwsAccountEntry, type PermissionLeaf, type AuditEntry, type FlatRule,
+  type AccountEntry, type AwsAccountEntry, type PermissionLeaf, type AuditEntry, type FlatRule,
 } from "../api/admin";
 import { ago } from "../lib/ago";
 
@@ -68,12 +68,27 @@ function baselineFrom(baseline?: Record<string, boolean>): Map<string, boolean> 
   return baseline ? new Map(Object.entries(baseline)) : undefined;
 }
 
+/**
+ * Which presets an entry assigns, whichever shape it is written in.
+ *
+ * An entry with no `accounts` map is a legacy one — written before accounts
+ * existed, and applying in all of them. Once it has per-account entries, those
+ * are what count. This is the same rule `sliceFor` applies on the server, and
+ * the two have to agree: when they did not, a preset reported forty-eight
+ * holders on one screen and none on the next.
+ */
+function presetsAssignedBy(entry: { presets?: string[]; accounts?: Record<string, AccountEntry> }): string[] {
+  const byAccount = entry.accounts;
+  if (!byAccount || Object.keys(byAccount).length === 0) return entry.presets ?? [];
+  return [...new Set(Object.values(byAccount).flatMap(a => a.presets ?? []))];
+}
+
 /** Every preset id -> who holds it, by login or `team <slug>`. */
 function countHolders(file: PermissionsFile): Map<string, string[]> {
   const m = new Map<string, string[]>();
   const add = (id: string, label: string) => { const list = m.get(id) ?? []; list.push(label); m.set(id, list); };
-  for (const [login, p] of Object.entries(file.people)) for (const id of p.presets ?? []) add(id, login);
-  for (const [slug, t] of Object.entries(file.teams)) for (const id of t.presets ?? []) add(id, `team ${slug}`);
+  for (const [login, p] of Object.entries(file.people)) for (const id of presetsAssignedBy(p)) add(id, login);
+  for (const [slug, t] of Object.entries(file.teams)) for (const id of presetsAssignedBy(t)) add(id, `team ${slug}`);
   return m;
 }
 
@@ -828,7 +843,6 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   const isNew = presetId === "new";
   const existing = isNew ? undefined : file.presets[presetId];
 
-  const [id, setId] = useState(isNew ? "" : presetId);
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [inherits, setInherits] = useState(existing?.inherits ?? "");
@@ -840,8 +854,11 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const holders = useMemo(
-    () => countHolders(file).get(isNew ? id : presetId) ?? [],
-    [file, presetId, id, isNew],
+    // A preset being created holds nobody yet, and `finalId` moves as the name
+    // is typed — looking it up would report the holders of whatever existing
+    // preset the half-typed name happens to collide with.
+    () => (isNew ? [] : countHolders(file).get(presetId) ?? []),
+    [file, presetId, isNew],
   );
 
   const otherPresets = useMemo(
@@ -888,7 +905,18 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     const person = file.people[login];
     if (!person) return [];
     if (!scopedHere) return (person.presets ?? []).includes(presetId) ? [""] : [];
-    return Object.entries(person.accounts ?? {})
+
+    /**
+     * A legacy entry — no per-account entries at all — holds its presets in
+     * every account, exactly as the server reads it. Without this, everybody
+     * the migration wrote looked like they held nothing, so "remove from
+     * everyone" reported no change and refused to save.
+     */
+    const byAccount = person.accounts;
+    if (!byAccount || Object.keys(byAccount).length === 0) {
+      return (person.presets ?? []).includes(presetId) ? Object.keys(accounts) : [];
+    }
+    return Object.entries(byAccount)
       .filter(([, a]) => (a.presets ?? []).includes(presetId))
       .map(([id]) => id);
   };
@@ -974,7 +1002,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   // The id a new preset would actually save under, and whether that collides
   // with one that already exists — checked ahead of the click, not discovered
   // by it silently overwriting whatever was already there.
-  const finalId = isNew ? slugify(id || name) : presetId;
+  const finalId = isNew ? slugify(name) : presetId;
   const idCollision = isNew && !!file.presets[finalId];
 
   const qc = useQueryClient();
@@ -1008,7 +1036,8 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     else save.mutate();
   };
 
-  const canSave = name.trim().length > 0 && (!isNew || id.trim().length > 0) && !idCollision && !save.isPending;
+  // The name is the only thing asked for, so it is the only thing required.
+  const canSave = name.trim().length > 0 && !idCollision && !save.isPending;
 
   return (
     <>
@@ -1023,21 +1052,24 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
 
         <Block title="Identity">
           <div className="grid gap-4 sm:grid-cols-2">
-            {isNew && (
-              <label className="block">
-                <span className="caps block mb-1.5">Id</span>
-                <input value={id} onChange={e => setId(e.target.value)} placeholder="engineer"
-                  disabled={!canEditFields} className={SURFACE.input} />
-                <span className="text-[0.75rem] text-ink-3 mt-1 block">
-                  Saves as <span className="font-mono">{finalId}</span>.
-                  {idCollision && <span className="text-crimson"> A preset by that id already exists.</span>}
-                </span>
-              </label>
-            )}
-            <label className="block">
+            {/*
+              * No id field. It is derived from the name, which is the only
+              * thing anybody creating a preset has an opinion about — asking
+              * for both means asking a question whose answer is "whatever you
+              * just typed, with hyphens", and then making somebody feel they
+              * got it wrong. The derived id is shown, because it is what the
+              * file stores and what a collision would be about.
+              */}
+            <label className="block sm:col-span-2">
               <span className="caps block mb-1.5">Name</span>
               <input value={name} onChange={e => setName(e.target.value)} disabled={!canEditFields}
-                className={SURFACE.input} />
+                placeholder="Engineer" className={SURFACE.input} />
+              {isNew && name.trim() !== "" && (
+                <span className="text-[0.75rem] text-ink-3 mt-1 block">
+                  Saved as <span className="font-mono">{finalId}</span>.
+                  {idCollision && <span className="text-crimson"> A preset by that id already exists.</span>}
+                </span>
+              )}
             </label>
             <label className="block sm:col-span-2">
               <span className="caps block mb-1.5">Description</span>
@@ -1112,8 +1144,16 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
               * Everybody the file knows about, with where they already hold it
               * shown beside them — so "apply to everyone" is a decision made
               * with the current state visible rather than a guess.
+              *
+              * Headed, because the account checkboxes sit directly above and
+              * arrive pre-ticked: two unlabelled lists, one ticked and one not,
+              * read as a single list where the accounts are the only things
+              * anybody has selected.
               */}
-            <div className="grid gap-1.5 max-h-[18rem] overflow-y-auto">
+            <span className="caps text-ink-2">
+              {assignMode === "apply" ? "Who to apply it to" : "Who to remove it from"}
+            </span>
+            <div className="grid gap-1.5 max-h-[18rem] overflow-y-auto mt-1.5">
               {Object.keys(file.people)
                 .filter(login => !assignSearch.trim() || login.includes(assignSearch.trim().toLowerCase()))
                 .sort()

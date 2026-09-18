@@ -132,5 +132,57 @@ console.log("\nthe union reaches the whole vocabulary when the presets cover it"
     held.length === PERMISSIONS.length, { held: held.length, total: PERMISSIONS.length });
 }
 
+console.log("removing one of two presets leaves what the other gives");
+{
+  /**
+   * Both grant everything. Taking one away must change nothing, because the
+   * other still grants everything — the person's access is the union, and
+   * removing a member of a union that another member covers is a no-op.
+   *
+   * This is the case worth pinning: the obvious wrong implementation is to
+   * record what a preset gave and subtract it on removal, which would strip
+   * permissions the remaining preset still grants.
+   */
+  const every = PERMISSIONS.map(p => p.key);
+  const file: PermissionsFile = {
+    ...emptyFile(),
+    presets: {
+      alpha: { name: "Alpha", grant: every },
+      beta:  { name: "Beta",  grant: every },
+    },
+    people: { alice: { presets: ["alpha", "beta"] } },
+  };
+
+  const both = permissionsFor(file, who()).held;
+  check("holding both gives everything", both.length === PERMISSIONS.length, both.length);
+
+  const afterRemoval = permissionsFor(
+    { ...file, people: { alice: { presets: ["beta"] } } }, who()).held;
+  check("  and removing one keeps everything, because the other still gives it",
+    afterRemoval.length === PERMISSIONS.length, afterRemoval.length);
+
+  const neither = permissionsFor(
+    { ...file, people: { alice: { presets: [] } } }, who()).held;
+  check("  while removing both leaves nothing, which is the other half of the rule",
+    neither.length === 0, neither.length);
+
+  /**
+   * And the partial case: one grants half, the other everything. Removing the
+   * half one changes nothing; removing the whole one leaves the half.
+   */
+  const half = every.slice(0, Math.floor(every.length / 2));
+  const mixed: PermissionsFile = {
+    ...emptyFile(),
+    presets: { part: { name: "Part", grant: half }, whole: { name: "Whole", grant: every } },
+    people: { alice: { presets: ["part", "whole"] } },
+  };
+  check("removing the narrower of two presets changes nothing",
+    permissionsFor({ ...mixed, people: { alice: { presets: ["whole"] } } }, who()).held.length
+      === PERMISSIONS.length);
+  check("  and removing the wider one leaves exactly what the narrower gives",
+    permissionsFor({ ...mixed, people: { alice: { presets: ["part"] } } }, who()).held.length
+      === half.length);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

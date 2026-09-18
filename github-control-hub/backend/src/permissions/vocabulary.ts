@@ -134,13 +134,18 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   L("aws.exclusions.read", "Guardrail exclusions"),
   L("aws.exclusions.manage", "Create and remove guardrail exclusions"),
   /**
-   * A list, not a key. It answers "which accounts and regions do the
-   * guardrails cover", and carries account ids, names, regions and whether
-   * each is enabled — no credentials, and no access to any of them. Somebody
-   * holding this can see the estate's shape; acting in it is every other
-   * permission here.
+   * Named for what it returns now, not for what it once promised.
+   *
+   * `resolveAccounts` answers with the account this install runs in and its
+   * regions — guardrails are deployed per account, each watching itself, so
+   * signing in to development shows development. The old label, "which AWS
+   * accounts and regions guardrails cover", implied an estate-wide view that
+   * does not exist and made a one-line answer sound like a directory.
+   *
+   * It carries the account id, its name and its regions. No credentials, and
+   * no access to anything.
    */
-  L("aws.accounts.read", "Which AWS accounts and regions guardrails cover"),
+  L("aws.accounts.read", "This account's id and the regions guardrails run in"),
   L("aws.costs.read", "AWS cost figures"),
 
   // ── Access ─────────────────────────────────────────────────────────
