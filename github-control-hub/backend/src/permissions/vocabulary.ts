@@ -27,7 +27,7 @@ export interface PermissionLeaf {
 }
 
 /** Bump when leaves are added. Never reuse a number. */
-export const VOCABULARY_VERSION = 4;
+export const VOCABULARY_VERSION = 5;
 
 const L = (key: string, label: string, addedIn = 1): PermissionLeaf => ({ key, label, addedIn });
 
@@ -48,7 +48,22 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
 
   // ── Overview ───────────────────────────────────────────────────────
   L("overview.read", "Open the Overview tab"),
-  L("overview.cards.read", "The cards on Overview"),
+  L("overview.cards.read", "See the cards on the shared Overview"),
+  /**
+   * These three were `widgets.org.*`, in a branch of their own.
+   *
+   * They are the *write* half of the cards the read above covers, and putting
+   * them anywhere but beside it meant somebody configuring the Overview tab
+   * found "see the cards" here and had to know that changing them lived under
+   * a separate heading called Widgets. Two headings for one screen reads as a
+   * duplicate even when it is not.
+   *
+   * Somebody's own cards stay under My work: that is a different board, not a
+   * different verb.
+   */
+  L("overview.cards.create", "Add a card to the shared Overview", 5),
+  L("overview.cards.edit", "Change a card on the shared Overview", 5),
+  L("overview.cards.delete", "Remove a card from the shared Overview", 5),
   L("overview.freshness.read", "How current each query is"),
   L("overview.refresh", "Force a query to refresh now"),
 
@@ -189,13 +204,22 @@ export const PERMISSIONS: readonly PermissionLeaf[] = [
   // Overview dashboard and everybody reads it, so changing it is a change to
   // shared configuration — `overview.cards.read`, which merely means seeing
   // those cards, said nothing about that and should never have gated a write.
-  L("widgets.org.create", "Add a card to the shared dashboard", 3),
-  L("widgets.org.edit", "Change a card on the shared dashboard", 3),
-  L("widgets.org.delete", "Remove a card from the shared dashboard", 3),
 
   // ── Organization-level reads ───────────────────────────────────────
-  L("org.members.read", "The organization's members"),
-  L("org.config.read", "Organization configuration"),
+  /**
+   * Not the Access tab. This is the plain list of who is in the organization —
+   * logins and avatars — and it fills the "choose a person" pickers on
+   * Overview, Activity, My work, pull request reminders and Renovate. Revoke
+   * it and those dropdowns are empty.
+   */
+  L("org.members.read", "The list of people, for the person pickers"),
+  /**
+   * This app's own organization-level settings: which account self-hosted
+   * Renovate posts as, the one Power Automate flow Teams messages go through,
+   * and the feature flags. Read by the Renovate panel and the pull request
+   * reminder settings.
+   */
+  L("org.config.read", "The app's organization settings, like the Renovate bot name"),
   L("org.webhookHealth.read", "Webhook health"),
   L("org.budget.read", "The GitHub API budget"),
 

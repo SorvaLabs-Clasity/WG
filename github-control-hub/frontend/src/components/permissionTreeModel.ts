@@ -47,8 +47,9 @@ const BRANCH_LABELS: Readonly<Record<string, string>> = {
    * live under "My work" — and "Org" is the organization-wide reads several
    * tabs draw on. Unlabelled, both look like duplicates of things elsewhere.
    */
-  "widgets": "Shared dashboard",
-  "widgets.org": "Shared dashboard",
+  // The `widgets` branch is gone: the shared dashboard's cards are read *and*
+  // written under `overview.cards`, where somebody configuring that tab looks.
+  "overview.cards": "Cards on the shared Overview",
   "org": "Organization-wide reads",
   "me.widgets": "Your own cards",
 };
