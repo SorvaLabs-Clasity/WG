@@ -9,6 +9,7 @@ import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
 import { knownNodesOf } from "../components/permissionTreeModel";
 import { diffAccount, heldFromFile } from "../components/permissionDiff";
+import { sliceOf, withPresetChange } from "../components/accountEntries";
 import PermissionDiffDialog from "../components/PermissionDiffDialog";
 import {
   fetchVocabulary, fetchAdminFile, saveAdminFile, fetchPersonAccess, fetchAudit, fetchOrgMembers,
@@ -333,8 +334,11 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
   const scoped = accountIds.length > 0;
 
   const draftFor = (accountId: string | null): PermissionEntry & { presets?: string[] } => {
-    const from = accountId ? existing?.accounts?.[accountId] : existing;
-    return { presets: from?.presets ?? [], grant: from?.grant, revoke: from?.revoke };
+    // `sliceOf` reads a legacy entry — the shape the migration writes — as
+    // applying in every account. Reading it as empty showed a migrated person
+    // with nothing in any tab, and saving would have written that back.
+    const from = sliceOf(existing, accountId);
+    return { presets: from.presets ?? [], grant: from.grant, revoke: from.revoke };
   };
 
   const [tab, setTab] = useState<string | null>(accountIds[0] ?? null);
@@ -426,7 +430,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
     }
     return accountIds.map(id => diffAccount(
       id, accounts[id] ?? id, vocabulary,
-      existing?.accounts?.[id],
+      sliceOf(existing, id),
       drafts[id] ?? {},
       access?.perAccount?.[id]?.baseline ?? {},
       inheritedFrom(access?.perAccount?.[id]?.rules),
@@ -435,7 +439,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
   }, [scoped, accountIds.join(","), drafts, existing, access, vocabulary]);
 
   const storedPresetsFor = (accountId: string) =>
-    (scoped ? existing?.accounts?.[accountId]?.presets : existing?.presets) ?? [];
+    sliceOf(existing, scoped ? accountId : null).presets ?? [];
   const presetsChanged = !sameMembers(presets, storedPresetsFor(tabKey));
 
   /**
@@ -539,7 +543,10 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
    */
   const anyAccountChanged = scoped
     ? accountIds.some(id => {
-        const stored = existing?.accounts?.[id];
+        // Compared against what applies there, not the raw per-account slot:
+        // for a legacy entry the slot is empty and the draft is not, which would
+        // report a change nobody made and enable Save on an untouched person.
+        const stored = sliceOf(existing, id);
         const d = drafts[id] ?? {};
         return !entriesEqual({ grant: d.grant, revoke: d.revoke },
                              { grant: stored?.grant, revoke: stored?.revoke })
@@ -904,50 +911,23 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   const holdsIn = (login: string): string[] => {
     const person = file.people[login];
     if (!person) return [];
-    if (!scopedHere) return (person.presets ?? []).includes(presetId) ? [""] : [];
-
-    /**
-     * A legacy entry — no per-account entries at all — holds its presets in
-     * every account, exactly as the server reads it. Without this, everybody
-     * the migration wrote looked like they held nothing, so "remove from
-     * everyone" reported no change and refused to save.
-     */
-    const byAccount = person.accounts;
-    if (!byAccount || Object.keys(byAccount).length === 0) {
-      return (person.presets ?? []).includes(presetId) ? Object.keys(accounts) : [];
-    }
-    return Object.entries(byAccount)
-      .filter(([, a]) => (a.presets ?? []).includes(presetId))
-      .map(([id]) => id);
+    if (!scopedHere) return (sliceOf(person, null).presets ?? []).includes(presetId) ? [""] : [];
+    return Object.keys(accounts)
+      .filter(accountId => (sliceOf(person, accountId).presets ?? []).includes(presetId));
   };
 
   /** The file as it would be after applying or removing this preset. */
-  const assignedFile = useMemo((): PermissionsFile => {
-    const people = { ...file.people };
-    const targetAccounts = scopedHere ? [...assignAccounts] : [""];
-
-    for (const login of assignTo) {
-      const person: PersonEntry = { ...(people[login] ?? {}) };
-
-      if (!scopedHere) {
-        const held = new Set(person.presets ?? []);
-        if (assignMode === "apply") held.add(presetId); else held.delete(presetId);
-        person.presets = held.size ? [...held] : undefined;
-      } else {
-        const byAccount = { ...(person.accounts ?? {}) };
-        for (const accountId of targetAccounts) {
-          const slice = { ...(byAccount[accountId] ?? {}) };
-          const held = new Set(slice.presets ?? []);
-          if (assignMode === "apply") held.add(presetId); else held.delete(presetId);
-          slice.presets = held.size ? [...held] : undefined;
-          byAccount[accountId] = slice;
-        }
-        person.accounts = byAccount;
-      }
-      people[login] = person;
-    }
-    return { ...file, people };
-  }, [file, assignTo, assignAccounts, assignMode, presetId, scopedHere]);
+  /**
+   * The file after the change, built by the same tested function everything
+   * else uses. It used to be written inline and edited only the per-account
+   * slots, so removing a preset from a migrated person — who holds it at the
+   * top level — changed nothing and the review said so.
+   */
+  const assignedFile = useMemo((): PermissionsFile => withPresetChange(
+    file, assignTo, presetId, assignMode,
+    scopedHere ? [...assignAccounts] : [],
+    Object.keys(accounts),
+  ), [file, assignTo, assignAccounts, assignMode, presetId, scopedHere, accounts]);
 
   /**
    * One entry per person, not per account: on this screen the question is
@@ -958,7 +938,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     const known = knownNodesOf(vocabulary);
     const at = (f: PermissionsFile, login: string, accountId: string) => {
       const person = f.people[login];
-      const slice = scopedHere ? person?.accounts?.[accountId] : person;
+      const slice = sliceOf(person, scopedHere ? accountId : null);
       return heldFromFile(vocabulary, f.presets, slice?.presets ?? [], slice, known);
     };
 
