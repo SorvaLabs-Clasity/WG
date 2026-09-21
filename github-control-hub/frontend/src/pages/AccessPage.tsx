@@ -7,6 +7,7 @@ import {
 import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos, useAccessTeams, useTeamAccess } from "../hooks/useAccess";
 import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import type { AccessPath, Person, OrgRole } from "../api/access";
 import { ago } from "../lib/ago";
 import RecrawlButton from "../components/RecrawlButton";
@@ -30,7 +31,9 @@ function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => voi
   const { data } = useGraphAggregation();
   const { data: permissions } = usePermissions();
   const sync = useTriggerAggregation();
-  const canSync = permissions?.isControlHubAdmin ?? false;
+  // The crawl is a graph rebuild on the server; by permission once a file is
+  // in force, by the Control Hub team before.
+  const canSync = useTeamOr("control-hub", "repos.graph.rebuild");
 
   const a = data?.aggregation;
   const synced = ago(a?.lastSuccessAt);

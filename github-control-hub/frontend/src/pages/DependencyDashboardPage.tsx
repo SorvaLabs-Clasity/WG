@@ -29,6 +29,7 @@ const COLLAPSED = 4;
 import RenovatePanel from "../components/RenovatePanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
 import { fetchDependenciesAge, fetchDependabotPrs, type DependabotPr } from "../api/dependencies";
@@ -130,7 +131,9 @@ function stuckSummary(alerts: DependencyAlert[], prCounts: Record<string, number
 
 export default function DependencyDashboardPage() {
   const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  // The feed notification settings; `alarms.feeds.manage` once a file is in
+  // force. The server asks the Control Hub team before then, not the AWS one.
+  const isAdmin = useTeamOr("control-hub", "alarms.feeds.manage");
   const { user } = useAuth();
 
   // In the URL, so the view survives a refresh and can be linked to. An

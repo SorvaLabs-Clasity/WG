@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchMyPermissions, type MyPermissions } from "../api/me";
+import { usePermissions } from "./usePermissions";
 
 /**
  * What this person may do, as the server sees it.
@@ -60,6 +61,28 @@ export function usePermissionSet() {
   const canAny = (...keys: string[]): boolean => keys.some(can);
 
   return { ...query, can, canAny, unavailable, noAccess, permissions: data };
+}
+
+/**
+ * The old admin-team answer until a permissions file is in force, and the
+ * permissions after.
+ *
+ * Several screens still asked the team directly — the Overview, Access, AWS
+ * and Admin tabs, detailed logging, the Renovate bot, security notifications.
+ * With a file in force that hid them from everybody granted them who was not
+ * on the team, which is everybody a grant is for: the team holds everything
+ * already. The server made the same mistake and the same change; this keeps
+ * the screen agreeing with it.
+ *
+ * `enforced` is the server's word for "a file is in force", and it is false
+ * while the answer loads, so the team decides until it arrives rather than a
+ * tab flickering out and back.
+ */
+export function useTeamOr(team: "control-hub" | "aws", ...keys: string[]): boolean {
+  const { data: teams } = usePermissions();
+  const { permissions, canAny } = usePermissionSet();
+  if (permissions?.enforced && !permissions.inert) return canAny(...keys);
+  return team === "aws" ? !!teams?.isAwsAdmin : !!teams?.isControlHubAdmin;
 }
 
 export type { MyPermissions };

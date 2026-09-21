@@ -65,7 +65,7 @@ const gate = read("middleware/teamGate.ts");
     const widgets = read("routes/widgets.ts");
     // Gating this whole route would take the personal board with it.
     check("the shared list is gated",
-      /if \(!mine && !\(await isControlHubAdmin/.test(widgets));
+      /if \(!mine && !\(await teamOrPermission\(login, req\.user!\.accessToken, "control-hub", \["overview\.read", "overview\.cards\.read"\]\)/.test(widgets));
     check("  while a personal scope is not",
       /const mine = req\.query\.scope === "personal";/.test(widgets),
       "gating both would remove My work from everybody it is for");
@@ -75,7 +75,7 @@ const gate = read("middleware/teamGate.ts");
     check("  stored answers are narrowed rather than refused",
       /res\.json\(all\.filter\(snap => mine\.has\(snap\.widgetId\)\)\)/.test(widgets));
     check("    with an admin still seeing every one",
-      /if \(await isControlHubAdmin[\s\S]{0,120}return res\.json\(all\);/.test(widgets));
+      /if \(await teamOrPermission\([\s\S]{0,160}return res\.json\(all\);/.test(widgets));
   }
 
   console.log("\nan alarm belongs to the team that owns what it watches");
@@ -89,17 +89,17 @@ const gate = read("middleware/teamGate.ts");
     check("the subject decides which team may write",
       /const aws = subjectId\.startsWith\(GUARDRAIL_PREFIX\);/.test(alarms));
     check("  read from the stored subject, not from the request",
-      /refusedForSubject\(req, res, existing\.widgetId\)/.test(alarms),
+      /refusedForSubject\(req, res, existing\.widgetId, "(edit|delete)"\)/.test(alarms),
       "taking the team from the body would let either team claim the other's");
 
     for (const [route, anchor] of [
-      ["create", "if (await refusedForSubject(req, res, String(widgetId))) return;"],
-      ["edit", "if (await refusedForSubject(req, res, existing.widgetId)) return;"],
+      ["create", 'if (await refusedForSubject(req, res, String(widgetId), "create")) return;'],
+      ["edit", 'if (await refusedForSubject(req, res, existing.widgetId, "edit")) return;'],
     ] as const) {
       check(`  ${route} is gated by subject`, alarms.includes(anchor));
     }
     check("  and so is delete",
-      (alarms.match(/refusedForSubject\(req, res, existing\.widgetId\)/g) ?? []).length === 2,
+      alarms.includes('if (await refusedForSubject(req, res, existing.widgetId, "delete")) return;'),
       "edit and delete both act on a stored alarm, and both must ask");
 
     // Being unable to reach GitHub is an outage. Refusing would tell somebody
@@ -131,7 +131,10 @@ const gate = read("middleware/teamGate.ts");
     // It gated reading on the AWS team alone, so somebody who administers every
     // GitHub setting in this app opened the tab and was told it was for admins.
     check("both teams can open the page",
-      /const isAdmin = canSeeGithub \|\| canSeeAws;/.test(page));
+      // Reading by either team before a file, by `alarms.org.read` after.
+      /useTeamOr\("control-hub", "alarms\.org\.read"\)/.test(page)
+        && /useTeamOr\("aws", "alarms\.org\.read"\)/.test(page)
+        && /const isAdmin = canRead \|\| readByTeam;/.test(page));
     check("  the two kinds are separate sections, not separate tabs",
       /const githubRows = useMemo/.test(page) && /const awsRows = useMemo/.test(page)
         && !/setLens\("aws"\)/.test(page));
@@ -171,7 +174,8 @@ const gate = read("middleware/teamGate.ts");
     // Opening the app on a locked door is a poor first impression of a screen
     // working exactly as intended.
     check("  and the app opens somewhere the person can actually read",
-      /isControlHubAdmin \? "\/analytics" : "\/my-work"/.test(router));
+      /const overview = useTeamOr\("control-hub", "overview\.read", "overview\.cards\.read"\)/.test(router)
+        && /overview \? "\/analytics" : "\/my-work"/.test(router));
   }
 
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);

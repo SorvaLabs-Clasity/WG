@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { teamOrPermission, accessForSelf } from "../permissions";
 import type { Request, Response } from "express";
 import { listWidgets, createWidget, updateWidget, deleteWidget, type WidgetConfig } from "../services/widgetService";
 import { requireAnyPermission } from "../middleware/permissionGate";
@@ -17,8 +18,8 @@ const router = Router();
  * No repository or AWS access rides on this, so it is not an escalation. It is
  * gated because shared state should not be editable by everyone who can see it.
  */
-async function refusedWidgetChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
-  if (await isControlHubAdmin(login, userToken)) return false;
+async function refusedWidgetChange(res: Response, login: string, verb: "create" | "edit" | "delete", userToken?: string): Promise<boolean> {
+  if (await teamOrPermission(login, userToken ?? "", "control-hub", [`overview.cards.${verb}`])) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `dashboard widgets. There is one dashboard, shared by everyone.`,
@@ -53,7 +54,7 @@ router.get("/", requireAnyPermission("me.widgets.read", "overview.read", "overvi
   const mine = req.query.scope === "personal";
   const login = req.user!.login.toLowerCase();
 
-  if (!mine && !(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!mine && !(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["overview.read", "overview.cards.read"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       team: CONTROL_HUB_ADMIN_TEAM,
@@ -89,7 +90,7 @@ router.get("/snapshots", requireAnyPermission("me.widgets.read", "overview.fresh
   // so serving every one of them past a gated board would hand over exactly
   // what the gate was for.
   const login = req.user!.login.toLowerCase();
-  if (await isControlHubAdmin(login, req.user!.accessToken).catch(() => false)) {
+  if (await teamOrPermission(login, req.user!.accessToken, "control-hub", ["overview.read", "overview.cards.read", "overview.freshness.read"]).catch(() => false)) {
     return res.json(all);
   }
   const mine = new Set((await listWidgets())
@@ -153,6 +154,7 @@ router.post("/", requireAnyPermission("me.widgets.manage", "overview.cards.creat
   // would be a way to put a widget on somebody else's dashboard.
   const owner = personal ? req.user!.login : undefined;
   if (!owner && await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;
+  if (owner && await refusedPersonal(res, req.user!.login, req.user!.accessToken)) return;
 
   if (!title || !type || !displayType) {
     res.status(400).json({ error: "title, type, and displayType are required" });
@@ -174,13 +176,30 @@ router.post("/", requireAnyPermission("me.widgets.manage", "overview.cards.creat
  * refused outright rather than falling back to the admin gate, because an
  * administrator has no business rearranging a person's own dashboard either.
  */
+/**
+ * Your own board, under a file in force. The routes admit either the personal
+ * permission or the shared board's, so without this somebody given only the
+ * shared board's "edit" could still build a personal board they were not
+ * given. Before a file, a personal board is anybody's, as it always was.
+ */
+async function refusedPersonal(res: Response, login: string, token?: string): Promise<boolean> {
+  const self = await accessForSelf(login, token ?? "");
+  if (self.inert || self.permissions.has("me.widgets.manage")) return false;
+  res.status(403).json({
+    code: "PERMISSION_REQUIRED",
+    permission: "me.widgets.manage",
+    error: `This needs the "me.widgets.manage" permission, which you do not have.`,
+  });
+  return true;
+}
+
 async function refusedWidgetEdit(
-  res: Response, id: string, login: string, verb: string, token?: string,
+  res: Response, id: string, login: string, verb: "edit" | "delete", token?: string,
 ): Promise<boolean> {
   const existing = (await listWidgets()).find(w => w.id === id);
   if (!existing) { res.status(404).json({ error: "Widget not found" }); return true; }
   if (!existing.owner) return refusedWidgetChange(res, login, verb, token);
-  if (existing.owner.toLowerCase() === login.toLowerCase()) return false;
+  if (existing.owner.toLowerCase() === login.toLowerCase()) return refusedPersonal(res, login, token);
   res.status(403).json({ error: "That widget is on somebody else's dashboard." });
   return true;
 }

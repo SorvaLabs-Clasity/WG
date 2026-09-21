@@ -3,7 +3,7 @@ import { subjectFor } from "./subject";
 import { permissionsFor, allPermissions, type PermissionSet, type Subject } from "./evaluate";
 import { unknownNodesIn } from "./validate";
 import { emptyFile } from "./types";
-import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM, isControlHubAdmin, isAwsAdmin } from "../services/authorizationService";
 import { installAccountId } from "./accountScope";
 
 export * from "./types";
@@ -233,4 +233,65 @@ export async function enforcementActive(): Promise<boolean> {
   return Object.keys(loaded.file.people ?? {}).length > 0
     || Object.keys(loaded.file.presets ?? {}).length > 0
     || Object.keys(loaded.file.teams ?? {}).length > 0;
+}
+
+/**
+ * The old admin-team check, for code the permissions file now decides as well.
+ *
+ * Before a file says anything, the two teams are the only rule there is, and
+ * this asks them exactly as before. Once it does, the team steps aside and the
+ * named permissions answer instead. Without this, every route that still asked
+ * the team refused anybody who was not on it — so granting somebody
+ * `pulls.pause`, or the whole AWS tab, changed nothing for them, and the only
+ * people the grants ever reached were the admin team, who hold everything
+ * anyway.
+ *
+ * `keys` is required rather than defaulting to "whatever the route's gate
+ * said". The route's gate usually names the same thing, and naming it again
+ * here is what keeps this safe if the gate in front of it is ever loosened.
+ *
+ * An unreadable file answers no. The admin team is not affected: `access`
+ * recognises them before the failure branch.
+ */
+export async function teamOrPermission(
+  login: string, ownToken: string, team: "control-hub" | "aws",
+  keys: readonly string[], mode: "any" | "all" = "any",
+): Promise<boolean> {
+  const self = await accessForSelf(login, ownToken);
+  if (self.inert) {
+    return team === "aws" ? isAwsAdmin(login, ownToken) : isControlHubAdmin(login, ownToken);
+  }
+  if (self.failure) return false;
+  return mode === "all"
+    ? keys.every(k => self.permissions.has(k))
+    : keys.some(k => self.permissions.has(k));
+}
+
+/**
+ * Whether the old team gates should stand aside for this caller: a file is in
+ * force, so the permission gate on each route is what decides.
+ *
+ * For router-wide team checks only, where every route beneath carries its own
+ * `requirePermission` — a route-level question asks `teamOrPermission`, which
+ * names the permission it stands in for. A failed read answers yes here too:
+ * the route's own gate then answers 503, which says what actually happened,
+ * rather than the team check claiming the caller is not on a team.
+ */
+export async function teamGatesStandAside(login: string, ownToken: string): Promise<boolean> {
+  return !(await accessForSelf(login, ownToken)).inert;
+}
+
+/**
+ * One permission, asked inside a route rather than in front of it — for a
+ * route whose gate admits either of two permissions, where what the request
+ * actually does decides which one it needs.
+ *
+ * True before a file is in force: the route's team gate decided then, as it
+ * always did. False when the file cannot be read.
+ */
+export async function holdsNow(login: string, ownToken: string, key: string): Promise<boolean> {
+  const self = await accessForSelf(login, ownToken);
+  if (self.inert) return true;
+  if (self.failure) return false;
+  return self.permissions.has(key);
 }

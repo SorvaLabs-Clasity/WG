@@ -1029,7 +1029,7 @@ function lastGoodIsForgotten(): void {
     // Only admins may flip them.
     const settingsBody = src.slice(src.indexOf('router.put("/settings"'));
     check("  and only an admin may change them",
-      /isControlHubAdmin/.test(settingsBody.slice(0, 400)));
+      /teamOrPermission\(login, req\.user!\.accessToken, "control-hub", \["pulls\.settings\.manage"\]\)/.test(settingsBody.slice(0, 400)));
   }
 
   // ── only a commit resets the clock ──────────────────────────────────

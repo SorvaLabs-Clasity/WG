@@ -3,6 +3,7 @@ import {
   isControlHubAdmin, isAwsAdmin,
   CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM,
 } from "../services/authorizationService";
+import { teamGatesStandAside } from "../permissions";
 
 /**
  * Whole-tab gates, as opposed to the per-action ones already scattered about.
@@ -25,7 +26,11 @@ function gate(
   what: string,
 ): RequestHandler {
   return (req, res, next) => {
-    check(req.user!.login, req.user!.accessToken)
+    // Once a permissions file is in force, every route behind one of these
+    // carries its own permission gate, and the team is no longer the rule.
+    // Asking it anyway refused everybody granted the tab who was not on it.
+    teamGatesStandAside(req.user!.login, req.user!.accessToken)
+      .then(aside => aside || check(req.user!.login, req.user!.accessToken))
       .then(allowed => {
         if (allowed) return next();
         res.status(403).json({

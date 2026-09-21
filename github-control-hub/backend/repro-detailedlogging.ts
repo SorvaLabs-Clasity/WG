@@ -140,9 +140,11 @@ const code = (s: string) => s.split("\n").filter(l => !l.trim().startsWith("//")
   {
     const routes = read("src/routes/activity.ts");
     const block = routes.slice(routes.indexOf('router.get("/detailed-logging"'));
-    check("reading the settings requires an admin", /isAwsAdmin/.test(block.slice(0, 600)));
+    check("reading the settings requires an admin",
+      /teamOrPermission\([^)]*"aws", \["activity\.detailedLogging\.read"\]\)/.test(block.slice(0, 600)));
     const put = block.slice(block.indexOf('router.put'));
-    check("  writing them does too", /isAwsAdmin/.test(put.slice(0, 600)));
+    check("  writing them does too",
+      /teamOrPermission\([^)]*"aws", \["activity\.detailedLogging\.manage"\]\)/.test(put.slice(0, 600)));
     check("  a kind id the catalog does not know is refused, not stored",
       /Unknown kinds/.test(put),
       "a typo stored here could never be re-checked; its checkbox does not exist");

@@ -25,6 +25,7 @@ import { logActivity } from "../services/activityService";
 import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
 import { listGuardrails } from "../aws-guardrails/store";
 import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
+import { teamGatesStandAside, teamOrPermission } from "../permissions";
 
 const router = Router();
 
@@ -56,7 +57,10 @@ const router = Router();
  * destinations for the whole organization rather than either team's own.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
-  isControlHubAdmin(req.user!.login, req.user!.accessToken)
+  // Every route this sits on also names its permission, which decides once a
+  // file is in force.
+  teamGatesStandAside(req.user!.login, req.user!.accessToken)
+    .then(aside => aside || isControlHubAdmin(req.user!.login, req.user!.accessToken))
     .then(allowed => {
       if (allowed) return next();
       res.status(403).json({
@@ -78,10 +82,11 @@ const requireAdmin: RequestHandler = (req, res, next) => {
  * otherwise they can be given the right to change something they cannot find.
  */
 const requireEitherTeam: RequestHandler = (req, res, next) => {
-  Promise.all([
-    isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
-    isAwsAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
-  ])
+  teamGatesStandAside(req.user!.login, req.user!.accessToken)
+    .then(aside => aside ? [true, false] : Promise.all([
+      isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
+      isAwsAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
+    ]))
     .then(([hub, aws]) => {
       if (hub || aws) return next();
       res.status(403).json({
@@ -102,12 +107,18 @@ const requireEitherTeam: RequestHandler = (req, res, next) => {
  * team claim the other's.
  */
 async function refusedForSubject(
-  req: Request, res: Response, subjectId: string,
+  req: Request, res: Response, subjectId: string, verb: "create" | "edit" | "delete",
 ): Promise<boolean> {
   const aws = subjectId.startsWith(GUARDRAIL_PREFIX);
-  const allowed = aws
-    ? await isAwsAdmin(req.user!.login, req.user!.accessToken).catch(() => null)
-    : await isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => null);
+  // With a file in force, the permission that matches what the alarm watches.
+  // The route lets either through — `alarms.org.*` or `aws.rules.edit` — so
+  // this is the check that stops a guardrail editor changing card alarms, and
+  // the reverse.
+  const allowed = await teamOrPermission(
+    req.user!.login, req.user!.accessToken,
+    aws ? "aws" : "control-hub",
+    aws ? ["aws.rules.edit"] : [`alarms.org.${verb}`],
+  ).catch(() => null);
 
   // Null is "we could not ask", which is an outage. Refusing would tell
   // somebody they had lost a permission they still hold.
@@ -273,7 +284,7 @@ router.post("/", requireAnyPermission("alarms.org.create", "aws.rules.edit"), as
     // Checked here rather than as route middleware: which team may create this
     // is decided by what it watches, and that is only known once the body has
     // been read.
-    if (await refusedForSubject(req, res, String(widgetId))) return;
+    if (await refusedForSubject(req, res, String(widgetId), "create")) return;
 
     // The load-bearing check. A condition its widget cannot produce would
     // evaluate to nothing on every pass and never fire, which is
@@ -791,7 +802,7 @@ router.put("/:id", requireAnyPermission("alarms.org.edit", "aws.rules.edit"), as
     // administrator is permission over the organization's settings, not over
     // what lands in one person's inbox.
     if (existing.owner) return res.status(404).json({ error: "Alarm not found" });
-    if (await refusedForSubject(req, res, existing.widgetId)) return;
+    if (await refusedForSubject(req, res, existing.widgetId, "edit")) return;
 
     const { condition, groupId, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
@@ -836,7 +847,7 @@ router.delete("/:id", requireAnyPermission("alarms.org.delete", "aws.rules.edit"
   // Absent and somebody-else's answer identically here: on this route a
   // personal alarm is not a thing that exists.
   if (!existing || existing.owner) return res.status(404).json({ error: "Alarm not found" });
-  if (await refusedForSubject(req, res, existing.widgetId)) return;
+  if (await refusedForSubject(req, res, existing.widgetId, "delete")) return;
   const ok = await deleteAlarm(String(req.params.id), req.user!.login);
   if (!ok) return res.status(404).json({ error: "Alarm not found" });
   res.json({ message: "Alarm deleted" });

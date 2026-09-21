@@ -18,7 +18,7 @@ import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS, paramNoun } from "../utils/queryOptions";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget, useWidgetSnapshots } from "../hooks/useWidgets";
-import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
@@ -291,8 +291,11 @@ export default function AnalyticsPage() {
   // One dashboard, shared by everyone, so editing it is gated like the rest of
   // the org-wide configuration. The server enforces it; this only stops
   // offering controls that would be refused.
-  const { data: permissions } = usePermissions();
-  const canEditDashboard = permissions?.isControlHubAdmin ?? false;
+  //
+  // By permission once a file is in force, by the Control Hub team before.
+  const canCreateCard = useTeamOr("control-hub", "overview.cards.create");
+  const canEditDashboard = useTeamOr("control-hub", "overview.cards.edit", "overview.cards.delete");
+  const canRecrawl = useTeamOr("control-hub", "repos.graph.rebuild");
 
   const { data: orgConfig } = useOrgConfig();
   const orgName = orgConfig?.org || "";
@@ -308,8 +311,9 @@ export default function AnalyticsPage() {
   const [alarmWidgetId, setAlarmWidgetId] = useState<string | null>(null);
   // Admin-gated on the server; this only avoids offering a control that would
   // be refused, and avoids a 403 for everyone else.
-  const isAwsAdmin = permissions?.isAwsAdmin ?? false;
-  const { data: alarms } = useAlarms(isAwsAdmin);
+  const canReadAlarms = useTeamOr("control-hub", "alarms.org.read");
+  const canAlarm = useTeamOr("control-hub", "alarms.org.create");
+  const { data: alarms } = useAlarms(canReadAlarms);
   const focused = useMemo(() => widgets.find(w => w.id === focusId) ?? null, [widgets, focusId]);
 
   /**
@@ -405,7 +409,7 @@ export default function AnalyticsPage() {
           onBack={() => setFocusId(null)}
           onEdit={() => setEditingWidget(focused)}
           onAlarm={() => setAlarmWidgetId(focused.id)}
-          canAlarm={isAwsAdmin}
+          canAlarm={canAlarm}
           alarmCount={alarms?.filter(a => a.widgetId === focused.id).length ?? 0}
           canEdit={canEditDashboard}
           graphEmpty={graphEmpty}
@@ -482,8 +486,8 @@ export default function AnalyticsPage() {
                 re-reads a stored answer in a second; this one re-reads the
                 whole organization over several minutes. They looked identical,
                 which is how the expensive one got pressed by mistake. */}
-            {canEditDashboard && <RecrawlButton dense className="whitespace-nowrap" />}
-            {canEditDashboard && (
+            {canRecrawl && <RecrawlButton dense className="whitespace-nowrap" />}
+            {canCreateCard && (
               <Button variant="primary" onClick={() => setShowAddModal(true)}>Add check</Button>
             )}
           </div>
@@ -553,7 +557,7 @@ export default function AnalyticsPage() {
         <Empty
           title="No checks yet"
           body="A check is a question about the organization. Which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
-          action={canEditDashboard
+          action={canCreateCard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
         />

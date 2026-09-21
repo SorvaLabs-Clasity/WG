@@ -7,7 +7,8 @@ import { sendIfPermissionDenied } from "../utils/permissionError";
 import { fetchAllCursorPages } from "../utils/cursorPages";
 import { fetchRenovatePrs } from "../services/renovateService";
 import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { teamOrPermission } from "../permissions";
 import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus , fetchRepoFixStatus} from "../services/dependencyService";
 import { isValidRepoName } from "../utils/validation";
 import {
@@ -1019,7 +1020,7 @@ router.post("/renovate/dashboards/:repo/:number/tick", requirePermission("deps.r
 /** Naming the bot account is org-wide configuration, so it is admin-gated. */
 router.put("/renovate/bot", requirePermission("deps.renovate.manage"), async (req: Request, res: Response) => {
   try {
-    if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken))) {
+    if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "control-hub", ["deps.renovate.manage"]))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +

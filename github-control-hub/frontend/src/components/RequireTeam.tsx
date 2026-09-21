@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { usePermissions } from "../hooks/usePermissions";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { useAuth } from "../App";
 import { Page, Spinner, Button } from "../design";
 
@@ -28,14 +29,34 @@ import { Page, Spinner, Button } from "../design";
  * Nothing about it was theme-specific. Every theme renders its navigation from
  * `<Page>`, so every theme lost all of it in exactly the same way.
  */
-export default function RequireTeam({ team, title, children }: {
+export default function RequireTeam({ team, title, permissions, children }: {
   team: "control-hub" | "aws";
   /** What is behind the door, in the reader's words. */
   title: string;
+  /**
+   * What opens it once a permissions file is in force — the same keys the
+   * section line shows the tab for. The team is only the rule before then;
+   * after, asking it hid the tab from everybody granted it who was not on the
+   * team.
+   */
+  permissions: string[];
   children: React.ReactNode;
 }) {
   const { data: perms, isLoading, isError } = usePermissions();
+  const set = usePermissionSet();
   const { user } = useAuth();
+
+  const enforced = !!set.permissions?.enforced && !set.permissions.inert;
+  if (enforced) {
+    // Could not ask: the page says so itself, and a locked door would tell
+    // somebody they had lost access they may still have.
+    if (set.unavailable || set.canAny(...permissions)) return <>{children}</>;
+    return (
+      <Page user={user}>
+        <Locked title={title} team={null} login={user?.login ?? ""} kind={team} />
+      </Page>
+    );
+  }
 
   // Inside the page as well, so the tabs do not appear a beat after the rest of
   // the window and shift everything under the pointer.
@@ -64,7 +85,8 @@ export default function RequireTeam({ team, title, children }: {
 }
 
 function Locked({ title, team, login, kind }: {
-  title: string; team: string; login: string; kind: "control-hub" | "aws";
+  /** Null once permissions decide: the ask is then for a permission, not a team. */
+  title: string; team: string | null; login: string; kind: "control-hub" | "aws";
 }) {
   const navigate = useNavigate();
   const accent = kind === "aws"
@@ -85,25 +107,26 @@ function Locked({ title, team, login, kind }: {
         </h1>
 
         <p className="standfirst relative mt-3 text-[0.875rem] max-w-[46ch] mx-auto">
-          {kind === "aws"
+          {team === null
+            ? "You have not been given access to this. A member of the Control Hub admin team can grant it on the Admin tab."
+            : kind === "aws"
             ? "This tab acts on an AWS account rather than on repositories, so it is kept to the team that administers it."
             : "This screen gathers the whole organization's access in one place, which is why it is kept to the administrators' team."}
         </p>
 
         {/* The one fact that resolves this: the team to ask for, spelled the way
             it is spelled on GitHub. */}
-        <div className="relative mt-6 inline-flex flex-col items-center gap-2">
+        {team !== null && <div className="relative mt-6 inline-flex flex-col items-center gap-2">
           <span className="caps">
             Ask to be added to
           </span>
           <code className={`px-3 py-1.5 font-mono text-[0.8125rem] border ${accent.chip}`}>
             {team}
           </code>
-        </div>
+        </div>}
 
         <p className="relative mt-7 text-[0.75rem] text-ink-3">
-          Signed in as <span className="font-mono">{login}</span>. Organization
-          owners are admitted without being on the team.
+          Signed in as <span className="font-mono">{login}</span>.
         </p>
 
         {/* Said, and then offered. The sentence alone was the whole of the way

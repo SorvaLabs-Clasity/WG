@@ -230,7 +230,9 @@ globalThis.fetch = (async (input: any) => {
     assert("  and in alarms.ts the subject decides which team", decider,
       decider ? "" : "the two teams would be interchangeable for every alarm");
 
-    const branch = /\? await isAwsAdmin\([\s\S]{0,80}: await isControlHubAdmin\(/.test(alarmsSrc);
+    // The team (before a file) and the permission (after) both follow the
+    // subject: "aws" with a guardrail key, "control-hub" with a card one.
+    const branch = /aws \? "aws" : "control-hub",\s*\n\s*aws \? \["aws\.rules\.edit"\] : \[`alarms\.org\.\$\{verb\}`\]/.test(alarmsSrc);
     assert("    AWS subjects to the AWS team, everything else to the Control Hub one",
       branch, branch ? "" : "one team could claim the other's alarms");
 

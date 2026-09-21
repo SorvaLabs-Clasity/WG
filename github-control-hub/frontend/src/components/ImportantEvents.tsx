@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { useAlerts } from "../hooks/useAlerts";
-import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import ImportantEventsPanel from "./ImportantEventsPanel";
 import {
   toSituations, isRestingState, weeklyActivity, summarizeKinds, summarizeRepos,
@@ -104,7 +104,12 @@ export default function ImportantEvents() {
     data: alerts, isLoading, isError, error, isFetching, refetch,
     complete, windowWeeks, hasNextPage, fetchNextPage, isFetchingNextPage,
   } = useAlerts();
-  const { data: permissions } = usePermissions();
+  // The notification settings read the email groups as well as the security
+  // settings, so both are needed for the panel to load, and managing is what
+  // it is for.
+  const maySecurity = useTeamOr("aws", "alarms.security.manage");
+  const mayGroups = useTeamOr("aws", "alarms.groups.read");
+  const mayManageNotifications = maySecurity && mayGroups;
 
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -565,7 +570,7 @@ export default function ImportantEvents() {
         <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Email delivery for the events above. Groups are created on the Alarms page.
         </p>
-        <ImportantEventsPanel isAdmin={permissions?.isAwsAdmin ?? false} />
+        <ImportantEventsPanel isAdmin={mayManageNotifications} />
       </div>
     </>
   );

@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM, isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { teamOrPermission } from "../permissions";
 import { logActivity } from "../services/activityService";
 import { listWidgets, putWidgetRaw } from "../services/widgetService";
 import { listGuardrails, putGuardrail, listAwsExclusions, putAwsExclusion } from "../aws-guardrails/store";
@@ -46,8 +47,8 @@ export interface ConfigBundle {
   awsExclusions: any[];
 }
 
-async function refuseUnlessAdmin(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
-  if (await isControlHubAdmin(login, userToken)) return false;
+async function refuseUnlessAdmin(res: Response, login: string, verb: "export" | "import", userToken?: string): Promise<boolean> {
+  if (await teamOrPermission(login, userToken ?? "", "control-hub", [`config.${verb}`])) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `configuration. It is every scanner, widget and guardrail the organization runs on.`,
@@ -88,7 +89,13 @@ async function refuseAwsSections(
   });
   if (present.length === 0) return false;
 
-  if (!(await isAwsAdmin(login, userToken))) {
+  // With a file in force: the permissions for writing what those sections
+  // hold, all of them, since the import writes every section it carries.
+  const needs = [
+    ...(present.includes("awsGuardrails") ? ["aws.rules.create", "aws.rules.edit"] : []),
+    ...(present.includes("awsExclusions") ? ["aws.exclusions.manage"] : []),
+  ];
+  if (!(await teamOrPermission(login, userToken ?? "", "aws", needs, "all"))) {
     res.status(403).json({
       error: `This export contains AWS guardrail configuration (${present.join(", ")}), and only ` +
         `members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can change that. ` +

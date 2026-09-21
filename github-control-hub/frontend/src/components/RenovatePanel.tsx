@@ -5,7 +5,7 @@ import {
   tickRenovateDashboard, setRenovateBot,
   type DashboardCategory, type RenovatePr, type RepoDashboard,
 } from "../api/renovate";
-import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import { useAccessRepos } from "../hooks/useAccess";
 import {
   Spinner, Note, Button, SearchInput, Chip, Pill, Empty, ConfirmDialog,
@@ -266,8 +266,11 @@ function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: nu
 
 export default function RenovatePanel() {
   const qc = useQueryClient();
-  const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  // Naming the bot is what the server gates on the Control Hub team (or
+  // `deps.renovate.manage` once a file is in force). This asked the AWS team,
+  // so the field was offered to the wrong people before permissions and to
+  // nobody granted it after.
+  const isAdmin = useTeamOr("control-hub", "deps.renovate.manage");
 
   // Every repository in the organization, so the panel can say which ones
   // Renovate has never said anything about. From the stored access graph, held

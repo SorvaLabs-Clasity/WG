@@ -163,7 +163,7 @@ function harness() {
     check("  only where a fix exists", /entry\?\.canRemediate/.test(page));
     check("  only on a resource that is actually failing",
       /f\.verdict === "violation"\s*\n?\s*&& !f\.excluded && !f\.remediated/.test(page));
-    check("  and only for an admin", /isAdmin && entry\?\.canRemediate/.test(page));
+    check("  and only for somebody who may fix one", /can\.remediate && entry\?\.canRemediate/.test(page));
     check("  a fix that changed nothing says so rather than claiming success",
       /Nothing was changed/.test(page),
       "the resource may already have been compliant by the time it ran");

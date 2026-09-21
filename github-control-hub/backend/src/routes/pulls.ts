@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 
 import { createOctokit, getSystemToken } from "../github/client";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { teamOrPermission } from "../permissions";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync } from "../services/activityService";
 import { savePrSnapshot, readPrSnapshot } from "../services/alarmService";
@@ -178,7 +179,7 @@ router.get("/", requirePermission("pulls.read"), async (req: Request, res: Respo
  */
 router.put("/pause", requirePermission("pulls.pause"), async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.pause"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can pause `
@@ -231,7 +232,7 @@ router.put("/pause", requirePermission("pulls.pause"), async (req: Request, res:
  */
 router.post("/run", requirePermission("pulls.run"), async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.run"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can send `
@@ -311,7 +312,7 @@ router.post("/run", requirePermission("pulls.run"), async (req: Request, res: Re
  */
 router.put("/mute", requirePermission("pulls.mute"), async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.mute"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can mute `
@@ -386,7 +387,7 @@ router.get("/settings", requirePermission("pulls.settings.read"), async (_req: R
 
 router.put("/settings", requirePermission("pulls.settings.manage"), async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.settings.manage"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can switch `

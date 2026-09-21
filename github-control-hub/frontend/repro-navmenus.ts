@@ -102,9 +102,13 @@ console.log("\na locked screen is still a screen you can leave");
   // Both states. The spinner mattering too is not fussiness: rendering it
   // outside the page and the notice inside it makes the whole window jump the
   // moment permissions land.
+  // Every render of the notice and the spinner, however many states lead to
+  // one — the property, not a count of them.
+  const renders = [...gate.matchAll(/<(Locked|Spinner)\b/g)].map(m => m.index!);
+  const outside = renders.filter(i => !/<Page user=\{user\}>/.test(gate.slice(Math.max(0, i - 200), i)));
   check("the notice is rendered inside the page, which is what carries the nav",
-    (gate.match(/<Page user=\{user\}>/g) ?? []).length === 2,
-    gate.match(/<Page user=\{user\}>/g));
+    renders.length >= 2 && outside.length === 0,
+    { renders: renders.length, outside: outside.map(i => gate.slice(i, i + 40)) });
 
   check("  so the section tabs, the account menu and sign out are all present",
     /import \{[^}]*\bPage\b[^}]*\} from "\.\.\/design"/.test(gate),

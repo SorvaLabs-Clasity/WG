@@ -27,6 +27,7 @@ import { buildConflictComparison } from "../utils/conflictComparison";
 import CostPanel from "../components/CostPanel";
 import GithubBudgetPanel from "../components/GithubBudgetPanel";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 
 
 function formatTimestamp(ts: string): string {
@@ -284,7 +285,11 @@ export default function ActivityPage() {
    * lens would be a tab that only ever explains why it cannot load.
    */
   const { data: perms } = usePermissions();
-  const awsAdmin = perms?.isAwsAdmin !== false;
+  // Costs by permission once a file is in force. Until either answer arrives,
+  // assumed yes, as before: the effect below moves somebody off the lens when
+  // this is false, and a guess of false would bounce them on every launch.
+  const costsHeld = useTeamOr("aws", "aws.costs.read");
+  const awsAdmin = perms === undefined ? true : costsHeld;
 
   const githubKnown = !!authStatus;
   const lenses = useMemo(

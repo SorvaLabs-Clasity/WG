@@ -3,29 +3,9 @@ import { getAlertsPage, DEFAULT_WINDOW_WEEKS } from "../services/alertService";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { requirePermission } from "../middleware/permissionGate";
 
 const router = Router();
-
-/**
- * Resolving an alert is the org's record that a security finding was dealt
- * with, a public repository, an admin added, protection removed. Anyone could
- * clear that record, or reopen a closed one, which makes the whole security
- * view something no one can rely on. Reading stays open; changing state does
- * not.
- *
- * /simulate creates alerts outright, so it is gated for the same reason.
- */
-async function refusedAlertChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
-  if (await isControlHubAdmin(login, userToken)) return false;
-  res.status(403).json({
-    error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `security alerts. The record of what was dealt with is the point of them.`,
-    code: "CONTROL_HUB_ADMIN_REQUIRED",
-  });
-  return true;
-}
 
 /**
  * One page of alerts, newest first.

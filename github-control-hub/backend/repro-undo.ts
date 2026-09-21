@@ -316,7 +316,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // ask whether this person may reverse this particular action; the
     // detailed-logging settings ask whether they are an org admin at all.
     // Either is a real gate; a route naming neither is what this catches.
-    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin|isControlHubAdmin/],
+    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|teamOrPermission/],
     // `refusedForSubject` is a guard too: it runs inside the handler because
     // which team may write depends on what the alarm watches, which is not
     // known until the body or the stored record has been read.
@@ -324,7 +324,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // Pausing a stale-pull-request reminder silences it for everyone on that
     // pull request, not just for the person clicking, so it is an org-wide act
     // and gated the same way.
-    ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
+    ["pulls.ts",         /router\.(post|put|delete)\(/g, /teamOrPermission\(login, req\.user!\.accessToken, "control-hub"/],
     // The one router that can grant permissions, so it is the one whose own
     // gating matters most. `requirePermission` is **not** accepted here: it is
     // `return next()` while `PERMISSIONS_ENABLED` is unset, which is the
@@ -582,7 +582,7 @@ console.log("\nan AWS row is the AWS team's to reverse");
     /\{ repo: "admin", adminTeam: true \}/.test(policy));
 
   check("the undo route enforces it",
-    /awsTeam && !\(await isAwsAdmin\(/.test(activity)
+    /awsTeam && !\(await teamOrPermission\(login, accessToken, "aws"/.test(activity)
     && /AWS_ADMIN_REQUIRED/.test(activity));
 
   // Separate authorities. Passing the Control Hub check must not admit
@@ -590,7 +590,7 @@ console.log("\nan AWS row is the AWS team's to reverse");
   const deny = activity.slice(activity.indexOf("async function denyIfNotPermitted"));
   const body = deny.slice(0, deny.indexOf("\n}\n"));
   check("  and checks it independently of the Control Hub team",
-    body.indexOf("awsTeam &&") < body.indexOf("adminTeam &&"),
+    body.indexOf("if (awsTeam &&") >= 0 && body.indexOf("if (awsTeam &&") < body.indexOf("if (adminTeam &&"),
     "one gate behind the other makes them one authority");
 
   // The state that makes all of the above theoretical, asserted so that the

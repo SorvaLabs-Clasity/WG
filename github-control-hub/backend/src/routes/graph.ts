@@ -6,7 +6,8 @@ import { evaluateSecurityQuery } from "../services/graphService";
 import { getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { teamOrPermission } from "../permissions";
 import { getOrgConfig } from "../services/orgConfigService";
 import { recrawlState, refusalReason } from "../services/recrawlWindow";
 import { createOctokit, getOrg } from "../github/client";
@@ -280,7 +281,7 @@ router.get("/query/:q/freshness", requireAnyPermission("repos.query.read", "over
  */
 router.post("/query/:q/refresh-all", requireAnyPermission("repos.query.refresh", "overview.refresh"), async (req: Request<{ q: string }>, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+  if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["repos.query.refresh", "overview.refresh"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can force a `
@@ -361,7 +362,7 @@ router.post("/query/:q/refresh-all", requireAnyPermission("repos.query.refresh",
 // and checked nothing, so any signed-in user could start one, repeatedly.
 router.post("/aggregate", requirePermission("repos.graph.rebuild"), async (req: Request, res: Response) => {
   try {
-    if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false))) {
+    if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "control-hub", ["repos.graph.rebuild"]).catch(() => false))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can `

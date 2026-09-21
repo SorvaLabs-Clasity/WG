@@ -5,6 +5,7 @@ import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Bac
   SearchInput, Pager,
 } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
@@ -28,7 +29,23 @@ const VERDICT_ORDER: Record<string, number> = { violation: 0, not_applicable: 1,
 export default function AwsPage() {
   const { user } = useAuth();
   const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  /**
+   * Each action by its own permission once a file is in force, and by the AWS
+   * team before then. One `isAdmin` for all of them showed every button to
+   * somebody granted any one — or, since it asked the team, none of them to
+   * anybody granted them who was not on it.
+   */
+  const can: AwsCan = {
+    create: useTeamOr("aws", "aws.rules.create"),
+    edit: useTeamOr("aws", "aws.rules.edit"),
+    remove: useTeamOr("aws", "aws.rules.delete"),
+    enforce: useTeamOr("aws", "aws.rules.enforce"),
+    sweep: useTeamOr("aws", "aws.sweep.run"),
+    remediate: useTeamOr("aws", "aws.remediate"),
+    // Alarms on a guardrail are created under the rule-editing permission.
+    alarm: useTeamOr("aws", "aws.rules.edit"),
+  };
+  const isAdmin = Object.values(can).some(Boolean);
 
   const { data: catalog } = useCatalog();
   const { data: rules, isLoading, isError: rulesFailed, error: rulesError,
@@ -82,8 +99,8 @@ export default function AwsPage() {
             <Button onClick={() => setView({ k: "exclusions" })}>
               Exclusions <span className="font-mono ml-1.5">{exclusions?.length ?? 0}</span>
             </Button>
-            {isAdmin && <Button onClick={() => setEditing("new")}>New rule</Button>}
-            {isAdmin && (
+            {can.create && <Button onClick={() => setEditing("new")}>New rule</Button>}
+            {can.sweep && (
               <Button variant="primary" disabled={runRules.isPending} onClick={() => doRun()}>
                 {runRules.isPending ? "Sweeping…" : "Sweep all"}
               </Button>
@@ -149,7 +166,7 @@ export default function AwsPage() {
             findings={(findings ?? []).filter(f => f.ruleId === view.id)}
             exclusions={exclusions ?? []}
             accounts={accounts ?? []}
-            isAdmin={isAdmin}
+            can={can}
             running={runRules.isPending}
             onRun={() => doRun([view.id])}
             onEdit={() => { const r = (rules ?? []).find(x => x.id === view.id); if (r) setEditing(r); }}
@@ -165,7 +182,7 @@ export default function AwsPage() {
             rules={rules} catalog={catalog} findings={findings} isLoading={isLoading}
             failed={rulesFailed} failure={(rulesError as Error | null)?.message}
             onRetry={() => { void refetchRules(); void refetchFindings(); }} isAdmin={isAdmin}
-            adminTeam={permissions?.awsAdminTeam ?? "aws-guardrail-admins"}
+            canCreate={can.create}
             onOpen={(id) => setView({ k: "rule", id })}
             onNew={() => setEditing("new")}
           />
@@ -176,8 +193,7 @@ export default function AwsPage() {
             rule={editing === "new" ? null : editing}
             catalog={catalog ?? []}
             exclusions={exclusions ?? []}
-            isAdmin={isAdmin}
-            adminTeam={permissions?.awsAdminTeam ?? "aws-guardrail-admins"}
+            can={can}
             onClose={() => setEditing(null)}
           />
         )}
@@ -188,13 +204,13 @@ export default function AwsPage() {
 // ── Rules ─────────────────────────────────────────────────────────────
 
 function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetry,
-                   isAdmin, adminTeam, onOpen, onNew }: {
+                   isAdmin, canCreate, onOpen, onNew }: {
   rules?: Guardrail[]; catalog?: CatalogEntry[]; findings?: Finding[]; isLoading: boolean;
   /** The rules could not be read. Distinct from there being none. */
   failed?: boolean;
   failure?: string;
   onRetry?: () => void;
-  isAdmin: boolean; adminTeam: string;
+  isAdmin: boolean; canCreate: boolean;
   onOpen: (id: string) => void; onNew: () => void;
 }) {
   const byKind = new Map((catalog ?? []).map(c => [c.kind, c]));
@@ -229,7 +245,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
       <Empty
         title="No guardrails yet"
         body={`A guardrail says how a kind of AWS resource must be configured, and checks it on creation, every 10 minutes, and on demand. ${catalog?.length ?? 0} rule types available.`}
-        action={isAdmin ? <Button variant="primary" onClick={onNew}>Add the first rule</Button> : undefined}
+        action={canCreate ? <Button variant="primary" onClick={onNew}>Add the first rule</Button> : undefined}
       />
     );
   }
@@ -283,8 +299,9 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
       {!isAdmin && (
         <div className="mt-4">
           <Note intent="neutral">
-            You can view every rule and finding. Creating, editing and running guardrails is limited to the{" "}
-            <span className="font-semibold">{adminTeam}</span> team, they change the whole AWS account.
+            You can view every rule and finding. Creating, editing and running guardrails needs
+            permissions you have not been given, since they change the whole AWS account. A member of
+            the Control Hub admin team can grant them on the Admin tab.
           </Note>
         </div>
       )}
@@ -293,10 +310,16 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
 }
 
 /** A rule's own page: what it checks, how it is configured, and every resource it touched. */
-function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, running, onRun, onEdit, onToggleEnabled, onDelete, onBack }: {
+/** What the signed-in person may do on the AWS tab, one flag per action. */
+interface AwsCan {
+  create: boolean; edit: boolean; remove: boolean; enforce: boolean;
+  sweep: boolean; remediate: boolean; alarm: boolean;
+}
+
+function RuleDetail({ rule, entry, findings, exclusions, accounts, can, running, onRun, onEdit, onToggleEnabled, onDelete, onBack }: {
   rule?: Guardrail; entry?: CatalogEntry; findings: Finding[]; exclusions?: AwsExclusionList[];
   accounts?: AwsAccount[];
-  isAdmin: boolean; running: boolean;
+  can: AwsCan; running: boolean;
   onRun: () => void; onEdit: () => void; onToggleEnabled: () => void; onDelete: () => void; onBack: () => void;
 }) {
   const [showPassing, setShowPassing] = useState(false);
@@ -391,25 +414,27 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           }
         />
 
-        {isAdmin && (
+        {(can.sweep || can.edit || can.enforce || can.alarm || can.remove) && (
           <div className="px-6 py-3 border-b border-rule flex items-baseline gap-6 bg-paper-2 flex-wrap">
-            <button onClick={onRun} disabled={running}
+            {can.sweep && <button onClick={onRun} disabled={running}
               className="textlink caps">
               {running ? "Running…" : "Run now"}
-            </button>
-            <button onClick={onEdit} className="textlink caps !text-indigo">Edit</button>
-            <button onClick={onToggleEnabled} className="textlink caps">
+            </button>}
+            {/* Open to somebody who may only arm rules, too: the editor is where
+                the mode is, and it lets them change nothing else. */}
+            {(can.edit || can.enforce) && <button onClick={onEdit} className="textlink caps !text-indigo">Edit</button>}
+            {can.edit && <button onClick={onToggleEnabled} className="textlink caps">
               {rule.enabled ? "Pause" : "Resume"}
-            </button>
+            </button>}
             {/* In the row with the other actions rather than floating below the
                 findings. Guardrail results were reachable only by looking at
                 them; an alarm is how drift reaches somebody who is not. */}
-            <button onClick={() => setAlarmFor(rule.id)}
+            {can.alarm && <button onClick={() => setAlarmFor(rule.id)}
               className="textlink caps">
               Add alarm
-            </button>
-            <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings go too.`)) onDelete(); }}
-              className="textlink caps !text-crimson ml-auto">Delete</button>
+            </button>}
+            {can.remove && <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings go too.`)) onDelete(); }}
+              className="textlink caps !text-crimson ml-auto">Delete</button>}
           </div>
         )}
 
@@ -511,7 +536,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                           carries the parameters a fix needs, the catalog
                           collects them regardless of mode, so the only thing
                           report withholds is doing it automatically. */}
-                      {isAdmin && entry?.canRemediate && f.verdict === "violation"
+                      {can.remediate && entry?.canRemediate && f.verdict === "violation"
                         && !f.excluded && !f.remediated && (
                         <button
                           onClick={() => fixOne(f)}
@@ -581,9 +606,9 @@ function formatParam(value: any, spec: ParamSpec): string {
 
 // ── Exclusion lists ───────────────────────────────────────────────────
 
-function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: {
+function RuleEditor({ rule, catalog, exclusions, can, onClose }: {
   rule: Guardrail | null; catalog: CatalogEntry[]; exclusions: AwsExclusionList[];
-  isAdmin: boolean; adminTeam: string; onClose: () => void;
+  can: AwsCan; onClose: () => void;
 }) {
   const create = useCreateGuardrail();
   const update = useUpdateGuardrail();
@@ -603,7 +628,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
 
   const { data: accounts } = useAwsAccounts();
 
-  const enforceBlocked = !isAdmin || !(entry?.canRemediate ?? true);
+  const enforceBlocked = !can.enforce || !(entry?.canRemediate ?? true);
 
   const onKindChange = (k: string) => {
     setKind(k);
@@ -642,8 +667,8 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
       <Field label="Mode" hint={
         !entry?.canRemediate
           ? "This rule is report-only: fixing it automatically could cut live access."
-          : !isAdmin
-            ? `Enforce mode requires the "${adminTeam}" team.`
+          : !can.enforce
+            ? "Enforce mode needs the permission to move a rule into enforce mode."
             : "Report finds violations. Enforce also fixes them, automatically."
       }>
         <div className="flex gap-2">

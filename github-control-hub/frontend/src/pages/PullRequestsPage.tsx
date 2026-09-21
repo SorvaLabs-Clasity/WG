@@ -3,7 +3,7 @@ import { idleLabel } from "../lib/idle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import { apiGet, apiPut, apiPost } from "../api/client";
-import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import { useRepos } from "../hooks/useRepos";
 import { Page, Empty, Spinner, Pager, SearchInput } from "../design";
 import UserAvatar from "../components/UserAvatar";
@@ -106,8 +106,17 @@ function ago(iso: string): string {
 
 export default function PullRequestsPage() {
   const { user } = useAuth();
-  const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  /**
+   * One flag per control, each by its own permission once a file is in force
+   * and by the Control Hub team before — which is also the team the server
+   * checks. This asked the AWS team, so the controls were offered to people
+   * the server then refused, and hidden from people it would have allowed.
+   */
+  const canPause = useTeamOr("control-hub", "pulls.pause");
+  const canMute = useTeamOr("control-hub", "pulls.mute");
+  const canRun = useTeamOr("control-hub", "pulls.run");
+  const canSettings = useTeamOr("control-hub", "pulls.settings.manage");
+  const isAdmin = canSettings;
   const qc = useQueryClient();
 
   // Every repository in the organization, not only the ones with a pull request
@@ -280,7 +289,7 @@ export default function PullRequestsPage() {
               only appears after seven days of silence means the mute can only
               be set once the first reminder has already gone out. Anything not
               yet stale reads as what *will* happen rather than what has. */}
-          {(p.stale || (isAdmin && reminders)) && (
+          {(p.stale || (canPause && reminders)) && (
             <div className="mt-4 pt-3 border-t border-rule flex items-center justify-between gap-4 flex-wrap">
               <div className="text-[0.75rem] text-ink-2 min-w-0">
                 {!reminders ? (
@@ -329,7 +338,7 @@ export default function PullRequestsPage() {
                 )}
               </div>
 
-              {isAdmin && reminders && (
+              {canPause && reminders && (
                 <button onClick={() => setExpanded(open ? null : key)}
                   className="textlink caps shrink-0">
                   {open ? "Done" : "Manage"}
@@ -338,7 +347,7 @@ export default function PullRequestsPage() {
             </div>
           )}
 
-          {open && isAdmin && reminders && (
+          {open && canPause && reminders && (
             <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -469,7 +478,7 @@ export default function PullRequestsPage() {
         </div>
       </header>
 
-      {isAdmin && (
+      {(canSettings || canMute || canRun) && (
         <div className="mb-7 border border-rule bg-paper divide-y divide-rule">
           <div className="px-5 py-3 flex items-center justify-between gap-4">
             <div>
@@ -478,7 +487,7 @@ export default function PullRequestsPage() {
                 Off means nothing is fetched, listed or posted, and nothing runs on the schedule.
               </p>
             </div>
-            <Switch on={monitoring} disabled={busy}
+            <Switch on={monitoring} disabled={busy || !canSettings}
               onChange={v => saveSettings.mutate({ monitoringEnabled: v })} />
           </div>
 
@@ -490,13 +499,13 @@ export default function PullRequestsPage() {
                 itself each time rather than adding another.
               </p>
             </div>
-            <Switch on={reminders} disabled={busy || !monitoring}
+            <Switch on={reminders} disabled={busy || !monitoring || !canSettings}
               onChange={v => saveSettings.mutate({ remindersEnabled: v })} />
           </div>
 
           {monitoring && reminders && (
             <div className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
-              <button onClick={() => setShowSettings(true)}
+              {canMute && <button onClick={() => setShowSettings(true)}
                 className="stamp stamp-hollow stamp-sm">
                 Reminder mutes
                 {(mutes.global.length + Object.values(mutes.byRepo).flat().length) > 0 && (
@@ -504,19 +513,19 @@ export default function PullRequestsPage() {
                     {mutes.global.length + Object.values(mutes.byRepo).flat().length}
                   </span>
                 )}
-              </button>
-              <button onClick={() => runNow.mutate()} disabled={runNow.isPending}
+              </button>}
+              {canRun && <button onClick={() => runNow.mutate()} disabled={runNow.isPending}
                 title="Run the reminder pass now instead of waiting for the next scheduled one"
                 className="stamp stamp-sm">
                 {runNow.isPending ? "Sending…" : "Send reminders now"}
-              </button>
+              </button>}
             </div>
           )}
         </div>
       )}
 
       <PrReminderSettings
-        open={showSettings && isAdmin && monitoring && reminders}
+        open={showSettings && canMute && monitoring && reminders}
         onClose={() => setShowSettings(false)}
         mutes={mutes} repos={repos} reposLoading={reposLoading} busy={busy}
         onMute={(scope, target, muted, repo) => mute.mutate({ scope, target, muted, repo })} />

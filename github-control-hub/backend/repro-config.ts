@@ -202,7 +202,7 @@ const HOUR = 3_600_000;
       require("path").join(__dirname, "src/routes/config.ts"), "utf8");
 
     check("the import route asks the AWS team about AWS sections",
-      /isAwsAdmin/.test(src) && /refuseAwsSections/.test(src),
+      /teamOrPermission\(login, userToken \?\? "", "aws", needs, "all"\)/.test(src) && /refuseAwsSections/.test(src),
       "a Control Hub admin can write AWS guardrails through an import");
 
     const importBody = src.slice(src.indexOf('router.post("/import"'));

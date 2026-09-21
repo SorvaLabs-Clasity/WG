@@ -7,6 +7,7 @@ import {
   SURFACE, TYPE, Button,
 } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 import { useAuth } from "../App";
 import { useWidgets } from "../hooks/useWidgets";
 import { useAlarms, useUpdateAlarm, useDeleteAlarm, useEmailGroups } from "../hooks/useAlarms";
@@ -227,9 +228,16 @@ export default function AlarmsPage() {
    * AWS team, a widget alarm to the Control Hub team. The server decides the
    * same way; this only keeps the controls off a row somebody cannot change.
    */
-  const canSeeGithub = permissions?.isControlHubAdmin ?? false;
-  const canSeeAws = permissions?.isAwsAdmin ?? false;
-  const isAdmin = canSeeGithub || canSeeAws;
+  //
+  // With a permissions file in force: reading the list is `alarms.org.read`,
+  // changing a card alarm is `alarms.org.edit` and a guardrail alarm is
+  // `aws.rules.edit` — the same split the server makes per alarm.
+  const canSeeGithub = useTeamOr("control-hub", "alarms.org.edit");
+  const canSeeAws = useTeamOr("aws", "aws.rules.edit");
+  const canRead = useTeamOr("control-hub", "alarms.org.read");
+  const readByTeam = useTeamOr("aws", "alarms.org.read");
+  const isAdmin = canRead || readByTeam;
+  const canGroups = useTeamOr("control-hub", "alarms.groups.read");
 
   const { data: alarms, isLoading, isError, error, isFetching, refetch } = useAlarms(isAdmin);
   // Only where there can be any. This page is reachable in an AWS-only
@@ -239,7 +247,7 @@ export default function AlarmsPage() {
   });
   const githubBlocked = authStatus?.githubAccess?.allowed === false;
   const { data: widgets } = useWidgets(undefined, !githubBlocked);
-  const { data: groups } = useEmailGroups(isAdmin);
+  const { data: groups } = useEmailGroups(isAdmin && canGroups);
   const updateAlarm = useUpdateAlarm();
   const deleteAlarm = useDeleteAlarm();
 
@@ -271,10 +279,9 @@ export default function AlarmsPage() {
       <Page user={user}>
         <PageHeader title="Alarms" subtitle="Thresholds on widgets and AWS guardrails, and who hears about them." />
         <Empty
-          title="Admins only"
-          body={`Alarms notify the whole organization, so they are managed by `
-            + `members of the "${permissions?.adminTeam ?? "admin"}" and `
-            + `"${permissions?.awsAdminTeam ?? "admin"}" teams, and by organization owners.`}
+          title="Not open to you"
+          body={"Alarms notify the whole organization, so seeing them is a permission of its own. "
+            + "A member of the Control Hub admin team can grant it on the Admin tab."}
         />
       </Page>
     );

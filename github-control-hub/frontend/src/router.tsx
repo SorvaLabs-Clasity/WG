@@ -16,7 +16,7 @@ import { isAuthenticated } from "./api/client";
 import RequireTeam from "./components/RequireTeam";
 import NoAccess from "./components/NoAccess";
 import { usePermissions } from "./hooks/usePermissions";
-import { usePermissionSet } from "./hooks/usePermissionSet";
+import { usePermissionSet, useTeamOr } from "./hooks/usePermissionSet";
 
 /**
  * Where the app opens.
@@ -30,9 +30,10 @@ import { usePermissionSet } from "./hooks/usePermissionSet";
  * would bounce somebody between two tabs on every launch.
  */
 function Home() {
-  const { data: perms, isLoading } = usePermissions();
+  const { isLoading } = usePermissions();
+  const overview = useTeamOr("control-hub", "overview.read", "overview.cards.read");
   if (isLoading) return null;
-  return <Navigate to={perms?.isControlHubAdmin ? "/analytics" : "/my-work"} replace />;
+  return <Navigate to={overview ? "/analytics" : "/my-work"} replace />;
 }
 
 /**
@@ -115,7 +116,7 @@ export const router = createBrowserRouter([
     path: "/analytics",
     element: (
       <RequireAuth>
-        <RequireTeam team="control-hub" title="Overview">
+        <RequireTeam team="control-hub" title="Overview" permissions={["overview.read", "overview.cards.read"]}>
           <AnalyticsPage />
         </RequireTeam>
       </RequireAuth>
@@ -125,7 +126,7 @@ export const router = createBrowserRouter([
     path: "/access",
     element: (
       <RequireAuth>
-        <RequireTeam team="control-hub" title="Access">
+        <RequireTeam team="control-hub" title="Access" permissions={["access.read"]}>
           <AccessPage />
         </RequireTeam>
       </RequireAuth>
@@ -162,7 +163,7 @@ export const router = createBrowserRouter([
     path: "/aws",
     element: (
       <RequireAuth>
-        <RequireTeam team="aws" title="AWS">
+        <RequireTeam team="aws" title="AWS" permissions={["aws.read"]}>
           <AwsPage />
         </RequireTeam>
       </RequireAuth>
@@ -188,7 +189,7 @@ export const router = createBrowserRouter([
           * and "Create the permissions repository" — were live for every
           * signed-in member.
           */}
-        <RequireTeam team="control-hub" title="Admin">
+        <RequireTeam team="control-hub" title="Admin" permissions={["admin.console.open"]}>
           <AdminPage />
         </RequireTeam>
       </RequireAuth>

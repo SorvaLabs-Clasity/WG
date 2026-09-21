@@ -17,6 +17,7 @@ import type { Guardrail, AwsExclusionList, GuardrailMode, GuardrailKind, AwsAcco
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 import { requireAwsAdmin } from "../middleware/teamGate";
 import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
+import { holdsNow } from "../permissions";
 
 const router = Router();
 
@@ -40,6 +41,21 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
  * team's AWS account, which is not this app's to publish to the organization.
  */
 const requireAdmin = requireAwsAdmin;
+
+/**
+ * Refuse a request that needs `key`, answered the way the permission gate
+ * answers. For the rule routes, where which permission a request needs depends
+ * on what it changes.
+ */
+async function refusedWithout(req: Request, res: Response, key: string): Promise<boolean> {
+  if (await holdsNow(req.user!.login, req.user!.accessToken, key)) return false;
+  res.status(403).json({
+    code: "PERMISSION_REQUIRED",
+    permission: key,
+    error: `This needs the "${key}" permission, which you do not have.`,
+  });
+  return true;
+}
 
 /** The rule kinds the UI can offer, with their defaults. */
 /**
@@ -114,6 +130,9 @@ router.post("/guardrails", requireAdmin, requirePermission("aws.rules.create"), 
         res.status(400).json({ error: `"${kind}" is report-only. Remediating it automatically could cut live access.` });
         return;
       }
+      // Creating a rule already in enforce mode is moving it into enforce, and
+      // skipping this made "create" a way round the permission for it.
+      if (await refusedWithout(req, res, "aws.rules.enforce")) return;
       // No named resources: arming enforce is a standing instruction over every
       // resource the rule matches, including ones that do not exist yet.
       if (await refuseIfCallerCannotWrite(kind as GuardrailKind, [], res, "enforce")) return;
@@ -159,6 +178,24 @@ router.put("/guardrails/:id", requireAdmin, requireAnyPermission("aws.rules.edit
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
 
     const { name, description, mode, enabled, applyOnCreate, params, exclusionLists, accounts } = req.body ?? {};
+
+    /**
+     * The route admits either permission, so the request decides which it
+     * needs: moving into enforce needs `aws.rules.enforce`, and changing
+     * anything else — including moving back to report — needs
+     * `aws.rules.edit`. Admitting either for everything let an editor arm a
+     * rule and let an enforcer rewrite one.
+     */
+    const intoEnforce = mode === "enforce" && existing.mode !== "enforce";
+    const body = req.body ?? {};
+    // Compared with what is stored, not by presence: the editor sends every
+    // field on every save, so presence would make any mode change an edit.
+    const other = (["name", "description", "enabled", "applyOnCreate", "params", "exclusionLists", "accounts"] as const)
+      .some(k => body[k] !== undefined
+        && JSON.stringify(body[k]) !== JSON.stringify((existing as any)[k] ?? (k === "accounts" ? [] : undefined)))
+      || (mode !== undefined && mode !== existing.mode && !intoEnforce);
+    if (intoEnforce && await refusedWithout(req, res, "aws.rules.enforce")) return;
+    if (other && await refusedWithout(req, res, "aws.rules.edit")) return;
 
     // Only a change INTO enforce is gated, an admin-set rule must stay editable
     // by others for its name or thresholds without silently losing its mode.

@@ -13,11 +13,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchDetailedLogging, updateDetailedLogging } from "../api/activity";
-import { usePermissions } from "../hooks/usePermissions";
+import { useTeamOr } from "../hooks/usePermissionSet";
 
 export default function DetailedLoggingPanel() {
-  const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  const isAdmin = useTeamOr("aws", "activity.detailedLogging.read");
+  const mayChange = useTeamOr("aws", "activity.detailedLogging.manage");
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
@@ -73,7 +73,7 @@ export default function DetailedLoggingPanel() {
           <button
             role="switch"
             aria-checked={settings.enabled}
-            disabled={save.isPending}
+            disabled={save.isPending || !mayChange}
             onClick={() => save.mutate({ enabled: !settings.enabled, disabledKinds: settings.disabledKinds })}
             className={`relative inline-flex h-5 w-9 items-center border border-rule-strong transition-colors ${
               settings.enabled ? "bg-ink" : "bg-paper-2"} ${
@@ -92,7 +92,7 @@ export default function DetailedLoggingPanel() {
                 <input
                   type="checkbox"
                   checked={!disabled.has(k.id)}
-                  disabled={save.isPending}
+                  disabled={save.isPending || !mayChange}
                   onChange={() => toggleKind(k.id)}
                   className="field-line text-[0.8438rem] mt-0.5"
                 />

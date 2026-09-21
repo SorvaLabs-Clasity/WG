@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
-import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { AWS_ADMIN_TEAM } from "../services/authorizationService";
 import {
   getActivity,
   getActivityForRepo,
@@ -25,10 +25,10 @@ import { fillPage } from "../services/activityPaging";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
 import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
-import { accessForSelf } from "../permissions";
+import { accessForSelf, teamOrPermission } from "../permissions";
 import {
   createBranch,
   deleteBranch,
@@ -60,11 +60,46 @@ const router = Router();
  *
  * Returns a response body to send, or null when the caller may proceed.
  */
+/**
+ * Which permission stands in for each kind of row once a permissions file is
+ * in force. Undo and redo split by what the row changed; retry and
+ * undo-resolution are one permission each, named by their route.
+ */
+interface RowKeys { aws: string; app: string; repo: string }
+const UNDO_KEYS: RowKeys = { aws: "activity.undo.aws", app: "activity.undo.app", repo: "activity.undo.repo" };
+const oneKey = (key: string): RowKeys => ({ aws: key, app: key, repo: key });
+
 async function denyIfNotPermitted(
   entries: ActivityEntry[], login: string, accessToken: string, verb: string,
   pick: (e: ActivityEntry) => ReturnType<typeof undoRequirement> = undoRequirement,
+  keys: RowKeys = UNDO_KEYS,
 ): Promise<{ status: number; body: Record<string, unknown> } | null> {
   const { adminTeam, awsTeam, repos } = requirementsFor(entries, pick);
+
+  /**
+   * A repository row, under a file in force. The route admits anybody holding
+   * any one of the undo permissions, so without this somebody given only
+   * "Undo an app configuration change" could undo repository actions too —
+   * GitHub's own check below would still apply, but the permission would not
+   * mean what it says. Before a file, repository rows answer to GitHub alone,
+   * as they always did.
+   */
+  // Per row, so a batch mixing a card change with a repository change needs
+  // both permissions, not whichever the batch happened to be judged by.
+  const repoRow = entries.some(e => { const r = pick(e); return !!r.repo && !r.adminTeam && !r.awsTeam && !!e.repo; });
+  if (repoRow) {
+    const self = await accessForSelf(login, accessToken);
+    if (!self.inert && !self.permissions.has(keys.repo)) {
+      return {
+        status: 403,
+        body: {
+          code: "PERMISSION_REQUIRED",
+          permission: keys.repo,
+          error: `This needs the "${keys.repo}" permission, which you do not have.`,
+        },
+      };
+    }
+  }
 
   /**
    * The AWS team, checked before the Control Hub one because they are separate
@@ -73,7 +108,7 @@ async function denyIfNotPermitted(
    * and it is here so that the day one does, it is gated on the people who
    * administer the account rather than on the people who administer the repos.
    */
-  if (awsTeam && !(await isAwsAdmin(login, accessToken))) {
+  if (awsTeam && !(await teamOrPermission(login, accessToken, "aws", [keys.aws]))) {
     return {
       status: 403,
       body: {
@@ -84,7 +119,7 @@ async function denyIfNotPermitted(
     };
   }
 
-  if (adminTeam && !(await isControlHubAdmin(login, accessToken))) {
+  if (adminTeam && !(await teamOrPermission(login, accessToken, "control-hub", [keys.app]))) {
     return {
       status: 403,
       body: {
@@ -583,7 +618,7 @@ router.post("/:id/retry", requirePermission("activity.retry"), async (req: Reque
 
     const deniedRetry = await denyIfNotPermitted(
       retryTargets.filter(t => t.failed && t.retryPayload),
-      req.user!.login, accessToken, "retry", retryRequirement);
+      req.user!.login, accessToken, "retry", retryRequirement, oneKey("activity.retry"));
     if (deniedRetry) {
       res.status(deniedRetry.status).json(deniedRetry.body);
       return;
@@ -673,7 +708,7 @@ router.post("/:id/undo-resolution", requirePermission("activity.resolution.undo"
 
     const deniedUndoRes = await denyIfNotPermitted(
       [entry], req.user!.login, req.user!.accessToken, "undo this resolution for",
-      () => ({ repo: "admin" as const }));
+      () => ({ repo: "admin" as const }), oneKey("activity.resolution.undo"));
     if (deniedUndoRes) {
       res.status(deniedUndoRes.status).json(deniedUndoRes.body);
       return;
@@ -1214,7 +1249,7 @@ router.get("/pulse", requirePermission("activity.pulse.read"), async (req: Reque
 
 router.get("/detailed-logging", requirePermission("activity.detailedLogging.read"), async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
+    if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "aws", ["activity.detailedLogging.read"]))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can see detailed logging settings." });
     }
@@ -1228,7 +1263,7 @@ router.get("/detailed-logging", requirePermission("activity.detailedLogging.read
 
 router.put("/detailed-logging", requirePermission("activity.detailedLogging.manage"), async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
+    if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "aws", ["activity.detailedLogging.manage"]))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can change detailed logging." });
     }
