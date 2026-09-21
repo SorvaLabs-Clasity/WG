@@ -54,12 +54,22 @@ interface Entry { at: number; subject: Subject }
  */
 const cache = new Map<string, Entry>();
 
-const keyFor = (login: string, via: "self" | "app") => `${login.toLowerCase()}:${via}`;
+/**
+ * `relevantTeams` is part of the key.
+ *
+ * A subject built with a list of teams only asked about those teams, so it is
+ * an answer to a narrower question than one built without. Keyed only by
+ * login, a subject built for one list was served to a caller asking about
+ * another — "not on the admin team" cached from a lookup that never asked.
+ */
+const keyFor = (login: string, via: "self" | "app", teams?: readonly string[]) =>
+  `${login.toLowerCase()}:${via}` + (teams ? `:${[...new Set(teams)].sort().join(",")}` : "");
 
+/** Every cached subject for this login, whichever list of teams it was built for. */
 export function forgetSubjects(login?: string): void {
   if (!login) { cache.clear(); return; }
-  cache.delete(keyFor(login, "self"));
-  cache.delete(keyFor(login, "app"));
+  const prefix = `${login.toLowerCase()}:`;
+  for (const key of [...cache.keys()]) if (key.startsWith(prefix)) cache.delete(key);
 }
 
 export interface SubjectOptions {
@@ -90,7 +100,7 @@ export interface SubjectOptions {
 
 export async function subjectFor(login: string, opts?: SubjectOptions, now = Date.now()): Promise<Subject> {
   const ownToken = opts?.ownToken;
-  const key = keyFor(login, ownToken ? "self" : "app");
+  const key = keyFor(login, ownToken ? "self" : "app", ownToken ? undefined : opts?.relevantTeams);
   const hit = cache.get(key);
   if (hit && now - hit.at < TTL_MS) return hit.subject;
 

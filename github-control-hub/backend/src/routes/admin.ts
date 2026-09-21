@@ -6,7 +6,7 @@ import {
   loadPermissions, savePermissions, isFailure, unknownNodesIn, fileProblems,
   forgetPermissions, accessForSelf, accessForOther, PERMISSIONS,
   changeClasses, explainPreset, subjectFor,
-  enforcementActive,
+  enforcementActive, forgetSubjects,
 } from "../permissions";
 import { permissionsFor, inheritedStanding, presetStanding } from "../permissions/evaluate";
 import { VOCABULARY_VERSION } from "../permissions/vocabulary";
@@ -234,6 +234,14 @@ async function writeFile(
     const touched = changed.filter(login => exempt.has(login));
 
     if (touched.length > 0) {
+      /**
+       * This lookup was fresh; the cached subjects `GET /person/:login` reads
+       * may not be. Somebody who has just joined the admin team would
+       * otherwise be refused here and still shown as editable there for up to
+       * a minute — the screen re-asks on this refusal and must get the same
+       * answer this check did.
+       */
+      for (const login of touched) forgetSubjects(login);
       return {
         ok: false, status: 409,
         body: {

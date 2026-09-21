@@ -123,8 +123,11 @@ console.log("\nthe diff is reviewed before it is saved, not after");
    * one flat list would put a production change beside a sandbox one with
    * nothing but a label between them.
    */
-  check("accounts are navigable rather than concatenated",
-    /Previous account/.test(dialog) && /Next account/.test(dialog));
+  // "Previous"/"Next" rather than "… account": on the preset page the entries
+  // are people in accounts, and the property is the stepping, not the noun.
+  check("entries are navigable rather than concatenated",
+    /setAt\(index - 1\)/.test(dialog) && /setAt\(index \+ 1\)/.test(dialog)
+      && /onClick=\{\(\) => setAt\(i\)\}/.test(dialog));
   check("  with an account picker when there is more than one",
     /changed\.length > 1/.test(dialog));
   check("  and accounts with nothing to say are left out",
@@ -149,6 +152,86 @@ console.log("\nthe diff is reviewed before it is saved, not after");
   check("  and honest that it cannot see team-derived access",
     /access from their GitHub teams is not included/.test(page),
     "the client knows the signed-in person's teams and nobody else's");
+}
+
+console.log("\nthe review dialog stays on screen, whatever it holds");
+{
+  const dialog = fs.readFileSync("./src/components/PermissionDiffDialog.tsx", "utf8");
+
+  /**
+   * Rendered in place, it sat inside a card with a transform above it, which
+   * makes that ancestor the containing block for position:fixed — so it opened
+   * wherever the card was, often below the fold, and had to be scrolled to.
+   */
+  check("it is portalled to document.body",
+    /createPortal\(/.test(dialog) && /document\.body\)/.test(dialog),
+    "fixed positioning inside a transformed ancestor measures against the ancestor");
+
+  /**
+   * A long diff pushed past the screen, and a long list of accounts squeezed
+   * the diff into a sliver. Both panes scroll on their own inside a dialog that
+   * is bounded by the viewport.
+   */
+  check("the dialog is bounded by the viewport",
+    /h-\[85vh\]/.test(dialog));
+  check("  and the list and the diff scroll independently",
+    /<nav[^>]*overflow-y-auto/.test(dialog) && /flex-1 min-h-0 min-w-0 overflow-y-auto/.test(dialog));
+  check("  every scrolling flex child can shrink",
+    (dialog.match(/min-h-0/g) ?? []).length >= 3,
+    "without min-h-0 a flex item will not shrink below its content, and the dialog overflows");
+
+  check("the page behind does not scroll while it is open", /overflow = "hidden"/.test(dialog));
+  check("  and scrolling is restored exactly once, on close",
+    /useEffect\(\(\) => \{\s*const previous = document\.body\.style\.overflow;[\s\S]*?\}, \[\]\);/.test(dialog),
+    "an effect re-run every render restored an overflow it had already hidden");
+
+  check("changes that are not permissions still count",
+    /notes\?: string\[\]/.test(dialog) && /const nothing = changed\.length === 0 && notes\.length === 0/.test(dialog),
+    "otherwise a rename is an empty diff, and an empty diff cannot be saved");
+}
+
+console.log("\nselection only takes what can be changed");
+{
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+
+  /**
+   * "Select everyone" took every login in the file, including the rows the
+   * list had greyed out. Now both read one eligibility list.
+   */
+  check("select-everyone selects only eligible rows",
+    /candidates\.filter\(c => c\.eligible\)\.map\(c => c\.login\)/.test(page));
+  check("  the list greys out from the same eligibility",
+    /disabled=\{!eligible\}/.test(page));
+  check("  admin-team members are never eligible",
+    /const eligible = !exempt &&/.test(page));
+  check("  and what is saved is narrowed to what is eligible now",
+    /const selected = useMemo/.test(page) && /withPresetChange\(\s*file, selected,/.test(page),
+    "the roster refreshes while somebody is choosing; acting on a stale choice is the save the server refuses");
+}
+
+console.log("\nwho is on the admin team is not five minutes stale");
+{
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+  const rosterQueries = page.match(/queryKey: \["admin", "org-members"\][\s\S]{0,420}?\}\);/g) ?? [];
+  check("no roster query caches for five minutes",
+    rosterQueries.length > 0 && rosterQueries.every(q => !/5 \* 60_000/.test(q)),
+    rosterQueries.map(q => q.slice(0, 90)));
+  check("an exempt refusal re-reads who is exempt",
+    /err\.code === "EXEMPT_SUBJECT"/.test(page) && /invalidateQueries\(\{ queryKey: \["admin", "org-members"\] \}\)/.test(page));
+  check("admin-team rows are visibly greyed on the People list",
+    /\$\{exempt \? "opacity-55" : ""\}/.test(page));
+}
+
+console.log("\nno preset change saves unreviewed");
+{
+  const page = fs.readFileSync("./src/pages/AdminPage.tsx", "utf8");
+  check("every preset save opens the review",
+    /const requestSave = \(\) => setConfirmSave\(true\);/.test(page),
+    "it used to review only presets somebody already held, and not with a diff");
+  check("  the review shows the preset and each holder",
+    /The \$\{name\.trim\(\) \|\| "new"\} preset itself/.test(page) && /holderRows/.test(page));
+  check("  and a rename or description change is still a saveable change",
+    /presetNotes/.test(page) && /notes=\{presetNotes\}/.test(page));
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

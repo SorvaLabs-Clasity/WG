@@ -7,6 +7,7 @@ import {
 } from "../design";
 import { usePermissionSet } from "../hooks/usePermissionSet";
 import PermissionTree from "../components/PermissionTree";
+import { ApiError } from "../api/client";
 import { knownNodesOf } from "../components/permissionTreeModel";
 import { diffAccount, heldFromFile } from "../components/permissionDiff";
 import { sliceOf, withPresetChange } from "../components/accountEntries";
@@ -192,7 +193,14 @@ function PeopleView({ file, onOpen }: { file: PermissionsFile; onOpen: (login: s
    * can still be opened directly, which is what the screen did before.
    */
   const { data: roster, isLoading: rosterLoading, isError: rosterFailed } = useQuery({
-    queryKey: ["admin", "org-members"], queryFn: fetchOrgMembers, staleTime: 5 * 60_000,
+    queryKey: ["admin", "org-members"], queryFn: fetchOrgMembers,
+    /**
+     * Thirty seconds, not five minutes. This roster is what says who is on the
+     * admin team, and the save path asks GitHub fresh every time — so with a
+     * five-minute cache somebody who had just joined the team showed as
+     * configurable here while every save on them was refused as exempt.
+     */
+    staleTime: 30_000, refetchOnWindowFocus: true,
   });
 
   const rows = useMemo(() => {
@@ -285,7 +293,13 @@ function PersonRow({ login, entry, file, index, inFile, exempt, onOpen }: {
 
   return (
     <RailCard intent={hasOverrides ? "warn" : "neutral"} index={index} onClick={onOpen}>
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      {/*
+        * Muted, the same way the pickers grey out rows that cannot be chosen.
+        * Still openable — seeing what somebody holds is the point of the tab —
+        * but it reads at a glance as "not configurable here" rather than only
+        * saying so in a pill on the far side of the row.
+        */}
+      <div className={`flex items-center justify-between gap-4 flex-wrap ${exempt ? "opacity-55" : ""}`}>
         <div className="min-w-0">
           <span className="display text-[1.0625rem] text-ink">{login}</span>
           <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{presetLabel}</p>
@@ -412,6 +426,19 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
       qc.invalidateQueries({ queryKey: ["admin", "person", loginKey] });
       setConfirming(false);
       onSaved();
+    },
+    /**
+     * The server knows before this screen does. When it refuses because the
+     * person is on the admin team, re-read who is — so the screen locks and
+     * says why, instead of showing the error and carrying on offering an edit
+     * that can never be saved.
+     */
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "EXEMPT_SUBJECT") {
+        qc.invalidateQueries({ queryKey: ["admin", "org-members"] });
+        qc.invalidateQueries({ queryKey: ["admin", "person", loginKey] });
+        setConfirming(false);
+      }
     },
   });
 
@@ -761,6 +788,7 @@ function PersonDetail({ login, file, sha, vocabulary, canOverride, canAssign, on
                     title={`Changes to ${loginKey}`}
                     subtitle={scoped ? "Reviewed one account at a time." : undefined}
                     diffs={diffs}
+                    notes={note.trim() !== (existing?.note ?? "") ? ["Note changed"] : []}
                     confirming={save.isPending}
                     onCancel={() => setConfirming(false)}
                     onConfirm={() => save.mutate()}
@@ -898,12 +926,20 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   const assignSave = useMutation({
     mutationFn: () => saveAdminFile(assignedFile, sha,
       `${assignMode === "apply" ? "Apply" : "Remove"} the ${existing?.name ?? presetId} preset `
-      + `${assignMode === "apply" ? "to" : "from"} ${assignTo.size} `
-      + `${assignTo.size === 1 ? "person" : "people"}`),
+      + `${assignMode === "apply" ? "to" : "from"} ${selected.size} `
+      + `${selected.size === 1 ? "person" : "people"}`),
     onSuccess: () => {
       qcAssign.invalidateQueries({ queryKey: ["admin"] });
       setAssignOpen(false);
       setAssignTo(new Set());
+    },
+    // As on the person screen: an exempt refusal means the roster is stale.
+    // Re-reading it greys those people out and drops them from `selected`.
+    onError: (err) => {
+      if (err instanceof ApiError && err.code === "EXEMPT_SUBJECT") {
+        qcAssign.invalidateQueries({ queryKey: ["admin", "org-members"] });
+        setAssignOpen(false);
+      }
     },
   });
 
@@ -916,6 +952,53 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
       .filter(accountId => (sliceOf(person, accountId).presets ?? []).includes(presetId));
   };
 
+  /**
+   * Who can be picked, and why the rest cannot — computed once, and read by
+   * both the list and "Select everyone".
+   *
+   * They used to decide separately: the list greyed rows out, and "Select
+   * everyone" took every login in the file regardless, including the greyed
+   * ones. Two rules for one question is how they drifted.
+   *
+   * Members of the Control Hub admin team are never pickable. They hold every
+   * permission by membership, the server refuses any entry naming them, and a
+   * screen that lets you select them only to fail on save is a screen that
+   * lied about what it could do.
+   */
+  const { data: rosterForAssign } = useQuery({
+    queryKey: ["admin", "org-members"], queryFn: fetchOrgMembers,
+    staleTime: 30_000, refetchOnWindowFocus: true,
+  });
+  const exemptLogins = useMemo(
+    () => new Set((rosterForAssign ?? []).filter(m => m.exempt).map(m => m.login.toLowerCase())),
+    [rosterForAssign],
+  );
+
+  const candidates = useMemo(() => Object.keys(file.people).sort().map(login => {
+    const where = holdsIn(login);
+    const already = where.length > 0;
+    const exempt = exemptLogins.has(login);
+    const eligible = !exempt && (assignMode === "apply" ? !already || scopedHere : already);
+    const reason = exempt
+      ? "On the Control Hub admin team — holds everything already"
+      : !eligible
+        ? (assignMode === "apply" ? "Already holds it" : "Does not hold it")
+        : null;
+    return { login, where, already, exempt, eligible, reason };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [file, exemptLogins, assignMode, scopedHere, presetId, accounts]);
+
+  /**
+   * What will actually be saved: the selection, narrowed to rows that are
+   * eligible *now*. The roster refreshes while somebody is choosing, so a person
+   * selected a minute ago can since have joined the admin team — acting on them
+   * anyway is exactly the save the server would refuse.
+   */
+  const selected = useMemo(() => {
+    const ok = new Set(candidates.filter(c => c.eligible).map(c => c.login));
+    return new Set([...assignTo].filter(login => ok.has(login)));
+  }, [assignTo, candidates]);
+
   /** The file as it would be after applying or removing this preset. */
   /**
    * The file after the change, built by the same tested function everything
@@ -924,10 +1007,10 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
    * top level — changed nothing and the review said so.
    */
   const assignedFile = useMemo((): PermissionsFile => withPresetChange(
-    file, assignTo, presetId, assignMode,
+    file, selected, presetId, assignMode,
     scopedHere ? [...assignAccounts] : [],
     Object.keys(accounts),
-  ), [file, assignTo, assignAccounts, assignMode, presetId, scopedHere, accounts]);
+  ), [file, selected, assignAccounts, assignMode, presetId, scopedHere, accounts]);
 
   /**
    * One entry per person, not per account: on this screen the question is
@@ -944,7 +1027,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
 
     const accountsToShow = scopedHere ? Object.keys(accounts) : [""];
 
-    return [...assignTo].sort().flatMap(login =>
+    return [...selected].sort().flatMap(login =>
       accountsToShow.map(accountId => {
         const before = at(file, login, accountId);
         const after = at(assignedFile, login, accountId);
@@ -959,7 +1042,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
           unchanged: gained.length === 0 && lost.length === 0,
         };
       }));
-  }, [assignTo, file, assignedFile, vocabulary, accounts, scopedHere]);
+  }, [selected, file, assignedFile, vocabulary, accounts, scopedHere]);
 
 
   /**
@@ -986,19 +1069,90 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
   const idCollision = isNew && !!file.presets[finalId];
 
   const qc = useQueryClient();
-  const save = useMutation({
-    mutationFn: () => {
-      const nextPreset: Preset = {
+
+  /** The file as it would be saved — one value, used by the review and the save alike. */
+  const presetFile = useMemo((): PermissionsFile => ({
+    ...file,
+    presets: {
+      ...file.presets,
+      [finalId]: {
         name: name.trim(),
         description: description.trim() || undefined,
         inherits: inherits || undefined,
         grant: entry.grant,
         revoke: entry.revoke,
-      };
-      const nextFile: PermissionsFile = { ...file, presets: { ...file.presets, [finalId]: nextPreset } };
-      return saveAdminFile(nextFile, sha, summary.trim() || `${isNew ? "Create" : "Edit"} the ${name} preset`);
+      } as Preset,
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "file"] }); onSaved(); },
+  }), [file, finalId, name, description, inherits, entry]);
+
+  /**
+   * What saving this preset changes, reviewed before it is written.
+   *
+   * First, the preset itself: what it grants before and after. Then each
+   * person who holds it, in each account, as they would actually end up —
+   * because presets add up, taking something out of this one changes nothing
+   * for somebody whose other preset still gives it, and the review should say
+   * so rather than implying everybody loses it.
+   *
+   * It used to confirm only when somebody already held the preset, with a
+   * generic "are you sure" and no diff; a new preset, or one nobody held yet,
+   * saved with no review at all.
+   */
+  const presetDiffs = useMemo(() => {
+    const known = knownNodesOf(vocabulary);
+    const heldBy = (f: PermissionsFile, presets: string[], own?: PermissionEntry) =>
+      heldFromFile(vocabulary, f.presets, presets, own, known);
+    const change = (accountId: string, label: string, before: Set<string>, after: Set<string>) => {
+      const gained = vocabulary.filter(l => !before.has(l.key) && after.has(l.key))
+        .map(l => ({ key: l.key, label: l.label }));
+      const lost = vocabulary.filter(l => before.has(l.key) && !after.has(l.key))
+        .map(l => ({ key: l.key, label: l.label }));
+      return { accountId, name: label, gained, lost, unchanged: gained.length === 0 && lost.length === 0 };
+    };
+
+    const itself = change("__preset__", `The ${name.trim() || "new"} preset itself`,
+      isNew ? new Set<string>() : heldBy(file, [presetId]),
+      heldBy(presetFile, [finalId]));
+
+    const accountIds = Object.keys(accounts);
+    const holderRows = isNew ? [] : Object.keys(file.people).flatMap(login => {
+      const person = file.people[login];
+      return (accountIds.length ? accountIds : [null]).flatMap(accountId => {
+        const slice = sliceOf(person, accountId);
+        if (!(slice.presets ?? []).includes(presetId)) return [];
+        return [change(
+          `${login}:${accountId ?? ""}`,
+          accountId ? `${login} — ${accounts[accountId] ?? accountId}` : login,
+          heldBy(file, slice.presets ?? [], slice),
+          heldBy(presetFile, slice.presets ?? [], slice),
+        )];
+      });
+    });
+
+    return [itself, ...holderRows];
+  }, [file, presetFile, presetId, finalId, isNew, name, vocabulary, accounts]);
+
+  /** What changes that is not a permission, so a rename is still a reviewable, saveable change. */
+  const presetNotes = useMemo(() => {
+    const out: string[] = [];
+    if (isNew) {
+      out.push(`Creates the preset "${name.trim()}", saved as ${finalId}`);
+      return out;
+    }
+    if (name.trim() !== (existing?.name ?? "")) out.push(`Renamed from "${existing?.name ?? ""}" to "${name.trim()}"`);
+    if ((description.trim() || undefined) !== (existing?.description || undefined)) out.push("Description changed");
+    if ((inherits || undefined) !== (existing?.inherits || undefined)) {
+      out.push(inherits
+        ? `Now inherits ${file.presets[inherits]?.name ?? inherits}`
+        : "No longer inherits another preset");
+    }
+    return out;
+  }, [isNew, name, finalId, description, inherits, existing, file]);
+
+  const save = useMutation({
+    mutationFn: () => saveAdminFile(presetFile, sha,
+      summary.trim() || `${isNew ? "Create" : "Edit"} the ${name} preset`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "file"] }); setConfirmSave(false); onSaved(); },
   });
 
   const del = useMutation({
@@ -1011,10 +1165,8 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "file"] }); onSaved(); },
   });
 
-  const requestSave = () => {
-    if (!isNew && holders.length > 0) setConfirmSave(true);
-    else save.mutate();
-  };
+  // Always through the review. See `presetDiffs`.
+  const requestSave = () => setConfirmSave(true);
 
   // The name is the only thing asked for, so it is the only thing required.
   const canSave = name.trim().length > 0 && !idCollision && !save.isPending;
@@ -1081,7 +1233,7 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         {assignOpen && (
           <PermissionDiffDialog
             title={`${assignMode === "apply" ? "Applying" : "Removing"} ${existing?.name ?? presetId}`}
-            subtitle={`${assignTo.size} ${assignTo.size === 1 ? "person" : "people"}. `
+            subtitle={`${selected.size} ${selected.size === 1 ? "person" : "people"}. `
               + "Shows what the file gives them; access from their GitHub teams is not included."}
             diffs={assignDiffs}
             confirming={assignSave.isPending}
@@ -1134,24 +1286,22 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
               {assignMode === "apply" ? "Who to apply it to" : "Who to remove it from"}
             </span>
             <div className="grid gap-1.5 max-h-[18rem] overflow-y-auto mt-1.5">
-              {Object.keys(file.people)
-                .filter(login => !assignSearch.trim() || login.includes(assignSearch.trim().toLowerCase()))
-                .sort()
-                .map(login => {
-                  const where = holdsIn(login);
-                  const already = where.length > 0;
-                  const relevant = assignMode === "apply" ? !already || scopedHere : already;
+              {candidates
+                .filter(({ login }) => !assignSearch.trim() || login.includes(assignSearch.trim().toLowerCase()))
+                .map(({ login, where, already, eligible, reason }) => {
                   return (
-                    <label key={login}
-                      className={`flex items-center gap-2.5 ${relevant ? "cursor-pointer" : "opacity-45"}`}>
-                      <input type="checkbox" checked={assignTo.has(login)} disabled={!relevant}
+                    <label key={login} title={reason ?? undefined}
+                      className={`flex items-center gap-2.5 ${eligible ? "cursor-pointer" : "opacity-45"}`}>
+                      <input type="checkbox" checked={assignTo.has(login)} disabled={!eligible}
                         onChange={() => setAssignTo(prev => {
                           const next = new Set(prev);
                           if (next.has(login)) next.delete(login); else next.add(login);
                           return next;
                         })} />
                       <span className={`${TYPE.body} text-ink`}>{login}</span>
-                      {already && (
+                      {reason && !already ? (
+                        <span className={`${TYPE.sub} text-ink-3`}>{reason}</span>
+                      ) : already && (
                         <span className={`${TYPE.sub} text-ink-3`}>
                           holds it{scopedHere && ` in ${where.map(a => accounts[a] ?? a).join(", ")}`}
                         </span>
@@ -1163,13 +1313,13 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
 
             <div className="mt-3 flex items-center gap-3 flex-wrap">
               <Button variant="ghost"
-                onClick={() => setAssignTo(new Set(Object.keys(file.people)))}>
-                Select everyone
+                onClick={() => setAssignTo(new Set(candidates.filter(c => c.eligible).map(c => c.login)))}>
+                Select everyone eligible ({candidates.filter(c => c.eligible).length})
               </Button>
               <Button variant="ghost" onClick={() => setAssignTo(new Set())}>Clear</Button>
-              <Button variant="primary" disabled={assignTo.size === 0}
+              <Button variant="primary" disabled={selected.size === 0}
                 onClick={() => setAssignOpen(true)}>
-                Review {assignMode === "apply" ? "applying" : "removing"} for {assignTo.size}
+                Review {assignMode === "apply" ? "applying" : "removing"} for {selected.size}
               </Button>
             </div>
           </Block>
@@ -1206,11 +1356,20 @@ function PresetDetail({ presetId, file, sha, vocabulary, canEditFields, canDelet
         )}
       </Sheet>
 
-      <ConfirmDialog open={confirmSave} onClose={() => setConfirmSave(false)}
-        onConfirm={() => { setConfirmSave(false); save.mutate(); }}
-        title="This will change how people are governed"
-        body={<>This will change {holders.length} {holders.length === 1 ? "person" : "people"}: {holders.join(", ")}.</>}
-        confirmLabel="Save anyway" intent="warn" busy={save.isPending} />
+      {confirmSave && (
+        <PermissionDiffDialog
+          title={isNew ? `Creating ${name.trim() || "a preset"}` : `Changes to ${existing?.name ?? presetId}`}
+          subtitle={isNew
+            ? "Nobody holds it yet."
+            : `${holders.length} ${holders.length === 1 ? "holder" : "holders"}. `
+              + "Each holder is shown as they would actually end up; access from their GitHub teams is not included."}
+          diffs={presetDiffs}
+          notes={presetNotes}
+          confirming={save.isPending}
+          onCancel={() => setConfirmSave(false)}
+          onConfirm={() => save.mutate()}
+        />
+      )}
 
       <ConfirmDialog open={confirmDelete} onClose={() => setConfirmDelete(false)}
         onConfirm={() => { setConfirmDelete(false); del.mutate(); }}

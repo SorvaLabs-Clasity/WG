@@ -54,6 +54,21 @@ export class IncompleteQueryError extends Error {
   }
 }
 
+/**
+ * A refusal the server named. Still an `Error` with the same message, so every
+ * existing `(err as Error).message` keeps working; the `code` is for the few
+ * callers that should *do* something different on a particular refusal rather
+ * than only print it — the admin screen learning somebody just joined the
+ * admin team, say, instead of showing the error and carrying on believing
+ * they had not.
+ */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export class RateLimitError extends Error {
   constructor(
     message: string,
@@ -119,8 +134,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
     );
   }
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed: ${res.status}`);
+    const body = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    throw new ApiError(body.error ?? `Request failed: ${res.status}`, res.status, body.code);
   }
   return res.json() as Promise<T>;
 }
