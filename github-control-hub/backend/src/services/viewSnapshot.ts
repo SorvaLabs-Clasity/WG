@@ -1,5 +1,5 @@
 import { gzipSync, gunzipSync } from "node:zlib";
-import { docClient, hasTable, tableName, PutCommand, GetCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, GetCommand, UpdateCommand, scanAll } from "../utils/dynamo";
 
 /**
  * A computed view, kept in the cloud between app launches.
@@ -89,6 +89,8 @@ const MAX_PAYLOAD = 380_000;
 export interface StoredView<T> {
   data: T;
   computedAt: string;
+  /** Epoch seconds the row expires at, if it carries one. */
+  ttl?: number;
 }
 
 /** Why the last save did not happen, per row, or null if it did. */
@@ -101,7 +103,23 @@ export function viewHealth(kind: ViewKey): {
   return { storing: !problems[kind], problem: problems[kind] ?? null };
 }
 
-export async function saveView<T>(kind: ViewKey, data: T): Promise<void> {
+/**
+ * `keepExpiry` is for the scheduled warm, and it is the difference between a
+ * cache and a leak.
+ *
+ * Every save sets the row to expire 48 hours later. The alarm pass re-saves
+ * stale rows every 30 minutes to keep them warm — so without this, warming a
+ * row pushed its expiry forward every time and nothing ever expired. A My work
+ * view somebody opened once, weeks ago, was still being rebuilt with a scan of
+ * the activity table twice an hour, forever.
+ *
+ * With it, the warm refreshes the *contents* and leaves the expiry alone, so a
+ * row lives 48 hours past the last time a person actually asked for it and
+ * then goes. Anything a person opens saves without it and resets the clock.
+ */
+export async function saveView<T>(
+  kind: ViewKey, data: T, opts: { keepExpiry?: number } = {},
+): Promise<void> {
   if (!hasTable("ALARMS_TABLE")) {
     problems[kind] = "No storage table is configured for this account, so the "
       + "answer cannot be kept between openings.";
@@ -128,7 +146,7 @@ export async function saveView<T>(kind: ViewKey, data: T): Promise<void> {
         id: kind, kind: "view-snapshot",
         payload,
         computedAt: new Date().toISOString(),
-        ttl: Math.floor(Date.now() / 1000) + TTL_HOURS * 3600,
+        ttl: opts.keepExpiry ?? Math.floor(Date.now() / 1000) + TTL_HOURS * 3600,
       },
     }));
     problems[kind] = undefined;
@@ -165,6 +183,7 @@ export async function readView<T>(
     const value = {
       data: JSON.parse(gunzipSync(Buffer.from(row.payload, "base64")).toString("utf8")) as T,
       computedAt: row.computedAt,
+      ...(typeof row.ttl === "number" ? { ttl: row.ttl as number } : {}),
     };
     held[kind] = { at: Date.now(), value };
     return value;
@@ -192,17 +211,27 @@ export async function readView<T>(
  */
 export async function listViews(
   prefix: string,
-): Promise<{ kind: ViewKey; computedAt: string }[]> {
+): Promise<{ kind: ViewKey; computedAt: string; ttl?: number }[]> {
   if (!hasTable("ALARMS_TABLE")) return [];
   const rows = await scanAll<any>(TABLE(), {
     filter: "#k = :view AND begins_with(id, :prefix)",
-    names: { "#k": "kind" },
+    // `ttl` is a DynamoDB reserved word, so it needs an alias to be projected.
+    names: { "#k": "kind", "#ttl": "ttl" },
     values: { ":view": "view-snapshot", ":prefix": prefix },
-    project: "id, computedAt",
+    project: "id, computedAt, #ttl",
   });
+  const now = Math.floor(Date.now() / 1000);
   return rows
     .filter(r => typeof r?.id === "string" && typeof r?.computedAt === "string")
-    .map(r => ({ kind: r.id as ViewKey, computedAt: r.computedAt as string }));
+    // DynamoDB deletes expired rows lazily — up to a couple of days late — so
+    // an expired row can still come back from a scan. It is not warmed: that
+    // would resurrect exactly the rows expiry exists to retire.
+    .filter(r => !(typeof r?.ttl === "number" && r.ttl <= now))
+    .map(r => ({
+      kind: r.id as ViewKey,
+      computedAt: r.computedAt as string,
+      ...(typeof r?.ttl === "number" ? { ttl: r.ttl } : {}),
+    }));
 }
 
 export function isViewFresh(
@@ -266,4 +295,35 @@ export function __resetViews(): void {
   for (const k of Object.keys(refreshing)) refreshing[k] = null;
   for (const k of Object.keys(lastRefreshAt)) lastRefreshAt[k] = 0;
   for (const k of Object.keys(problems)) problems[k] = undefined;
+}
+
+
+/**
+ * A person asked for this row, so it should live another 48 hours.
+ *
+ * The scheduled warm refreshes a row's contents but deliberately not its
+ * expiry — otherwise nothing ever expired. That makes a *read* the only thing
+ * that keeps a row alive, which is the intended rule: a view lives while
+ * somebody uses it. Without this, a view somebody opened every day was served
+ * warm, never re-saved, and went cold every 48 hours regardless.
+ *
+ * One small update, and only once the row is into its last day, so a page that
+ * is opened constantly costs at most one write a day rather than one per load.
+ */
+export async function touchView(kind: ViewKey, currentTtl: number | undefined): Promise<void> {
+  if (!hasTable("ALARMS_TABLE")) return;
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof currentTtl === "number" && currentTtl - now > 24 * 3600) return;
+  try {
+    await docClient.send(new UpdateCommand({
+      TableName: TABLE(),
+      Key: { id: kind },
+      UpdateExpression: "SET #ttl = :ttl",
+      ConditionExpression: "attribute_exists(id)",
+      ExpressionAttributeNames: { "#ttl": "ttl" },
+      ExpressionAttributeValues: { ":ttl": now + TTL_HOURS * 3600 },
+    }));
+  } catch {
+    // Extending a cache's life is never worth failing a read over.
+  }
 }

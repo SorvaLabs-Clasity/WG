@@ -16,7 +16,7 @@ import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
 import { getOrgConfig } from "../services/orgConfigService";
 import {
-  readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing,
+  readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing, touchView,
 } from "../services/viewSnapshot";
 import { requirePermission } from "../middleware/permissionGate";
 
@@ -358,6 +358,9 @@ router.get("/ship", requirePermission("me.work.read"), async (req: Request, res:
     const stored = await readView<any>(key);
     if (stored) {
       res.json({ ...stored.data, computedAt: stored.computedAt, refreshing: isViewRefreshing(key) });
+      // Somebody is using this view, so it should outlive the scheduled warm,
+      // which refreshes contents but not expiry. See `touchView`.
+      void touchView(key, stored.ttl);
       if (isViewDue(key, stored)) {
         void refreshViewIfDue(key, async () => saveView(key, await buildShipped(login, days)));
       }

@@ -65,6 +65,22 @@ const githubConfigured = () =>
  */
 class SkipWithoutGitHub extends Error {}
 
+/**
+ * Leaves one phase early without leaving the pass.
+ *
+ * The phases share `handler`'s body, so a `return` inside one of them ends the
+ * whole invocation and silently skips every phase after it. A phase that finds
+ * nothing to do throws this instead, and its own `catch` treats it as quiet.
+ */
+class NothingToDo extends Error {}
+
+/** How old a dashboard snapshot may be before a pass recomputes it. */
+const WIDGET_FRESH_MS = 30 * 60_000;
+
+/** How often the open pull requests are walked when reminders are on, and when they are off. */
+const PR_NUDGE_EVERY_MS = 15 * 60_000;
+const PR_SNAPSHOT_FRESH_MS = 30 * 60_000;
+
 let bootstrapped: Promise<void> | null = null;
 
 function bootstrapOnce(): Promise<void> {
@@ -484,7 +500,9 @@ export async function handler(_event?: unknown, context?: LambdaContextLike): Pr
       if (parts.length !== 3 || !parts[1] || !Number.isFinite(days)) continue;
 
       try {
-        await saveView(row.kind, await buildShipped(parts[1], days));
+        // `keepExpiry`: refresh what the row says, not how long it lives. See
+        // `saveView` — warming used to extend every row forever.
+        await saveView(row.kind, await buildShipped(parts[1], days), { keepExpiry: row.ttl });
         warmed++;
       } catch (err: any) {
         // One person's row must not stop the other thirty-nine.
@@ -550,11 +568,44 @@ export async function handler(_event?: unknown, context?: LambdaContextLike): Pr
     if (!hasGitHub) throw new SkipWithoutGitHub();
     const { listWidgets } = await import("../services/widgetService");
     const { saveWidgetSnapshot } = await import("../services/alarmService");
-    const all = await listWidgets();
+    const { readWidgetSnapshots } = await import("../services/alarmService");
+    const everyWidget = await listWidgets();
+
+    /**
+     * Only the widgets whose snapshot is stale.
+     *
+     * This recomputed **every** widget on **every** pass — every five minutes,
+     * 288 times a day — with live GitHub reads including commit search, which
+     * allows thirty requests a minute and so runs one widget after another. On
+     * top of that it scanned the whole graph-edges table twice per pass to get
+     * a repository count. That was most of why the function ran close to its
+     * five-minute ceiling on every invocation and cost what it did.
+     *
+     * A snapshot is what the dashboard opens with so it does not wait; it is
+     * not what alarms decide on — alarm evaluation above reads live. So a card
+     * up to `WIDGET_FRESH_MS` old is correct behaviour, shown with its age, and
+     * anybody who needs it newer has "Force a query to refresh now". A widget
+     * with no snapshot, or whose last one failed, is always refreshed.
+     */
+    const snapshots = new Map(
+      (await readWidgetSnapshots().catch(() => [])).map(s => [s.widgetId, s]));
+    const all = everyWidget.filter(w => {
+      const s = snapshots.get(w.id);
+      if (!s || s.error) return true;
+      const age = Date.now() - Date.parse(s.computedAt);
+      return !(age < WIDGET_FRESH_MS);
+    });
+
+    if (all.length === 0) {
+      console.log(`[Alarm] widget snapshots: all ${everyWidget.length} fresh, nothing to refresh`);
+      throw new NothingToDo();
+    }
 
     // One count for the whole pass, from the edges already in memory. This is
     // the denominator every repository-scoped card divides by, and reading it
     // here means the stored answer is complete when the dashboard opens.
+    // Below the freshness filter, so a pass with nothing to refresh does not
+    // scan the graph table for a number it will not use.
     const { scanGraphEdges } = await import("../services/graphService");
     const repoTotal = await scanGraphEdges()
       .then(edges => edges.filter((e: any) => e.type === "repo_meta").length)
@@ -590,11 +641,13 @@ export async function handler(_event?: unknown, context?: LambdaContextLike): Pr
       }
     }
     });
-    console.log(`[Alarm] widget snapshots: ${stored} stored, ${failed} unreadable of ${all.length}`);
+    console.log(`[Alarm] widget snapshots: ${stored} stored, ${failed} unreadable, `
+      + `${everyWidget.length - all.length} still fresh, of ${everyWidget.length}`
+      + (widgetsLeft ? `, ${widgetsLeft} left for the next pass` : ""));
   } catch (err) {
     // The snapshots are an optimisation; the dashboard falls back to computing
     // live without them. A failure here must not fail the alarm pass.
-    if (!(err instanceof SkipWithoutGitHub)) {
+    if (!(err instanceof SkipWithoutGitHub) && !(err instanceof NothingToDo)) {
       console.error("[Alarm] widget snapshot pass failed:", (err as Error).message);
     }
   }
@@ -705,6 +758,47 @@ export async function handler(_event?: unknown, context?: LambdaContextLike): Pr
     const prSettings = await getPrSettings();
     if (!prSettings.monitoringEnabled) {
       throw { __skip: true };
+    }
+
+    /**
+     * Not every five minutes.
+     *
+     * This walked every open pull request in the organization through GraphQL
+     * on every pass, 288 times a day, whether or not anything was going to be
+     * done with the result. Reminders are about pull requests that have waited
+     * hours or days, so a fifteen-minute cadence sends every one of them; the
+     * stored list the tab opens on is fine at half an hour, and opening the tab
+     * can still ask for a live one.
+     *
+     * Timed off the snapshot the walk already stores, so there is nothing new
+     * to keep in step.
+     */
+    const { readPrSnapshot, readPrNudgeMarker, markPrNudgePass } = await import("../services/alarmService");
+
+    /**
+     * Two different clocks, deliberately.
+     *
+     * With reminders on, the pace is set by when reminders last *ran*, kept in
+     * its own marker. The PR snapshot is also written by the Pull requests tab
+     * each time it loads, so pacing reminders off it would let somebody with
+     * the tab open keep it fresh and starve reminders forever.
+     *
+     * With reminders off, all this pass does is refresh that snapshot, so its
+     * own age is exactly the right clock — if the tab refreshed it a minute
+     * ago there is nothing to do.
+     */
+    const lastRan = prSettings.remindersEnabled
+      ? await readPrNudgeMarker().catch(() => null)
+      : (await readPrSnapshot().catch(() => null))?.cachedAt ?? null;
+    const since = lastRan ? Date.now() - Date.parse(lastRan) : Infinity;
+    const every = prSettings.remindersEnabled ? PR_NUDGE_EVERY_MS : PR_SNAPSHOT_FRESH_MS;
+    if (since < every) {
+      throw { __skip: true };
+    }
+    if (prSettings.remindersEnabled) {
+      // Marked on the way in, not on success: a pass that keeps failing must
+      // not be retried every five minutes, which is the cost this exists to cut.
+      await markPrNudgePass().catch(() => { /* pacing is an optimisation */ });
     }
 
     const { fetchOpenPrs } = await import("../services/prNudgeService");

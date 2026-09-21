@@ -157,8 +157,17 @@ const code = (src: string) => src
      */
     check("the pass looks up which My work rows are stored",
       /listViews\("shipped#"\)/.test(handler));
-    check("  by key and timestamp only, not by payload",
-      /project: "id, computedAt"/.test(store));
+    /**
+     * The property is "never the payload" — a scan pulling every compressed
+     * answer to decide which are stale would cost more than the rows it saves.
+     * It used to pin the exact projection string, which broke the moment the
+     * expiry was added to it; the expiry is what lets the warm stop extending
+     * rows forever, and it is a few bytes.
+     */
+    const projection = store.match(/project: "([^"]+)"/)?.[1] ?? "";
+    check("  by small fields only, never by payload",
+      projection.length > 0 && !/payload/.test(projection) && /computedAt/.test(projection),
+      projection);
 
     check("  skipping the ones already fresh",
       /isViewFresh\(row\.kind, row\)/.test(handler));

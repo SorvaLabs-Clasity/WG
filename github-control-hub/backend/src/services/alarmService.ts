@@ -252,7 +252,20 @@ export interface PrSnapshot {
   ttl: number;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes | PrSnapshot | WidgetSnapshot;
+/**
+ * When the scheduled reminder pass last ran — separate from the PR snapshot.
+ *
+ * The snapshot is also written by the Pull requests tab whenever it loads, so
+ * its age says when somebody last looked, not when reminders were last sent.
+ * Pacing reminders off it would let an open tab starve them indefinitely.
+ */
+export interface PrNudgeMarker {
+  id: "pr-nudge-pass";
+  kind: "pr-nudge-pass";
+  lastRunAt: string;
+}
+
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes | PrSnapshot | WidgetSnapshot | PrNudgeMarker;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -1451,4 +1464,15 @@ export async function setPrPause(
 // ── test seam ──
 export function __resetAlarmStoreForTests(): void {
   memStore = [];
+}
+
+
+/** When the scheduled reminder pass last ran, or null if it never has. */
+export async function readPrNudgeMarker(): Promise<string | null> {
+  const row = await getById<PrNudgeMarker>("pr-nudge-pass");
+  return row?.lastRunAt ?? null;
+}
+
+export async function markPrNudgePass(at = new Date()): Promise<void> {
+  await put({ id: "pr-nudge-pass", kind: "pr-nudge-pass", lastRunAt: at.toISOString() });
 }
