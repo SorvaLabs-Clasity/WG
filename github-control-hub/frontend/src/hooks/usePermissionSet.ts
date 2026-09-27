@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchMyPermissions, type MyPermissions } from "../api/me";
+import { decideTeamOr } from "../lib/teamOr";
 import { usePermissions } from "./usePermissions";
 
 /**
@@ -80,9 +81,9 @@ export function usePermissionSet() {
  */
 export function useTeamOr(team: "control-hub" | "aws", ...keys: string[]): boolean {
   const { data: teams } = usePermissions();
-  const { permissions, canAny } = usePermissionSet();
-  if (permissions?.enforced && !permissions.inert) return canAny(...keys);
-  return team === "aws" ? !!teams?.isAwsAdmin : !!teams?.isControlHubAdmin;
+  const { permissions } = usePermissionSet();
+  return decideTeamOr(permissions, teams, team, keys);
 }
 
+export { decideTeamOr };
 export type { MyPermissions };

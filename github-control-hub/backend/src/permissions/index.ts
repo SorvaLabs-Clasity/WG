@@ -5,6 +5,7 @@ import { unknownNodesIn } from "./validate";
 import { emptyFile } from "./types";
 import { CONTROL_HUB_ADMIN_TEAM, isControlHubAdmin, isAwsAdmin } from "../services/authorizationService";
 import { installAccountId } from "./accountScope";
+import { installAccountFor, accountsNamedIn } from "./installAccount";
 
 export * from "./types";
 export { PERMISSIONS, isLeaf, isKnownNode, leavesUnder } from "./vocabulary";
@@ -147,7 +148,25 @@ async function access(login: string, subject: Promise<Subject>): Promise<Access>
      * the entries' top-level fields: a file written before accounts existed,
      * or an install whose account list has not resolved yet.
      */
-    const account = installAccountId();
+    /**
+     * Resolved here rather than wherever a route happened to set it. Two
+     * routes used to be the only places that did, and a signed-in member calls
+     * neither — so their account was unknown and their per-account grants were
+     * invisible.
+     */
+    const declaredAccounts = accountsNamedIn(loaded.file);
+    const install = await installAccountFor(declaredAccounts);
+    if (install.problem) {
+      return {
+        permissions: permissionsFor(emptyFile(), resolvedSubject),
+        inert: false,
+        failure: { reason: "unreachable", detail: install.problem },
+        unknownNodes: [],
+        source: loaded.source,
+        sha: loaded.sha,
+      };
+    }
+    const account = install.accountId;
 
     const empty = Object.keys(loaded.file.people ?? {}).length === 0
       && Object.keys(loaded.file.presets ?? {}).length === 0

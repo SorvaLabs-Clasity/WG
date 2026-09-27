@@ -46,7 +46,15 @@ export default function RequireTeam({ team, title, permissions, children }: {
   const set = usePermissionSet();
   const { user } = useAuth();
 
-  const enforced = !!set.permissions?.enforced && !set.permissions.inert;
+  /**
+   * Nothing to enforce, nothing to lock: an AWS-only install has no
+   * organization, no file and no team to check, and every route behind this
+   * door is open on the server. It used to fall through to the team below and
+   * lock the AWS tab behind a team that cannot exist there.
+   */
+  if (set.permissions?.inert) return <>{children}</>;
+
+  const enforced = !!set.permissions?.enforced;
   if (enforced) {
     // Could not ask: the page says so itself, and a locked door would tell
     // somebody they had lost access they may still have.

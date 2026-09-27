@@ -52,10 +52,11 @@ export default function NoAccess() {
             not assumed from joining the organization.
           </p>
 
-          {/* The one fact that resolves this: the team to ask for, spelled the
-              way it is spelled on GitHub. */}
+          {/* The one fact that resolves this: who can grant it. Naming the team
+              as something to *join* was the wrong ask — joining it makes
+              somebody a full administrator, which is not what they need. */}
           <div className="relative mt-6 inline-flex flex-col items-center gap-2">
-            <span className="caps">Ask to be added to</span>
+            <span className="caps">Ask somebody on this team to grant it</span>
             <code className="px-3 py-1.5 font-mono text-[0.8125rem] border bg-crimson-wash text-crimson border-crimson-edge">
               {adminTeam}
             </code>
@@ -64,7 +65,6 @@ export default function NoAccess() {
           {user?.login && (
             <p className="relative mt-7 text-[0.75rem] text-ink-3">
               Signed in as <span className="font-mono">{user.login}</span>.
-              Organization owners are admitted without being on the team.
             </p>
           )}
         </div>
