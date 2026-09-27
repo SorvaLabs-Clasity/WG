@@ -12,8 +12,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
  * scheduled pass, not by this request, so polling faster only re-reads the same
  * answer. Slower and somebody would merge something and watch a stale list.
  */
-export function useMyWork() {
+export function useMyWork(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["me", "work"],
     queryFn: fetchMyWork,
     refetchInterval: 60_000,

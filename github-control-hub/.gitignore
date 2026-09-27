@@ -6,3 +6,4 @@ dist/
 .terraform/
 terraform.tfstate*
 *.tfvars
+backend/e2e/.sessions.json

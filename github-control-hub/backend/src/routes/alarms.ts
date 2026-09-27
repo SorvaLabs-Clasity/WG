@@ -1,4 +1,5 @@
 import { Router, Request, Response, RequestHandler } from "express";
+import { onlyHolders } from "../utils/refusalText";
 
 import {
   isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM,
@@ -65,7 +66,7 @@ const requireAdmin: RequestHandler = (req, res, next) => {
       if (allowed) return next();
       res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can manage ` +
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team can manage ` +
           `alarms and email groups. They send mail on behalf of the whole organization, so they ` +
           `are not scoped to what you personally can reach.`,
       });
@@ -93,7 +94,7 @@ const requireEitherTeam: RequestHandler = (req, res, next) => {
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         team: CONTROL_HUB_ADMIN_TEAM,
         error: `Alarms are limited to the "${CONTROL_HUB_ADMIN_TEAM}" and `
-          + `"${AWS_ADMIN_TEAM}" teams, and to organization owners.`,
+          + `"${AWS_ADMIN_TEAM}" teams.`,
       });
     })
     .catch(() => res.status(503).json({ error: "Could not verify team membership" }));
@@ -133,8 +134,8 @@ async function refusedForSubject(
     code: aws ? "AWS_ADMIN_REQUIRED" : "CONTROL_HUB_ADMIN_REQUIRED",
     team,
     error: aws
-      ? `Alarms on AWS guardrails are limited to the "${team}" team, and to organization owners.`
-      : `Alarms on widgets are limited to the "${team}" team, and to organization owners.`,
+      ? `${onlyHolders(["aws.rules.edit"], team)} can change alarms on AWS guardrails.`
+      : `${onlyHolders([`alarms.org.${verb}`], team)} can ${verb} alarms on cards.`,
   });
   return true;
 }

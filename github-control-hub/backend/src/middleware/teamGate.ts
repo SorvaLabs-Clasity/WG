@@ -36,7 +36,9 @@ function gate(
         res.status(403).json({
           code,
           team,
-          error: `${what} is limited to the "${team}" team, and to organization owners.`,
+          // Only reached before a permissions file is in force — after, this
+          // gate stands aside — so the team really is the rule here.
+          error: `${what} is limited to the "${team}" team.`,
         });
       })
       // Not a refusal. Being unable to ask GitHub is an outage, and answering

@@ -138,11 +138,14 @@ export default function DependencyDashboardPage() {
   // is what these were — open to every member — and after that a panel the
   // person was not given is not fetched, rather than fetched and shown as an
   // error.
-  const { can } = usePermissionSet();
-  const canAge = can("deps.age.read");
-  const canPrs = can("deps.dependabot.read");
-  const canSummary = can("deps.advisories.read");
+  const { can, holds } = usePermissionSet();
+  // `holds` for fetching — false until the answer is in — and `can` for the
+  // Renovate view, which should not flicker out while it loads.
+  const canAge = holds("deps.age.read");
+  const canPrs = holds("deps.dependabot.read");
+  const canSummary = holds("deps.advisories.read");
   const canRenovate = can("deps.renovate.read");
+  const fetchRenovate_ = holds("deps.renovate.read");
   const { user } = useAuth();
 
   // In the URL, so the view survives a refresh and can be linked to. An
@@ -222,7 +225,7 @@ export default function DependencyDashboardPage() {
     queryKey: ["renovate"],
     queryFn: () => fetchRenovate(),
     staleTime: 120_000,
-    enabled: canRenovate,
+    enabled: fetchRenovate_,
   });
   const renovateOpen = (renovate?.prs ?? []).filter(pr => pr.state === "open").length;
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,

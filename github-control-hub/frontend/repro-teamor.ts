@@ -57,7 +57,7 @@ console.log("screens decide by permission once a file is in force");
   const router = fs.readFileSync("src/router.tsx", "utf8");
   const doors = [...router.matchAll(/<RequireTeam\b[^>]*>/g)].map(m => m[0]);
   check("every route door names the permissions that open it",
-    doors.length > 0 && doors.every(d => /permissions=\{\[/.test(d)), doors);
+    doors.length >= 11 && doors.every(d => /permissions=\{sectionPermissions\("/.test(d)), doors);
 
   check("nothing still says organization owners are let in",
     !/owners are admitted/.test(door));
@@ -115,15 +115,15 @@ await decisions();
 console.log("\npanels ask before they load");
 {
   const GATED: [string, RegExp][] = [
-    ["src/pages/ActivityPage.tsx", /useActivityPulse\(pulseHours, canPulse\)/],
+    ["src/pages/ActivityPage.tsx", /useActivityPulse\(pulseHours, holds\("activity\.pulse\.read"\)\)/],
     ["src/pages/ActivityPage.tsx", /can\("activity\.pulse\.read"\)/],
     ["src/pages/ActivityPage.tsx", /lens === "important" && canImportant/],
     ["src/pages/DependencyDashboardPage.tsx", /enabled: canAge/],
     ["src/pages/DependencyDashboardPage.tsx", /enabled: canPrs/],
-    ["src/pages/DependencyDashboardPage.tsx", /enabled: canRenovate/],
+    ["src/pages/DependencyDashboardPage.tsx", /enabled: fetchRenovate_/],
     ["src/pages/DependencyDashboardPage.tsx", /useDependencySummary\(canSummary\)/],
     ["src/pages/AlarmsPage.tsx", /lens === "groups" && canGroups/],
-    ["src/components/TeamsFlowPanel.tsx", /useTeamsFlow\(can\("alarms\.teamsFlow\.read"\)\)/],
+    ["src/components/TeamsFlowPanel.tsx", /useTeamsFlow\(holds\("alarms\.teamsFlow\.read"\)\)/],
     ["src/components/RenovatePanel.tsx", /useAccessRepos\(canListRepos\)/],
     ["src/pages/AnalyticsPage.tsx", /presetId === "renovate-open" && canRenovate/],
   ];

@@ -1,5 +1,6 @@
 /* v2: undo-event restores original for overridden conflicts */
 import { Router } from "express";
+import { onlyHolders } from "../utils/refusalText";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
@@ -112,7 +113,7 @@ async function denyIfNotPermitted(
     return {
       status: 403,
       body: {
-        error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can ` +
+        error: `${onlyHolders([keys.aws], AWS_ADMIN_TEAM)} can ` +
           `${verb} this. It changes an AWS account rather than a repository.`,
         code: "AWS_ADMIN_REQUIRED",
       },
@@ -123,7 +124,7 @@ async function denyIfNotPermitted(
     return {
       status: 403,
       body: {
-        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
+        error: `${onlyHolders([keys.app], CONTROL_HUB_ADMIN_TEAM)} can ` +
           `${verb} this. It changes what every repository the template touches receives.`,
         code: "CONTROL_HUB_ADMIN_REQUIRED",
       },

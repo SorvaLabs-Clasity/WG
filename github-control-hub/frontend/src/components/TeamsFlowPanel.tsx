@@ -16,8 +16,8 @@ import { Note, Button, SURFACE } from "../design";
  * rather than infrastructure.
  */
 export default function TeamsFlowPanel() {
-  const { can } = usePermissionSet();
-  const { data: flow } = useTeamsFlow(can("alarms.teamsFlow.read"));
+  const { holds } = usePermissionSet();
+  const { data: flow } = useTeamsFlow(holds("alarms.teamsFlow.read"));
   const save = useSaveTeamsFlow();
 
   const [url, setUrl] = useState("");

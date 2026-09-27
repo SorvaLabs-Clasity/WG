@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { onlyHolders } from "../utils/refusalText";
 import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { teamOrPermission, accessForSelf } from "../permissions";
 import type { Request, Response } from "express";
@@ -21,7 +22,7 @@ const router = Router();
 async function refusedWidgetChange(res: Response, login: string, verb: "create" | "edit" | "delete", userToken?: string): Promise<boolean> {
   if (await teamOrPermission(login, userToken ?? "", "control-hub", [`overview.cards.${verb}`])) return false;
   res.status(403).json({
-    error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
+    error: `${onlyHolders([`overview.cards.${verb}`], CONTROL_HUB_ADMIN_TEAM)} can ${verb} ` +
       `dashboard widgets. There is one dashboard, shared by everyone.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
@@ -58,8 +59,8 @@ router.get("/", requireAnyPermission("me.widgets.read", "overview.read", "overvi
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       team: CONTROL_HUB_ADMIN_TEAM,
-      error: `The Overview board is limited to the "${CONTROL_HUB_ADMIN_TEAM}" team, `
-        + "and to organization owners. Your own cards are on My work.",
+      error: `${onlyHolders(["overview.read", "overview.cards.read"], CONTROL_HUB_ADMIN_TEAM)} `
+        + "can see the Overview board. Your own cards are on My work.",
     });
   }
 

@@ -1239,7 +1239,7 @@ export function useWidgetData(
   const isBypass = !fromSnapshot && config.type === "preset" && config.presetId === "bypasses";
   // A Renovate card needs Renovate's own read; without it the card would load
   // straight into a refusal on a board the person was given.
-  const canRenovate = usePermissionSet().can("deps.renovate.read");
+  const canRenovate = usePermissionSet().holds("deps.renovate.read");
   const isRenovate = !fromSnapshot && config.type === "preset" && config.presetId === "renovate-open" && canRenovate;
   const { data: renovateData, isLoading: renovateLoading } = useQuery({
     queryKey: ["renovate"],

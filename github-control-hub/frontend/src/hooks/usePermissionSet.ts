@@ -61,7 +61,18 @@ export function usePermissionSet() {
   /** Whether any one of these is held. A tab reached two ways needs both named. */
   const canAny = (...keys: string[]): boolean => keys.some(can);
 
-  return { ...query, can, canAny, unavailable, noAccess, permissions: data };
+  /**
+   * Whether it is *known* to be held — false until the answer arrives.
+   *
+   * For deciding whether to fetch, where `can`'s "yes while loading" is the
+   * wrong default: a panel enabled on it fires in the moment before the answer
+   * lands and collects a refusal for somebody who never held the read. `can`
+   * stays right for what is drawn, where guessing "no" would flash an empty
+   * app on every launch.
+   */
+  const holds = (key: string): boolean => !!data && can(key);
+
+  return { ...query, can, canAny, holds, unavailable, noAccess, permissions: data };
 }
 
 /**

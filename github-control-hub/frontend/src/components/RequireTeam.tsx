@@ -30,7 +30,12 @@ import { Page, Spinner, Button } from "../design";
  * `<Page>`, so every theme lost all of it in exactly the same way.
  */
 export default function RequireTeam({ team, title, permissions, children }: {
-  team: "control-hub" | "aws";
+  /**
+   * The team that was the rule before permissions, for the sections that had
+   * one. Left out for a section every member could open before: until a file
+   * is in force this door is then simply open, exactly as it was.
+   */
+  team?: "control-hub" | "aws";
   /** What is behind the door, in the reader's words. */
   title: string;
   /**
@@ -61,9 +66,24 @@ export default function RequireTeam({ team, title, permissions, children }: {
     if (set.unavailable || set.canAny(...permissions)) return <>{children}</>;
     return (
       <Page user={user}>
-        <Locked title={title} team={null} login={user?.login ?? ""} kind={team} />
+        <Locked title={title} team={null} login={user?.login ?? ""} kind={team ?? "control-hub"} />
       </Page>
     );
+  }
+
+  // No team was ever the rule here, so before a file there is nothing to check
+  // — but only once the answer says so. Mounting the page while it loads
+  // fired every one of its reads for somebody the file may not have given
+  // them to.
+  if (!team) {
+    if (!set.permissions && set.isLoading) {
+      return (
+        <Page user={user}>
+          <div className="py-24 flex justify-center"><Spinner /></div>
+        </Page>
+      );
+    }
+    return <>{children}</>;
   }
 
   // Inside the page as well, so the tabs do not appear a beat after the rest of

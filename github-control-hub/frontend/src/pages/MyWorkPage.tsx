@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { idleLabel } from "../lib/idle";
 import { ago } from "../lib/ago";
 import { useAuth } from "../App";
@@ -765,31 +766,43 @@ function Shipped() {
   );
 }
 
+/**
+ * Each view by the read behind it. They were all shown to everybody who could
+ * open the tab, and the tab now opens for any of them — somebody given only
+ * their own alarms has to be able to reach them, and they live here — so a
+ * view whose read is missing is left out rather than opened onto a refusal.
+ */
+const VIEWS: [Lens, string, string][] = [
+  ["queue", "Queue", "me.work.read"],
+  ["push", "Why can't I push?", "me.push.check"],
+  ["shipped", "What did I ship?", "me.work.read"],
+  ["board", "My widgets", "me.widgets.read"],
+  ["myalarms", "My alarms", "me.alarms.read"],
+  ["alerts", "Notifications", "me.alerts.read"],
+];
+
 export default function MyWorkPage() {
   const { user } = useAuth();
-  const [lens, setLens] = useState<Lens>("queue");
-  const work = useMyWork();
+  const { can, holds } = usePermissionSet();
+  const views = VIEWS.filter(([, , key]) => can(key));
+  const [chosen, setLens] = useState<Lens>("queue");
+  // The first view this person has, when the one chosen is not among them.
+  const lens: Lens = views.some(([v]) => v === chosen) ? chosen : (views[0]?.[0] ?? "queue");
+  const work = useMyWork(holds("me.work.read"));
 
   return (
     <Page user={user}>
       <PageHeader
         title="My work"
         subtitle="What is waiting on you, what is stopping you, and what went out."
-        actions={<RefreshButton onRefresh={() => work.refetch()} />}
+        actions={holds("me.work.read") ? <RefreshButton onRefresh={() => work.refetch()} /> : undefined}
       />
 
       <div className="mb-7">
         <Segmented
           value={lens}
           onChange={v => setLens(v as Lens)}
-          options={[
-            ["queue", "Queue"],
-            ["push", "Why can't I push?"],
-            ["shipped", "What did I ship?"],
-            ["board", "My widgets"],
-            ["myalarms", "My alarms"],
-            ["alerts", "Notifications"],
-          ]}
+          options={views.map(([v, label]) => [v, label] as [Lens, string])}
         />
       </div>
 

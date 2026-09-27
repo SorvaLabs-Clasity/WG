@@ -1,4 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from "react";
+import { useGithubAvailable } from "./hooks/useGithubAvailable";
+import { usePermissionSet } from "./hooks/usePermissionSet";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "./router";
@@ -91,14 +93,17 @@ function parseJwt(token: string): Record<string, unknown> | null {
 function PrefetchPulls() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  // Warming a tab this person cannot open is a refusal on every launch.
+  const mayRead = usePermissionSet().holds("pulls.read");
+  const github = useGithubAvailable();
   useEffect(() => {
-    if (!user) return;
+    if (!user || !mayRead || github !== true) return;
     void qc.prefetchQuery({
       queryKey: ["pulls"],
       queryFn: () => apiGet("/pulls"),
       staleTime: 15_000,
     });
-  }, [user, qc]);
+  }, [user, qc, mayRead, github]);
   return null;
 }
 

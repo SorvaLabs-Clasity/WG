@@ -377,51 +377,53 @@ console.log("\nthe section line names permissions that exist");
    * always answer false for it under enforcement — so this checks every named
    * key against the real vocabulary the same way the routes above are checked.
    */
+  /**
+   * The keys now live in one table, `lib/sections.ts`, read by both the
+   * section line and the route doors. They kept separate lists before, and the
+   * lists drifted.
+   */
   const navSrc = fs.readFileSync("../frontend/src/components/Navbar.tsx", "utf8");
+  const sectionsSrc = fs.readFileSync("../frontend/src/lib/sections.ts", "utf8");
   const itemsMatch = navSrc.match(/const ITEMS = \[([\s\S]*?)\n\];/);
   check("Navbar's ITEMS array is found", !!itemsMatch);
-
-  if (itemsMatch) {
+  const table = sectionsSrc.match(/SECTION_PERMISSIONS = \{([\s\S]*?)\n\}/);
+  check("the section table is found", !!table);
+  if (itemsMatch && table) {
     const entries = [...itemsMatch[1].matchAll(/\{\s*label:/g)].length;
-    const lists = [...itemsMatch[1].matchAll(/permissions:\s*\[([^\]]*)\]/g)];
-    check("  every ITEMS entry names at least one permission", lists.length === entries,
-      { entries, named: lists.length });
+    const fromTable = [...itemsMatch[1].matchAll(/permissions: sectionPermissions\("([^"]+)"\)/g)];
+    check("  every ITEMS entry reads its keys from the section table", fromTable.length === entries,
+      { entries, fromTable: fromTable.length });
 
-    const perms = lists.flatMap(m => [...m[1].matchAll(/"([^"]+)"/g)].map(k => k[1]));
-    check("  and no entry names an empty list",
-      lists.every(m => /"/.test(m[1])));
-
-    const vocabulary = new Set(PERMISSIONS.map(p => p.key));
-    const invented = perms.filter(k => !vocabulary.has(k));
-    check("  and every permission it names exists in the vocabulary",
-      invented.length === 0, invented);
-
-    /**
-     * The tabs that are the only route to data gated on some *other* key.
-     *
-     * Alarms is the reason this check exists: it named `alarms.org.read` alone,
-     * while personal alarms and the notification destination live behind it and
-     * are reachable nowhere else, so holding `me.alarms.read` and nothing
-     * organization-wide hid the only door to your own settings.
-     */
-    const item = (label: string) => {
-      const m = itemsMatch[1].match(
-        new RegExp(`\\{\\s*label: "${label}"[^}]*permissions:\\s*\\[([^\\]]*)\\]`));
+    const section = (path: string) => {
+      const m = table[1].match(new RegExp(`"${path.replace("/", "\\/")}":\\s*\\[([^\\]]*)\\]`));
       return m ? [...m[1].matchAll(/"([^"]+)"/g)].map(k => k[1]) : [];
     };
+    const paths = [...table[1].matchAll(/"(\/[^"]+)":/g)].map(m => m[1]);
+    check("  and every section names at least one permission", paths.length > 0 && paths.every(p => section(p).length > 0),
+      paths.filter(p => section(p).length === 0));
 
-    const alarms = item("Alarms");
-    check("  Alarms is offered on the organization's alarms or on your own",
-      alarms.includes("alarms.org.read") && alarms.includes("me.alarms.read"), alarms);
+    const vocabulary = new Set(PERMISSIONS.map(p => p.key));
+    const invented = paths.flatMap(section).filter(k => !vocabulary.has(k));
+    check("  and every permission it names exists in the vocabulary", invented.length === 0, invented);
 
-    const activity = item("Activity");
+    /**
+     * Somebody holding only their own alarms and notification settings must
+     * be able to reach them. They live on My work, so My work opens on them;
+     * the Alarms tab is the organization's alarms and opens on those alone —
+     * offering it on `me.*` opened a page that then said it was not open to
+     * them.
+     */
+    const myWork = section("/my-work");
+    check("  My work opens on your own alarms and notification settings",
+      ["me.alarms.read", "me.destination.read", "me.alerts.read"].every(k => myWork.includes(k)), myWork);
+    check("  Alarms opens on the organization's alarms",
+      JSON.stringify(section("/alarms")) === JSON.stringify(["alarms.org.read"]), section("/alarms"));
+
+    const activity = section("/activity");
     check("  Activity is offered on any of the three keys that reach the feed",
       ["activity.read.own", "activity.read.app.rows", "activity.read.github"]
         .every(k => activity.includes(k)), activity);
-
-    const overview = item("Overview");
-    check("  Overview is offered on overview.read",
-      overview.includes("overview.read"), overview);
+    check("  Overview is offered on overview.read", section("/analytics").includes("overview.read"));
   }
 }
 

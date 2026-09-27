@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { sectionPermissions } from "../lib/sections";
 import { useNavigate, useLocation } from "react-router-dom";
 import AwsAccountSwitcher from "./AwsAccountSwitcher";
 import UserAvatar from "./UserAvatar";
@@ -63,21 +64,21 @@ const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
  */
 const ITEMS = [
   // First, because it is the one somebody opens without being sent there.
-  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work"), permissions: ["me.work.read", "me.repos.read"] },
-  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics"), permissions: ["overview.read", "overview.cards.read"] },
-  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws"), permissions: ["aws.read"] },
-  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms"), permissions: ["alarms.org.read", "me.alarms.read", "me.destination.read"] },
-  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access"), permissions: ["access.read"] },
-  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies"), permissions: ["deps.read"] },
-  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph"), permissions: ["repos.read"] },
-  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls"), permissions: ["pulls.read"] },
-  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows"), permissions: ["expertise.read"] },
-  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity"), permissions: ["activity.read.own", "activity.read.app.rows", "activity.read.github"] },
+  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work"), permissions: sectionPermissions("/my-work") },
+  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics"), permissions: sectionPermissions("/analytics") },
+  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws"), permissions: sectionPermissions("/aws") },
+  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms"), permissions: sectionPermissions("/alarms") },
+  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access"), permissions: sectionPermissions("/access") },
+  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies"), permissions: sectionPermissions("/dependencies") },
+  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph"), permissions: sectionPermissions("/graph") },
+  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls"), permissions: sectionPermissions("/pulls") },
+  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows"), permissions: sectionPermissions("/who-knows") },
+  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity"), permissions: sectionPermissions("/activity") },
   // Last, and gated on the one permission that opens it: this is the screen
   // that decides what every other permission in this list means, so it stays
   // out of sight for everybody who does not hold it rather than resolving to
   // a locked door.
-  { label: "Admin", path: "/admin", match: (p: string) => p.startsWith("/admin"), permissions: ["admin.console.open"] },
+  { label: "Admin", path: "/admin", match: (p: string) => p.startsWith("/admin"), permissions: sectionPermissions("/admin") },
 ];
 
 /**

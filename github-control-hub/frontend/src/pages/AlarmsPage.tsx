@@ -246,7 +246,9 @@ export default function AlarmsPage() {
     queryKey: ["auth", "status"], queryFn: fetchAuthStatus, staleTime: 60_000,
   });
   const githubBlocked = authStatus?.githubAccess?.allowed === false;
-  const { data: widgets } = useWidgets(undefined, !githubBlocked);
+  // The shared board's cards, to name what each alarm watches — only for
+  // somebody who can see this page at all.
+  const { data: widgets } = useWidgets(undefined, !githubBlocked && isAdmin);
   const { data: groups } = useEmailGroups(isAdmin && canGroups);
   const updateAlarm = useUpdateAlarm();
   const deleteAlarm = useDeleteAlarm();

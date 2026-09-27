@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { onlyHolders } from "../utils/refusalText";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "../services/authorizationService";
@@ -50,7 +51,7 @@ export interface ConfigBundle {
 async function refuseUnlessAdmin(res: Response, login: string, verb: "export" | "import", userToken?: string): Promise<boolean> {
   if (await teamOrPermission(login, userToken ?? "", "control-hub", [`config.${verb}`])) return false;
   res.status(403).json({
-    error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
+    error: `${onlyHolders([`config.${verb}`], CONTROL_HUB_ADMIN_TEAM)} can ${verb} ` +
       `configuration. It is every scanner, widget and guardrail the organization runs on.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
@@ -98,7 +99,7 @@ async function refuseAwsSections(
   if (!(await teamOrPermission(login, userToken ?? "", "aws", needs, "all"))) {
     res.status(403).json({
       error: `This export contains AWS guardrail configuration (${present.join(", ")}), and only ` +
-        `members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can change that. ` +
+        `${onlyHolders(needs, AWS_ADMIN_TEAM).replace(/^Only/, "only")}, all of them, can change that. ` +
         `Guardrails act on the whole AWS account, which is why they answer to a different team ` +
         `from the GitHub settings in the same file. Remove those sections, or ask an AWS admin ` +
         `to run the import.`,

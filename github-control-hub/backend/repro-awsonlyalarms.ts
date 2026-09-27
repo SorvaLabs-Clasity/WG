@@ -264,7 +264,7 @@ const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
 
     const page = fs.readFileSync("../frontend/src/pages/AlarmsPage.tsx", "utf8");
     check("  and the page does not ask for widgets it cannot have",
-      /useWidgets\(undefined, !githubBlocked\)/.test(page),
+      /useWidgets\(undefined, !githubBlocked( && isAdmin)?\)/.test(page),
       "a refused request behind a working page reads as the page being broken");
   }
 

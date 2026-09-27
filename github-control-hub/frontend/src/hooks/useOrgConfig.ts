@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useGithubAvailable } from "./useGithubAvailable";
 import { fetchOrgConfig, fetchOrgMembers } from "../api/org";
 
 /**
@@ -11,9 +12,12 @@ import { fetchOrgConfig, fetchOrgMembers } from "../api/org";
  * organization's name, which is most of them.
  */
 export function useOrgConfig() {
+  // GitHub's half only: an AWS-only account has no organization to describe.
+  const github = useGithubAvailable();
   return useQuery({
     queryKey: ["org-config"],
     queryFn: fetchOrgConfig,
+    enabled: github === true,
     staleTime: 600_000,
   });
 }

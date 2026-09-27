@@ -292,10 +292,15 @@ export default function ActivityPage() {
   // Reads every member had before permissions, so `can` — true until a file
   // is in force — rather than a team. Without these the pulse and Important
   // events views opened straight onto a permission error.
-  const { can } = usePermissionSet();
+  const { can, holds, permissions: permissionSet } = usePermissionSet();
   const canPulse = can("activity.pulse.read");
   const canImportant = can("activity.read.app.rows");
-  const awsAdmin = perms === undefined ? true : costsHeld;
+  // Once the permission answer is in, it decides alone. Waiting on the team
+  // answer as well meant a failed or rate-limited team read left Costs
+  // offered — and opening onto a refusal — to somebody the file never gave it.
+  const awsAdmin = permissionSet && (permissionSet.enforced || permissionSet.inert)
+    ? costsHeld
+    : perms === undefined ? true : costsHeld;
 
   const githubKnown = !!authStatus;
   const lenses = useMemo(
@@ -305,7 +310,9 @@ export default function ActivityPage() {
       // Left visible it is a tab that only ever renders a permission error.
       && !(v === "costs" && !awsAdmin)
       && !(v === "stats" && !canPulse)
-      && !(v === "important" && !canImportant)),
+      // Important events are the organization's GitHub security alerts; an
+      // AWS-only account has none, and the view spun on a refusal for ever.
+      && !(v === "important" && (!canImportant || awsOnly))),
     [awsOnly, awsAdmin, githubKnown, canPulse, canImportant]);
 
   // Defaults to the organization stream rather than to Everything. That is what
@@ -377,7 +384,7 @@ export default function ActivityPage() {
     try { localStorage.setItem("activity:pulse-hours", String(h)); }
     catch { /* the view still changes */ }
   };
-  const { data: pulse, isLoading: pulseLoading } = useActivityPulse(pulseHours, canPulse);
+  const { data: pulse, isLoading: pulseLoading } = useActivityPulse(pulseHours, holds("activity.pulse.read"));
 
   /**
    * Whether the important events show in the table, and which of them.
@@ -432,8 +439,8 @@ export default function ActivityPage() {
   useEffect(() => {
     if (!awsAdmin && lens === "costs") setLensPersistent("feed");
     if (!canPulse && lens === "stats") setLensPersistent("feed");
-    if (!canImportant && lens === "important") setLensPersistent("feed");
-  }, [awsAdmin, canPulse, canImportant, lens]);
+    if ((!canImportant || awsOnly) && lens === "important") setLensPersistent("feed");
+  }, [awsAdmin, canPulse, canImportant, awsOnly, lens]);
   /**
    * How rows somebody wrote arranging their own board are treated.
    *
@@ -1125,7 +1132,7 @@ export default function ActivityPage() {
             <ActivityStats pulse={pulse} hours={pulseHours}
               windowLabel={pulseHours <= 24 ? "24 hours" : pulseHours <= 168 ? "7 days" : "30 days"} />
           </div>
-        ) : lens === "important" && canImportant ? <ImportantEvents /> : (
+        ) : lens === "important" && canImportant && !awsOnly ? <ImportantEvents /> : (
         <>
 
         {isLoading && <Spinner label="Reading the record" />}

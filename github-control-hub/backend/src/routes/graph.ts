@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { onlyHolders } from "../utils/refusalText";
 import { docClient, hasTable, tableName, QueryCommand, ScanCommand } from "../utils/dynamo";
 import fs from "fs";
 import path from "path";
@@ -284,7 +285,7 @@ router.post("/query/:q/refresh-all", requireAnyPermission("repos.query.refresh",
   if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["repos.query.refresh", "overview.refresh"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can force a `
+      error: `${onlyHolders(["repos.query.refresh", "overview.refresh"], CONTROL_HUB_ADMIN_TEAM)} can force a `
         + `full re-check. It spends the organization's GitHub budget, not yours.`,
     });
   }
@@ -365,7 +366,7 @@ router.post("/aggregate", requirePermission("repos.graph.rebuild"), async (req: 
     if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "control-hub", ["repos.graph.rebuild"]).catch(() => false))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can `
+        error: `${onlyHolders(["repos.graph.rebuild"], CONTROL_HUB_ADMIN_TEAM)} can `
           + `rebuild the access graph. It spends the organization's GitHub budget, not yours.`,
       });
     }

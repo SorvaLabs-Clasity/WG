@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import { useGithubAvailable } from "./hooks/useGithubAvailable";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
@@ -14,6 +15,7 @@ import PullRequestsPage from "./pages/PullRequestsPage";
 import AdminPage from "./pages/AdminPage";
 import { isAuthenticated } from "./api/client";
 import RequireTeam from "./components/RequireTeam";
+import { sectionPermissions } from "./lib/sections";
 import NoAccess from "./components/NoAccess";
 import { usePermissions } from "./hooks/usePermissions";
 import { usePermissionSet, useTeamOr } from "./hooks/usePermissionSet";
@@ -31,8 +33,15 @@ import { usePermissionSet, useTeamOr } from "./hooks/usePermissionSet";
  */
 function Home() {
   const { isLoading } = usePermissions();
+  const set = usePermissionSet();
+  const github = useGithubAvailable();
   const overview = useTeamOr("control-hub", "overview.read", "overview.cards.read");
-  if (isLoading) return null;
+  // Every answer the choice depends on, not only the first to arrive: deciding
+  // on the team answer alone sent people who hold Overview to My work whenever
+  // their permissions landed a moment later.
+  if (isLoading || (!set.permissions && set.isLoading) || github === undefined) return null;
+  // An AWS-only account has one place to start.
+  if (!github) return <Navigate to="/aws" replace />;
   return <Navigate to={overview ? "/analytics" : "/my-work"} replace />;
 }
 
@@ -84,7 +93,9 @@ export const router = createBrowserRouter([
     path: "/pulls",
     element: (
       <RequireAuth>
-        <PullRequestsPage />
+        <RequireTeam title="Pull requests" permissions={sectionPermissions("/pulls")}>
+          <PullRequestsPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -92,7 +103,9 @@ export const router = createBrowserRouter([
     path: "/my-work",
     element: (
       <RequireAuth>
-        <MyWorkPage />
+        <RequireTeam title="My work" permissions={sectionPermissions("/my-work")}>
+          <MyWorkPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -100,7 +113,9 @@ export const router = createBrowserRouter([
     path: "/who-knows",
     element: (
       <RequireAuth>
-        <ExpertisePage />
+        <RequireTeam title="Who knows" permissions={sectionPermissions("/who-knows")}>
+          <ExpertisePage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -108,7 +123,9 @@ export const router = createBrowserRouter([
     path: "/activity",
     element: (
       <RequireAuth>
-        <ActivityPage />
+        <RequireTeam title="Activity" permissions={sectionPermissions("/activity")}>
+          <ActivityPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -116,7 +133,7 @@ export const router = createBrowserRouter([
     path: "/analytics",
     element: (
       <RequireAuth>
-        <RequireTeam team="control-hub" title="Overview" permissions={["overview.read", "overview.cards.read"]}>
+        <RequireTeam team="control-hub" title="Overview" permissions={sectionPermissions("/analytics")}>
           <AnalyticsPage />
         </RequireTeam>
       </RequireAuth>
@@ -126,7 +143,7 @@ export const router = createBrowserRouter([
     path: "/access",
     element: (
       <RequireAuth>
-        <RequireTeam team="control-hub" title="Access" permissions={["access.read"]}>
+        <RequireTeam team="control-hub" title="Access" permissions={sectionPermissions("/access")}>
           <AccessPage />
         </RequireTeam>
       </RequireAuth>
@@ -136,7 +153,9 @@ export const router = createBrowserRouter([
     path: "/alarms",
     element: (
       <RequireAuth>
-        <AlarmsPage />
+        <RequireTeam title="Alarms" permissions={sectionPermissions("/alarms")}>
+          <AlarmsPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -155,7 +174,9 @@ export const router = createBrowserRouter([
     path: "/dependencies",
     element: (
       <RequireAuth>
-        <DependencyDashboardPage />
+        <RequireTeam title="Vulnerabilities" permissions={sectionPermissions("/dependencies")}>
+          <DependencyDashboardPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -163,7 +184,7 @@ export const router = createBrowserRouter([
     path: "/aws",
     element: (
       <RequireAuth>
-        <RequireTeam team="aws" title="AWS" permissions={["aws.read"]}>
+        <RequireTeam team="aws" title="AWS" permissions={sectionPermissions("/aws")}>
           <AwsPage />
         </RequireTeam>
       </RequireAuth>
@@ -173,7 +194,9 @@ export const router = createBrowserRouter([
     path: "/graph",
     element: (
       <RequireAuth>
-        <KnowledgeGraphPage />
+        <RequireTeam title="Repos" permissions={sectionPermissions("/graph")}>
+          <KnowledgeGraphPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -189,7 +212,7 @@ export const router = createBrowserRouter([
           * and "Create the permissions repository" — were live for every
           * signed-in member.
           */}
-        <RequireTeam team="control-hub" title="Admin" permissions={["admin.console.open"]}>
+        <RequireTeam team="control-hub" title="Admin" permissions={sectionPermissions("/admin")}>
           <AdminPage />
         </RequireTeam>
       </RequireAuth>

@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchRepos, fetchRepoDetails } from "../api/repos";
 
-export function useRepos() {
+export function useRepos(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["repos"],
     queryFn: fetchRepos,
     staleTime: 30_000,

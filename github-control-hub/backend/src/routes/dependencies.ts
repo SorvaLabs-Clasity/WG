@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { onlyHolders } from "../utils/refusalText";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
@@ -1023,7 +1024,7 @@ router.put("/renovate/bot", requirePermission("deps.renovate.manage"), async (re
     if (!(await teamOrPermission(req.user!.login, req.user!.accessToken, "control-hub", ["deps.renovate.manage"]))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
+        error: `${onlyHolders(["deps.renovate.manage"], CONTROL_HUB_ADMIN_TEAM)} can ` +
           `change which account Renovate raises PRs as.`,
       });
     }

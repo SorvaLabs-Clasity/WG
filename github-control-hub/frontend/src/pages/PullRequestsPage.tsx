@@ -3,7 +3,7 @@ import { idleLabel } from "../lib/idle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import { apiGet, apiPut, apiPost } from "../api/client";
-import { useTeamOr } from "../hooks/usePermissionSet";
+import { useTeamOr, usePermissionSet } from "../hooks/usePermissionSet";
 import { useRepos } from "../hooks/useRepos";
 import { Page, Empty, Spinner, Pager, SearchInput } from "../design";
 import UserAvatar from "../components/UserAvatar";
@@ -122,7 +122,10 @@ export default function PullRequestsPage() {
   // Every repository in the organization, not only the ones with a pull request
   // open right now. Muting somebody on a quiet repository is the case worth
   // supporting. It is set once, before the first pull request lands there.
-  const { data: allRepos, isLoading: reposLoading } = useRepos();
+  // Only for the mute settings' repository picker, and only for somebody who
+  // may read the repository list; the page itself needs none of it.
+  const canListRepos = usePermissionSet().holds("repos.read");
+  const { data: allRepos, isLoading: reposLoading } = useRepos(canListRepos);
 
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");

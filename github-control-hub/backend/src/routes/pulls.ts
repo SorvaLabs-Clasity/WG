@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { onlyHolders } from "../utils/refusalText";
 
 import { createOctokit, getSystemToken } from "../github/client";
 import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
@@ -182,7 +183,7 @@ router.put("/pause", requirePermission("pulls.pause"), async (req: Request, res:
   if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.pause"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can pause `
+      error: `${onlyHolders(["pulls.pause"], CONTROL_HUB_ADMIN_TEAM)} can pause `
         + `reminders. Pausing silences a reminder for everyone, so it is not scoped to what you `
         + `personally can reach.`,
     });
@@ -235,7 +236,7 @@ router.post("/run", requirePermission("pulls.run"), async (req: Request, res: Re
   if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.run"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can send `
+      error: `${onlyHolders(["pulls.run"], CONTROL_HUB_ADMIN_TEAM)} can send `
         + `reminders.`,
     });
   }
@@ -315,7 +316,7 @@ router.put("/mute", requirePermission("pulls.mute"), async (req: Request, res: R
   if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.mute"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can mute `
+      error: `${onlyHolders(["pulls.mute"], CONTROL_HUB_ADMIN_TEAM)} can mute `
         + `people from reminders.`,
     });
   }
@@ -390,7 +391,7 @@ router.put("/settings", requirePermission("pulls.settings.manage"), async (req: 
   if (!(await teamOrPermission(login, req.user!.accessToken, "control-hub", ["pulls.settings.manage"]).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can switch `
+      error: `${onlyHolders(["pulls.settings.manage"], CONTROL_HUB_ADMIN_TEAM)} can switch `
         + `pull request monitoring or reminders on and off.`,
     });
   }
