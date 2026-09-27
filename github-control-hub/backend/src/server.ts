@@ -16,7 +16,7 @@ import graphRoutes from "./routes/graph";
 import accessRoutes from "./routes/access";
 import expertiseRoutes from "./routes/expertise";
 import pullsRoutes from "./routes/pulls";
-import meRoutes from "./routes/me";
+import meRoutes, { mePermissionsHandler } from "./routes/me";
 import meAlarmRoutes from "./routes/meAlarms";
 import widgetRoutes from "./routes/widgets";
 import configRoutes from "./routes/config";
@@ -29,6 +29,7 @@ import { initTokenManager } from "./github/client";
 import { awsRegion } from "./utils/region";
 import { startUsageFlushing } from "./services/githubUsageService";
 import { compressJson } from "./middleware/compressJson";
+import { recordSecretOutcome, isMissingSecret } from "./utils/githubPresence";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -159,6 +160,9 @@ app.use("/api/expertise", authMiddleware, githubGateMiddleware, expertiseRoutes)
 app.use("/api/pulls", authMiddleware, githubGateMiddleware, pullsRoutes);
 // Gated like the rest of GitHub: it is composed entirely from what the GitHub
 // walk collected, so an account without GitHub credentials has nothing to serve.
+// Before the gated mount, and not behind the GitHub gate: this is the answer
+// every screen decides from, and an AWS-only account needs it most.
+app.get("/api/me/permissions", authMiddleware, mePermissionsHandler);
 app.use("/api/me", authMiddleware, githubGateMiddleware, meRoutes);
 // Not behind the alarms router's admin gate, and deliberately so: these are
 // somebody's own alarms on their own cards, delivered to their own address.
@@ -207,6 +211,7 @@ app.use("/api/alarms", authMiddleware, alarmRoutes);
       const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
       if (result.SecretString) {
         const secrets = JSON.parse(result.SecretString) as Record<string, string>;
+        recordSecretOutcome({ kind: "read", secrets });
         // GITHUB_WEBHOOK_SECRET is deliberately not here. It lives in its own
         // secret, read only by the receiver Lambda, and nothing in this
         // process verifies signatures, webhooks are authenticated at the edge.
@@ -225,7 +230,10 @@ app.use("/api/alarms", authMiddleware, alarmRoutes);
       }
     }
   } catch (err: any) {
-    console.warn("[server] Could not load secrets at startup:", err.message);
+    // No secret at all is an AWS-only account; anything else is a failure to
+    // know, and the permission gates stay closed until a read succeeds.
+    recordSecretOutcome(isMissingSecret(err) ? { kind: "missing" } : { kind: "failed" });
+    if (!isMissingSecret(err)) console.warn("[server] Could not load secrets at startup:", err.message);
   }
 
   if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {

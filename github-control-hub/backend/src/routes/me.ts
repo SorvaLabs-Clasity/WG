@@ -557,7 +557,16 @@ router.post("/alerts/test", requirePermission("me.alerts.test"), async (req: Req
  * asking GitHub anything. `enforced: false` is what the client keys off, and it
  * answers true to `can()` for everything in that state regardless of `held`.
  */
-router.get("/permissions", async (req: Request, res: Response) => {
+/**
+ * Mounted on its own in server.ts, **outside** the GitHub gate the rest of this
+ * router sits behind. Every screen decides what to show from this answer, and
+ * on an AWS-only account the GitHub gate refused it — so the screens had no
+ * answer, fell back to asking a team that cannot exist without an
+ * organization, and locked the AWS tab behind `aws-guardrail-admins`. The
+ * answer there is "inert: everything is open", and it has to be reachable to
+ * be given.
+ */
+export async function mePermissionsHandler(req: Request, res: Response): Promise<void> {
   const adminTeam = process.env.CONTROL_HUB_ADMIN_TEAM || "control-hub-admins";
 
   const { accessForSelf } = await import("../permissions");
@@ -583,6 +592,6 @@ router.get("/permissions", async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(503).json({ error: `Permissions could not be read: ${err?.message ?? err}` });
   }
-});
+}
 
 export default router;

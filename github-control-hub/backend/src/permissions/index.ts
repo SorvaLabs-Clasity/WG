@@ -277,6 +277,11 @@ export async function teamOrPermission(
   keys: readonly string[], mode: "any" | "all" = "any",
 ): Promise<boolean> {
   const self = await accessForSelf(login, ownToken);
+  // An AWS-only account: no organization, so no team to ask, and every
+  // permission gate lets everything through. The team check has to agree —
+  // asking it there needs an organization that does not exist, and the AWS
+  // tab and the alarms both failed on exactly that.
+  if (isAwsOnly(self)) return true;
   if (self.inert) {
     return team === "aws" ? isAwsAdmin(login, ownToken) : isControlHubAdmin(login, ownToken);
   }
@@ -297,7 +302,17 @@ export async function teamOrPermission(
  * rather than the team check claiming the caller is not on a team.
  */
 export async function teamGatesStandAside(login: string, ownToken: string): Promise<boolean> {
-  return !(await accessForSelf(login, ownToken)).inert;
+  const self = await accessForSelf(login, ownToken);
+  return !self.inert || isAwsOnly(self);
+}
+
+/**
+ * Inert because there is no GitHub organization at all, as opposed to inert
+ * because an organization has not written a file yet. In the second the teams
+ * are still the rule; in the first there are no teams.
+ */
+function isAwsOnly(self: Access): boolean {
+  return self.inert && self.failure?.reason === "aws-only";
 }
 
 /**

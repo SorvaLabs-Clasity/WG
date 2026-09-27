@@ -298,10 +298,12 @@ export default function AlarmsPage() {
       <div className="mb-7">
         <Segmented value={lens} onChange={v => setLens(v as Lens)}
           options={[["alarms", `Alarms${rows.length ? ` (${rows.length})` : ""}`],
-                    ["groups", "Groups"]]} />
+                    // Only for somebody who can read groups; it was offered to
+                    // everybody who could see the page and opened onto a refusal.
+                    ...(canGroups ? [["groups", "Groups"] as [string, string]] : [])]} />
       </div>
 
-      {lens === "groups" ? <EmailGroupsPanel /> : isLoading ? (
+      {lens === "groups" && canGroups ? <EmailGroupsPanel /> : isLoading ? (
         <Spinner label="Reading your alarms" />
       ) : isError ? (
         <LoadFailed what="your alarms" error={error} onRetry={() => refetch()} />

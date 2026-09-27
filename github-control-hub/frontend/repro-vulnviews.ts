@@ -62,7 +62,7 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
     check("the view is a URL parameter, so it survives a refresh",
       /useSearchParams/.test(page) && /params\.get\("view"\)/.test(page));
     check("  an unrecognized one falls back rather than rendering nothing",
-      /VIEWS\.includes\(raw\) \? raw : "alerts"/.test(page));
+      /VIEWS\.includes\(raw\)[^?\n]*\? raw : "alerts"/.test(page));
     check("  and the default view leaves no parameter behind",
       /if \(v === "alerts"\) next\.delete\("view"\)/.test(page),
       "?view=alerts is noise in a shared link");
@@ -214,7 +214,8 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
      * and has to come from the organization's own repository list.
      */
     check("the full repository list comes from the access map",
-      /useAccessRepos\(true\)/.test(panel),
+      // Gated on the Access tab's own read now, but still the access map.
+      /useAccessRepos\((true|canListRepos)\)/.test(panel),
       "the sweep can only ever return repositories Renovate already writes to");
     check("  and the quiet ones are what it does not cover",
       /const active = new Set\(\[\.\.\.dashboards\.map/.test(panel)

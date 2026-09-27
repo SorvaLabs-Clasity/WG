@@ -78,8 +78,9 @@ export function useUndoResolution() {
  * each. Slower than the table's own poll because it is a backdrop, not a
  * ticker.
  */
-export function useActivityPulse(hours = 168) {
+export function useActivityPulse(hours = 168, enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["activity", "pulse", hours],
     queryFn: () => fetchActivityPulse(hours),
     refetchInterval: 60_000,

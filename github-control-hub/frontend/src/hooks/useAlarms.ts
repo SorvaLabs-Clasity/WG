@@ -113,8 +113,8 @@ export const useRemoveGroupTeams = () =>
   useAlarmMutation(({ id, address }: { id: string; address: string }) =>
     removeGroupTeams(id, address), ["alarms", "groups"]);
 
-export function useTeamsFlow() {
-  return useQuery({ queryKey: ["alarms", "teams-flow"], queryFn: fetchTeamsFlow, staleTime: 60_000 });
+export function useTeamsFlow(enabled = true) {
+  return useQuery({ queryKey: ["alarms", "teams-flow"], queryFn: fetchTeamsFlow, staleTime: 60_000, enabled });
 }
 export const useSaveTeamsFlow = () =>
   useAlarmMutation((url: string) => saveTeamsFlow(url), ["alarms", "teams-flow"]);

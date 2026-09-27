@@ -33,4 +33,17 @@ export async function forgetAccountScopedCaches(): Promise<void> {
 
   const { resetAwsHealthCache } = await import("../middleware/awsHealthMiddleware");
   resetAwsHealthCache();
+
+  // The permissions file, the team memberships read for it, and which account
+  // this install is — all three belonged to the account just left. Kept, the
+  // new account was judged by the old one's file for minutes and by the old
+  // one's account id until a restart.
+  const { forgetPermissions } = await import("../permissions/store");
+  forgetPermissions();
+  const { forgetSubjects } = await import("../permissions/subject");
+  forgetSubjects();
+  const { setInstallAccount } = await import("../permissions/accountScope");
+  setInstallAccount(undefined);
+  const { forgetInstallAccount } = await import("../permissions/installAccount");
+  forgetInstallAccount();
 }

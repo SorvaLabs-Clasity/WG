@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTeamsFlow, useSaveTeamsFlow } from "../hooks/useAlarms";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { Note, Button, SURFACE } from "../design";
 
 /**
@@ -15,7 +16,8 @@ import { Note, Button, SURFACE } from "../design";
  * rather than infrastructure.
  */
 export default function TeamsFlowPanel() {
-  const { data: flow } = useTeamsFlow();
+  const { can } = usePermissionSet();
+  const { data: flow } = useTeamsFlow(can("alarms.teamsFlow.read"));
   const save = useSaveTeamsFlow();
 
   const [url, setUrl] = useState("");

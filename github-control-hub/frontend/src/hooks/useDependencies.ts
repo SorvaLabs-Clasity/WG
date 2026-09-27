@@ -19,8 +19,9 @@ export function useDependencies(enabled = true) {
   });
 }
 
-export function useDependencySummary() {
+export function useDependencySummary(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["dependency-summary"],
     queryFn: fetchDependencySummary,
     staleTime: 120_000,

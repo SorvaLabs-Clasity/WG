@@ -14,8 +14,9 @@ import { fetchAlerts } from "../api/alerts";
  * email within seconds of the webhook, so the tab need not be a live ticker,
  * and React Query still refetches on focus, which is when somebody looks.
  */
-export function useAlerts() {
+export function useAlerts(enabled = true) {
   const q = useInfiniteQuery({
+    enabled,
     queryKey: ["alerts"],
     queryFn: ({ pageParam }) => fetchAlerts(pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,

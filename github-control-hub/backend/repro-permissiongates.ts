@@ -302,12 +302,16 @@ console.log("\nthe permissions endpoint itself");
    * a guard to it later.
    */
   const meSrc = fs.readFileSync("./src/routes/me.ts", "utf8");
-  const idx = meSrc.indexOf('router.get("/permissions"');
-  check("GET /me/permissions exists", idx >= 0);
+  // Its own handler now, mounted in server.ts outside the GitHub gate so an
+  // AWS-only account can be told it is inert.
+  const idx = meSrc.indexOf("export async function mePermissionsHandler");
+  check("GET /me/permissions exists", idx >= 0
+    && /app\.get\("\/api\/me\/permissions", authMiddleware, mePermissionsHandler\)/
+      .test(fs.readFileSync("./src/server.ts", "utf8")));
 
   if (idx >= 0) {
     const rest = meSrc.slice(idx);
-    const nextRoute = rest.slice(1).search(/router\.(get|post|put|delete|patch)\(/);
+    const nextRoute = rest.slice(1).search(/router\.(get|post|put|delete|patch)\(|\nexport /);
     const body = nextRoute >= 0 ? rest.slice(0, nextRoute + 1) : rest;
     check("  and it carries no requirePermission — the client's own permission list can't be gated on a permission",
       !/require(Any)?Permission\(/.test(body));

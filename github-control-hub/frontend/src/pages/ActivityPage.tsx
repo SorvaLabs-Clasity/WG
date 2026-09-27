@@ -27,7 +27,7 @@ import { buildConflictComparison } from "../utils/conflictComparison";
 import CostPanel from "../components/CostPanel";
 import GithubBudgetPanel from "../components/GithubBudgetPanel";
 import { usePermissions } from "../hooks/usePermissions";
-import { useTeamOr } from "../hooks/usePermissionSet";
+import { useTeamOr, usePermissionSet } from "../hooks/usePermissionSet";
 
 
 function formatTimestamp(ts: string): string {
@@ -289,6 +289,12 @@ export default function ActivityPage() {
   // assumed yes, as before: the effect below moves somebody off the lens when
   // this is false, and a guess of false would bounce them on every launch.
   const costsHeld = useTeamOr("aws", "aws.costs.read");
+  // Reads every member had before permissions, so `can` — true until a file
+  // is in force — rather than a team. Without these the pulse and Important
+  // events views opened straight onto a permission error.
+  const { can } = usePermissionSet();
+  const canPulse = can("activity.pulse.read");
+  const canImportant = can("activity.read.app.rows");
   const awsAdmin = perms === undefined ? true : costsHeld;
 
   const githubKnown = !!authStatus;
@@ -297,8 +303,10 @@ export default function ActivityPage() {
       !(v === "github" && (awsOnly || !githubKnown))
       // Costs reads the AWS account, on the route the AWS tab is gated behind.
       // Left visible it is a tab that only ever renders a permission error.
-      && !(v === "costs" && !awsAdmin)),
-    [awsOnly, awsAdmin, githubKnown]);
+      && !(v === "costs" && !awsAdmin)
+      && !(v === "stats" && !canPulse)
+      && !(v === "important" && !canImportant)),
+    [awsOnly, awsAdmin, githubKnown, canPulse, canImportant]);
 
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
@@ -369,7 +377,7 @@ export default function ActivityPage() {
     try { localStorage.setItem("activity:pulse-hours", String(h)); }
     catch { /* the view still changes */ }
   };
-  const { data: pulse, isLoading: pulseLoading } = useActivityPulse(pulseHours);
+  const { data: pulse, isLoading: pulseLoading } = useActivityPulse(pulseHours, canPulse);
 
   /**
    * Whether the important events show in the table, and which of them.
@@ -423,7 +431,9 @@ export default function ActivityPage() {
   // who cannot, would leave the control showing nothing selected.
   useEffect(() => {
     if (!awsAdmin && lens === "costs") setLensPersistent("feed");
-  }, [awsAdmin, lens]);
+    if (!canPulse && lens === "stats") setLensPersistent("feed");
+    if (!canImportant && lens === "important") setLensPersistent("feed");
+  }, [awsAdmin, canPulse, canImportant, lens]);
   /**
    * How rows somebody wrote arranging their own board are treated.
    *
@@ -1115,7 +1125,7 @@ export default function ActivityPage() {
             <ActivityStats pulse={pulse} hours={pulseHours}
               windowLabel={pulseHours <= 24 ? "24 hours" : pulseHours <= 168 ? "7 days" : "30 days"} />
           </div>
-        ) : lens === "important" ? <ImportantEvents /> : (
+        ) : lens === "important" && canImportant ? <ImportantEvents /> : (
         <>
 
         {isLoading && <Spinner label="Reading the record" />}

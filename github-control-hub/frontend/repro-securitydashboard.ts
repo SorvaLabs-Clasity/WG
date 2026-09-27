@@ -353,7 +353,7 @@ const allResolved: AlertLike[] = [
     check("  and the choice survives a reload",
       /localStorage\.setItem\("activity:lens"/.test(activity));
     check("  and it replaces the feed rather than filtering it",
-      /lens === "important" \? <ImportantEvents \/> : \(/.test(activity));
+      /lens === "important"( && canImportant)? \? <ImportantEvents \/> : \(/.test(activity));
 
     // The streams and their filters belong to the feed alone: on Statistics
     // there is no table for them to narrow.

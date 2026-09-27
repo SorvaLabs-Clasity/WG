@@ -103,5 +103,35 @@ async function decisions() {
 
 await decisions();
 
+/**
+ * Panels that load data a person may not hold, checked before they load.
+ *
+ * The end-to-end run in the backend (repro-memberview) found each of these:
+ * a tab the member could open, whose panels fetched something the member
+ * preset did not grant, and opened onto a refusal. The preset is fixed too,
+ * but any preset narrower than it would hit the same wall, so each panel asks
+ * for its own read first.
+ */
+console.log("\npanels ask before they load");
+{
+  const GATED: [string, RegExp][] = [
+    ["src/pages/ActivityPage.tsx", /useActivityPulse\(pulseHours, canPulse\)/],
+    ["src/pages/ActivityPage.tsx", /can\("activity\.pulse\.read"\)/],
+    ["src/pages/ActivityPage.tsx", /lens === "important" && canImportant/],
+    ["src/pages/DependencyDashboardPage.tsx", /enabled: canAge/],
+    ["src/pages/DependencyDashboardPage.tsx", /enabled: canPrs/],
+    ["src/pages/DependencyDashboardPage.tsx", /enabled: canRenovate/],
+    ["src/pages/DependencyDashboardPage.tsx", /useDependencySummary\(canSummary\)/],
+    ["src/pages/AlarmsPage.tsx", /lens === "groups" && canGroups/],
+    ["src/components/TeamsFlowPanel.tsx", /useTeamsFlow\(can\("alarms\.teamsFlow\.read"\)\)/],
+    ["src/components/RenovatePanel.tsx", /useAccessRepos\(canListRepos\)/],
+    ["src/pages/AnalyticsPage.tsx", /presetId === "renovate-open" && canRenovate/],
+  ];
+  for (const [file, re] of GATED) {
+    check(`${file.split("/").pop()}: ${re.source.replace(/\\/g, "").slice(0, 60)}`,
+      re.test(fs.readFileSync(file, "utf8")));
+  }
+}
+
 console.log(failures === 0 ? "\nall passed" : `\n${failures} failed`);
 process.exit(failures === 0 ? 0 : 1);

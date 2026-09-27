@@ -29,7 +29,7 @@ const COLLAPSED = 4;
 import RenovatePanel from "../components/RenovatePanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
-import { useTeamOr } from "../hooks/usePermissionSet";
+import { useTeamOr, usePermissionSet } from "../hooks/usePermissionSet";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
 import { fetchDependenciesAge, fetchDependabotPrs, type DependabotPr } from "../api/dependencies";
@@ -134,6 +134,15 @@ export default function DependencyDashboardPage() {
   // The feed notification settings; `alarms.feeds.manage` once a file is in
   // force. The server asks the Control Hub team before then, not the AWS one.
   const isAdmin = useTeamOr("control-hub", "alarms.feeds.manage");
+  // Each panel's own read. `can` answers true until a file is in force, which
+  // is what these were — open to every member — and after that a panel the
+  // person was not given is not fetched, rather than fetched and shown as an
+  // error.
+  const { can } = usePermissionSet();
+  const canAge = can("deps.age.read");
+  const canPrs = can("deps.dependabot.read");
+  const canSummary = can("deps.advisories.read");
+  const canRenovate = can("deps.renovate.read");
   const { user } = useAuth();
 
   // In the URL, so the view survives a refresh and can be linked to. An
@@ -158,6 +167,7 @@ export default function DependencyDashboardPage() {
   const { data: age } = useQuery({
     queryKey: ["dependencies", "age"],
     queryFn: fetchDependenciesAge,
+    enabled: canAge,
     refetchInterval: 60_000,
   });
 
@@ -170,6 +180,7 @@ export default function DependencyDashboardPage() {
   const { data: prs } = useQuery({
     queryKey: ["dependencies", "fix-prs"],
     queryFn: fetchDependabotPrs,
+    enabled: canPrs,
     refetchInterval: 120_000,
   });
   const prCounts = prs?.counts ?? null;
@@ -198,7 +209,7 @@ export default function DependencyDashboardPage() {
 
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
-  const view: View = raw && VIEWS.includes(raw) ? raw : "alerts";
+  const view: View = raw && VIEWS.includes(raw) && !(raw === "updates" && !canRenovate) ? raw : "alerts";
   const setView = (v: View) => {
     const next = new URLSearchParams(params);
     if (v === "alerts") next.delete("view"); else next.set("view", v);
@@ -211,11 +222,12 @@ export default function DependencyDashboardPage() {
     queryKey: ["renovate"],
     queryFn: () => fetchRenovate(),
     staleTime: 120_000,
+    enabled: canRenovate,
   });
   const renovateOpen = (renovate?.prs ?? []).filter(pr => pr.state === "open").length;
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,
           isFetching: depsFetching, refetch: refetchDeps } = useDependencies();
-  const { data: summary, isLoading: sumLoading, isFetching: sumFetching, refetch: refetchSummary } = useDependencySummary();
+  const { data: summary, isLoading: sumLoading, isFetching: sumFetching, refetch: refetchSummary } = useDependencySummary(canSummary);
   /**
    * Both buttons used mutateAsync with only a finally, so a rejection became an
    * unhandled promise and the click did nothing visible.
@@ -401,7 +413,9 @@ export default function DependencyDashboardPage() {
             // are what people call these, and the ids stay as they are so any
             // link already pointing at ?view=updates keeps working.
             ["alerts", counts.total > 0 ? `Dependabot ${counts.total}` : "Dependabot"] as [View, string],
-            ["updates", renovateOpen > 0 ? `Renovate ${renovateOpen}` : "Renovate"] as [View, string],
+            ...(canRenovate
+              ? [["updates", renovateOpen > 0 ? `Renovate ${renovateOpen}` : "Renovate"] as [View, string]]
+              : []),
             ["notifications", "Notifications"] as [View, string],
           ]}
         />

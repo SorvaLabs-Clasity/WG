@@ -44,7 +44,20 @@ const MEMBER_GRANT = [
   "repos.blastRadius.read",
   "repos.query.read",
   "pulls.read",
+  // The reads behind each tab, not only the tabs. Every one of these routes
+  // was open to every member before permissions existed, and leaving them out
+  // opened Vulnerabilities, Pull requests and Activity onto refusals for the
+  // very people this preset describes.
+  "pulls.state.read",
+  "pulls.mutes.read",
+  "pulls.settings.read",
   "deps.read",
+  "deps.advisories.read",
+  "deps.age.read",
+  "deps.dependabot.read",
+  "deps.renovate.read",
+  "activity.pulse.read",
+  "activity.read.app.rows",
   "expertise",
   "overview.read",
   "overview.cards.read",

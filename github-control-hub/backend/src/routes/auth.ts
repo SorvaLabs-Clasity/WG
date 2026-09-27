@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
+import { recordSecretOutcome, isMissingSecret } from "../utils/githubPresence";
 import crypto from "crypto";
 import fsSync from "node:fs";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
@@ -474,6 +475,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
+      recordSecretOutcome({ kind: "read", secrets });
       for (const key of SECRET_KEYS) {
         // Set or cleared, never left. An account with no GitHub App must not
         // inherit the last account's.
@@ -506,6 +508,25 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
       return true;
     }
   } catch (err: any) {
+    if (isMissingSecret(err)) {
+      /**
+       * No secret is what an AWS-only account has, not a failure. The keys the
+       * last account loaded are cleared, as they are when a secret simply
+       * lacks them: left in place, the previous account's organization would
+       * be the one whose permissions file this account reads.
+       */
+      recordSecretOutcome({ kind: "missing" });
+      for (const key of SECRET_KEYS) delete process.env[key];
+      const { disposeTokenManager } = await import("../github/client");
+      disposeTokenManager();
+      secretsLoadedFor = account;
+      if (!process.env.JWT_SECRET) {
+        const crypto = await import("crypto");
+        process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+      }
+      return true;
+    }
+    recordSecretOutcome({ kind: "failed" });
     console.warn("[auth] Could not reload secrets:", err.message);
   }
   return false;

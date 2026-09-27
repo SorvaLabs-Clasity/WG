@@ -275,7 +275,10 @@ export default function RenovatePanel() {
   // Every repository in the organization, so the panel can say which ones
   // Renovate has never said anything about. From the stored access graph, held
   // five minutes, and free of GitHub requests.
-  const { data: allRepos } = useAccessRepos(true);
+  // The Access tab's own route, so only for somebody who may read it; without
+  // it the panel simply does not list the repositories Renovate never touched.
+  const canListRepos = useTeamOr("control-hub", "access.repos.read");
+  const { data: allRepos } = useAccessRepos(canListRepos);
   const { data: orgConfig } = useOrgConfig();
   const org = orgConfig?.org ?? "";
   const { data: myAccess } = useMyAccess();
