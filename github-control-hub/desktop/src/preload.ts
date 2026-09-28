@@ -25,6 +25,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   installUpdate: () => {
     ipcRenderer.send("install-update");
   },
+  /**
+   * Check for an update now, from a button. The same check the app runs on
+   * its own; resolves with what it found — up to date, downloading, or why it
+   * could not ask yet.
+   */
+  checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke("check-for-updates"),
   clearGithubSession: () => ipcRenderer.invoke("clear-github-session"),
   /**
    * Open a link in the user's own browser.

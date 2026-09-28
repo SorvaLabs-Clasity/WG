@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import CheckForUpdates from "./CheckForUpdates";
 import { sectionPermissions } from "../lib/sections";
 import { useNavigate, useLocation } from "react-router-dom";
 import AwsAccountSwitcher from "./AwsAccountSwitcher";
@@ -157,6 +158,8 @@ function SectionSheet({ items, pathname, login, skin, unavailable, onGo, onTheme
         <span className="display text-[1.125rem] text-ink">Appearance</span>
         <span className="caps">{themeEntry(skin).name}</span>
       </button>
+
+      <CheckForUpdates variant="sheet" />
 
       {login && (
         <button
@@ -319,6 +322,7 @@ function AccountMenu({
               <span className="caps text-ink">Appearance</span>
               <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
             </button>
+            <CheckForUpdates variant="menu" />
             <AwsAccountSwitcher
               current={awsProfile}
               onSwitched={onClose} />

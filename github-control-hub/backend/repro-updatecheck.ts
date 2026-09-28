@@ -56,34 +56,43 @@ const scheduler = main.slice(main.indexOf("function scheduleUpdateChecks"));
   }
 
   // ── the AWS-only account, where this was permanent ──────────────────
+  //
+  // The check itself moved into `runUpdateCheck`, which the schedule and the
+  // "Check for updates" buttons share; the schedule keeps the retrying.
+  const runner = main.slice(main.indexOf("function runUpdateCheck"), main.indexOf("function scheduleUpdateChecks"));
   {
-    const tokenBranch = scheduler.slice(scheduler.indexOf("const token = readSystemToken()"));
+    const tokenBranch = runner.slice(runner.indexOf("const token = readSystemToken()"));
 
     check("a missing App token does not end the attempts",
-      /return false;/.test(tokenBranch.slice(0, 900))
-      && !/sendUpdateStatus\("error"/.test(tokenBranch.slice(0, 900)),
+      /if \(!token\) \{\s*return \{ outcome: "unavailable", reason: "token"/.test(tokenBranch)
+      && !/sendUpdateStatus\("error"/.test(tokenBranch.slice(0, 600))
+      && /if \(result\.outcome === "unavailable"\) \{[\s\S]{0,200}return false;/.test(scheduler),
       "an AWS-only account has no App key by design and would never check again");
 
     check("  and says so as a normal state, not a failure",
-      /expected in an AWS-only account/.test(scheduler),
+      /sayOnce\(result\.reason, \(\) => console\.log\(/.test(scheduler)
+      && /no GitHub App/.test(tokenBranch.slice(0, 600)),
       "reporting a designed absence as an error trains people to ignore the log");
 
     // The state it describes is normal and permanent in such an account, so a
     // line every twenty seconds is a line nobody reads.
     check("  once, rather than on every retry",
       /const sayOnce = \(key: string, say: \(\) => void\) =>/.test(scheduler)
-      && /sayOnce\("token"/.test(scheduler),
+      && /sayOnce\(result\.reason,/.test(scheduler),
       "a log that repeats for ever is noise, and the next real problem hides in it");
 
+    // Keyed by the reason itself, so each distinct cause is said once.
     check("  and each distinct reason still gets said",
-      /sayOnce\("backend"/.test(scheduler) && /sayOnce\("aws"/.test(scheduler),
+      ["backend", "aws", "token"].every(r => new RegExp(`reason: "${r}"`).test(runner))
+      && /sayOnce\(result\.reason,/.test(scheduler),
       "one flag for every cause would report the first and hide the rest");
   }
 
   // ── a failed check is the interval's problem, not the retry's ───────
   {
     check("a check that ran and threw counts as having run",
-      /check threw[\s\S]{0,200}return true;/.test(scheduler),
+      /check threw[\s\S]{0,200}return \{ outcome: "failed"/.test(runner)
+      && /if \(result\.outcome === "unavailable"\) \{[\s\S]{0,200}return false;\s*\}\s*return true;/.test(scheduler),
       "GitHub being down is not a reason to poll every twenty seconds");
 
     check("  and the reasons are cleared once it works",

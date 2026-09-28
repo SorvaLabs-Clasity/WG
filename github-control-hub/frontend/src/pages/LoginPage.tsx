@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import CheckForUpdates from "../components/CheckForUpdates";
 import { parseExportBlock, regionFromBlock, looksLikeRegion } from "../lib/awsCredentialBlock";
 import { useNavigate } from "react-router-dom";
 import {
@@ -742,6 +743,7 @@ export default function LoginPage() {
           </div>
 
           <div className="flex items-baseline gap-5 shrink-0">
+            <CheckForUpdates variant="link" />
             <button onClick={() => setThemeOpen(true)} className="textlink caps">
               {themeEntry(skin).name}
             </button>

@@ -21,6 +21,8 @@ declare global {
       openExternal?: (url: string) => Promise<boolean>;
       /** The version of the installed build. Absent in a browser. */
       getAppVersion?: () => Promise<string>;
+      /** Check for an update now. Absent in a browser; see CheckForUpdates. */
+      checkForUpdates?: () => Promise<unknown>;
     };
   }
 }

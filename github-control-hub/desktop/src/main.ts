@@ -175,6 +175,10 @@ function createWindow(): void {
   // What this build actually is, for the About line in the account menu.
   // Answered from the running app rather than from anything compiled in.
   ipcMain.handle("app-version", () => app.getVersion());
+  // The "Check for updates" buttons. Registered even in a development build,
+  // which answers that it does not check, rather than leaving the button to
+  // fail with no handler.
+  ipcMain.handle("check-for-updates", () => runUpdateCheck());
 
   ipcMain.handle("clear-github-session", async () => {
     await clearGitHubCookies();
@@ -357,6 +361,95 @@ function readSystemToken(): string {
   }
 }
 
+/**
+ * What one update check found, in terms somebody can act on.
+ *
+ * `unavailable` is "could not ask yet", with the reason — the check needs AWS
+ * reachable and a GitHub App token, and each missing piece has its own fix.
+ * `failed` is "asked, and it went wrong".
+ */
+type UpdateCheckResult =
+  | { outcome: "up-to-date"; version: string }
+  | { outcome: "downloading"; version: string }
+  | { outcome: "unavailable"; reason: "dev" | "backend" | "aws" | "token"; message: string }
+  | { outcome: "failed"; message: string };
+
+/** Newer by dotted numeric version; anything unparseable is not newer. */
+function isNewer(candidate: string, current: string): boolean {
+  const a = candidate.split(/[.+-]/).map(n => parseInt(n, 10));
+  const b = current.split(/[.+-]/).map(n => parseInt(n, 10));
+  for (let i = 0; i < 3; i++) {
+    const x = a[i] ?? 0, y = b[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return false;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+let checkInFlight: Promise<UpdateCheckResult> | null = null;
+
+/**
+ * One update check, the same one whether the clock or a button asked.
+ *
+ * Shared rather than duplicated so the button cannot drift from what the
+ * automatic check does, and so pressing it while the scheduled check is
+ * running joins that check instead of starting a second one.
+ */
+function runUpdateCheck(): Promise<UpdateCheckResult> {
+  if (checkInFlight) return checkInFlight;
+  checkInFlight = (async (): Promise<UpdateCheckResult> => {
+    if (isDev) {
+      return { outcome: "unavailable", reason: "dev",
+        message: "Updates are not checked in a development build; this one runs from source." };
+    }
+    let reachable = false;
+    try {
+      const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
+      reachable = !!status.aws?.dynamoReachable;
+    } catch (err: any) {
+      return { outcome: "unavailable", reason: "backend",
+        message: `The app is still starting (${err?.message || "no answer yet"}). Try again in a moment.` };
+    }
+    if (!reachable) {
+      return { outcome: "unavailable", reason: "aws",
+        message: "Connect to AWS first. The update check reads its GitHub credentials from "
+          + "this AWS account, so it cannot run before AWS is connected." };
+    }
+    const token = readSystemToken();
+    if (!token) {
+      return { outcome: "unavailable", reason: "token",
+        message: "This AWS account has no GitHub App, which the update check uses to reach "
+          + "GitHub. Switch to an account that has one, and it will check." };
+    }
+
+    process.env.GH_TOKEN = token;
+    sendUpdateStatus("checking");
+    console.log("[updater] checking for updates…");
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      const found = result?.updateInfo?.version ?? "";
+      console.log("[updater] check returned:", found || "no version in response");
+      const current = app.getVersion();
+      const available = typeof (result as any)?.isUpdateAvailable === "boolean"
+        ? (result as any).isUpdateAvailable
+        : !!found && isNewer(found, current);
+      if (!available) {
+        // The overlay was put up for "checking"; this takes it down.
+        sendUpdateStatus("up-to-date");
+        return { outcome: "up-to-date", version: current };
+      }
+      // `update-available` has already put the download overlay up.
+      return { outcome: "downloading", version: found };
+    } catch (err: any) {
+      // The "error" handler has already reported it; this stops the rejection
+      // becoming an unhandled one.
+      console.error("[updater] check threw:", err?.message ?? err);
+      return { outcome: "failed", message: err?.message ?? String(err) };
+    }
+  })().finally(() => { checkInFlight = null; });
+  return checkInFlight;
+}
+
 /** How often to look, once the first check has run. */
 const UPDATE_INTERVAL_MS = 30 * 60_000;
 
@@ -400,53 +493,11 @@ function scheduleUpdateChecks(): void {
 
   /** True only when a check actually ran, which is what ends the retrying. */
   const attempt = async (): Promise<boolean> => {
-    let reachable = false;
-    try {
-      const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
-      reachable = !!status.aws?.dynamoReachable;
-    } catch (err: any) {
-      sayOnce("backend", () =>
-        console.log("[updater] backend not answering yet:", err?.message || ""));
+    const result = await runUpdateCheck();
+    if (result.outcome === "unavailable") {
+      // Said once per reason, not every twenty seconds.
+      sayOnce(result.reason, () => console.log(`[updater] ${result.message}`));
       return false;
-    }
-
-    if (!reachable) {
-      sayOnce("aws", () => console.log(
-        "[updater] waiting for AWS. The update check needs a token from Secrets " +
-        "Manager, so it cannot run before sign-in. It will start on its own.",
-      ));
-      return false;
-    }
-
-    const token = readSystemToken();
-    if (!token) {
-      // Not fatal, and not permanent. An AWS-only account has no App key by
-      // design, and switching to an account that has one makes this work
-      // without a relaunch.
-      // Logged, not sent to the window. The overlay exists to explain a
-      // download in progress, and there is nothing here for somebody to wait
-      // for: in an AWS-only account this is simply how it is.
-      sayOnce("token", () => console.log(
-        "[updater] AWS is reachable but there is no GitHub App token, so the update " +
-        "check cannot run yet. That is expected in an AWS-only account; switching to " +
-        "one with the App configured will start it without a relaunch.",
-      ));
-      return false;
-    }
-
-    process.env.GH_TOKEN = token;
-    sendUpdateStatus("checking");
-    console.log("[updater] checking for updates…");
-    try {
-      const result = await autoUpdater.checkForUpdates();
-      console.log("[updater] check returned:",
-        result?.updateInfo?.version ?? "no version in response");
-    } catch (err: any) {
-      // The "error" handler has already reported it; this stops the rejection
-      // becoming an unhandled one. Counted as having run: the credentials were
-      // there and GitHub was asked, so this is the ordinary interval's problem
-      // now, not a reason to keep retrying every twenty seconds.
-      console.error("[updater] check threw:", err?.message ?? err);
     }
     return true;
   };
