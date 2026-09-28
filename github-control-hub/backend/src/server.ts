@@ -88,7 +88,11 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
-  skip: (req) => req.path === "/verify" || req.path === "/status",
+  // Reads the sign-in page makes on every load. Counted, they spent the
+  // limit that also guards "Sign in to GitHub": a page reloading at launch
+  // locked sign-in for a quarter of an hour. Listing this machine's AWS
+  // profiles grants nothing and costs GitHub nothing.
+  skip: (req) => req.path === "/verify" || req.path === "/status" || req.path === "/aws-profiles",
 });
 
 const apiLimiter = rateLimit({

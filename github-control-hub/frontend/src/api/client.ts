@@ -87,10 +87,24 @@ export class RateLimitError extends Error {
   }
 }
 
+/**
+ * Send the browser to sign-in — unless it is already there.
+ *
+ * A full page load, so everything the last session held is dropped. From
+ * /login itself that load is pointless and dangerous: any request the sign-in
+ * page makes that fails the same way sends it round again, and that loop ran
+ * several times a second at launch while AWS was still connecting, spending
+ * the request limits until the app and sign-in both said "Too many requests".
+ */
+function goToLogin(target: string): void {
+  if (window.location.pathname === "/login") return;
+  window.location.href = target;
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
-    window.location.href = "/login";
+    goToLogin("/login");
     throw new Error("Unauthorized");
   }
   // Removed from the org mid-session. Every subsequent request would fail the
@@ -100,7 +114,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     const body = await res.json().catch(() => ({})) as { error?: string; code?: string };
     if (body.code === "ORG_MEMBERSHIP_REVOKED") {
       clearToken();
-      window.location.href = `/login?auth_error=not_member`;
+      goToLogin(`/login?auth_error=not_member`);
       throw new Error(body.error ?? "No longer an organization member");
     }
     throw new Error(body.error ?? `Request failed: ${res.status}`);
@@ -111,7 +125,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     };
     if (body.code === "AWS_SESSION_EXPIRED") {
       clearToken();
-      window.location.href = "/login";
+      goToLogin("/login");
       throw new Error("AWS session expired");
     }
     // A check still building its coverage is not a failure, and the card that

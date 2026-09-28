@@ -143,8 +143,12 @@ async function main() {
 
   // DynamoDB: every read finds nothing, every write succeeds.
   const { __setDocClientForTests } = await import("../src/utils/dynamo");
+  // HARNESS_AWS_COLD_MS: DynamoDB unreachable for that long after start, the
+  // way a desktop launch is while the AWS credential chain resolves.
+  const coldUntil = Date.now() + Number(process.env.HARNESS_AWS_COLD_MS ?? 0);
   __setDocClientForTests({
     send: async (cmd: any) => {
+      if (Date.now() < coldUntil) throw new Error("harness: AWS not reachable yet");
       const name = cmd?.constructor?.name ?? "";
       return /Scan|Query/.test(name) ? { Items: [], Count: 0, ScannedCount: 0 }
         : /BatchGet/.test(name) ? { Responses: {} } : {};

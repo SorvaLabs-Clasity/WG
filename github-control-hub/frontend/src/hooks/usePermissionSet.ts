@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchMyPermissions, type MyPermissions } from "../api/me";
+import { getToken, DEMO_MODE } from "../api/client";
 import { decideTeamOr } from "../lib/teamOr";
 import { usePermissions } from "./usePermissions";
 
@@ -17,6 +18,16 @@ import { usePermissions } from "./usePermissions";
 export function usePermissionSet() {
   const query = useQuery({
     queryKey: ["me", "permissions"],
+    /**
+     * Only with a session. This hook is read from components mounted on every
+     * route, the sign-in page included, and asking without a session — or
+     * while AWS is still connecting on launch — got a 401 or an "AWS session
+     * expired", each of which sends the browser to /login with a full page
+     * load. On /login that was a reload loop, several a second, and every
+     * load spent the app's and the sign-in route's request limits until both
+     * answered "Too many requests".
+     */
+    enabled: DEMO_MODE || !!getToken(),
     queryFn: fetchMyPermissions,
     staleTime: 60_000,
   });
