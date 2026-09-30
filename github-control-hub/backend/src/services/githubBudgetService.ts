@@ -390,6 +390,19 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "limit refuses, and a run of eighty that trips halfway is worse than a "
       + "slower one that finishes.",
   },
+  "Monthly Dependabot security fixes": {
+    trigger: "The hourly job in AWS on the 1st and 24 hours later, and the monthly "
+      + "batch controls on the Vulnerabilities tab",
+    endpoints: [
+      "PUT /repos/{o}/{r}/vulnerability-alerts",
+      "PUT /repos/{o}/{r}/automated-security-fixes", "DELETE …",
+    ],
+    files: ["jobs/dependabotMonthlyHandler.ts", "routes/dependencies.ts", "services/dependabotBulk.ts"],
+    scalesWith: "how many repositories are in the monthly batch",
+    note: "Nothing on most hours: the job reads its schedule and stops. Twice a month "
+      + "it switches the batch — two requests per repository to switch fixes on, one to "
+      + "switch them off — paced the same way as the bulk switch.",
+  },
   "Turning Dependabot on or off": {
     trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",
     endpoints: [

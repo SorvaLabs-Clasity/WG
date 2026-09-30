@@ -597,6 +597,81 @@ router.post("/dependencies/bulk", requirePermission("deps.dependabot.bulk"), asy
   }
 });
 
+// ── monthly security fixes ──────────────────────────────────────────────
+//
+// Repositories in the batch have security fixes held off and released once a
+// month by the hourly job (services/dependabotMonthly.ts). Changes made here
+// run as the person asking, like the bulk switch above: they need admin on
+// each repository they bring in or take out.
+
+function monthlyDeps(token: string) {
+  return (async () => {
+    const [{ runDependabotBulk }, { getOrgConfig, updateDependabotMonthly }] = await Promise.all([
+      import("../services/dependabotBulk"), import("../services/orgConfigService"),
+    ]);
+    const octokit = createOctokit(token, "Monthly Dependabot security fixes");
+    const org = getOrg();
+    return {
+      bulk: (repos: string[], action: any) => runDependabotBulk(octokit, org, repos, action),
+      load: async () => (await getOrgConfig()).dependabotMonthly,
+      save: updateDependabotMonthly,
+      log: (action: any, actor: string, repo: string, details: string) =>
+        logActivity(action, actor, repo, "Dependabot", details, undefined, "app"),
+    };
+  })();
+}
+
+async function monthlyView() {
+  const { getOrgConfig } = await import("../services/orgConfigService");
+  const { withDefaults, missedLastOpening } = await import("../services/dependabotMonthly");
+  const schedule = withDefaults((await getOrgConfig()).dependabotMonthly);
+  return { schedule, missed: missedLastOpening(schedule) };
+}
+
+router.get("/dependabot/monthly", requirePermission("deps.dependabot.read"), async (_req: Request, res: Response) => {
+  try {
+    res.json(await monthlyView());
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "monthly Dependabot schedule") });
+  }
+});
+
+router.put("/dependabot/monthly", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+  const { enabled, repos } = req.body ?? {};
+  if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled must be true or false" });
+  const list = Array.isArray(repos)
+    ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
+    : [];
+  if (enabled && list.length === 0) return res.status(400).json({ error: "Pick at least one repository" });
+  if (list.length > 200) return res.status(400).json({ error: "Up to 200 repositories in the batch" });
+  try {
+    const { configure } = await import("../services/dependabotMonthly");
+    const result = await configure(await monthlyDeps(token), { enabled, repos: list }, req.user!.login);
+    const { invalidateDependencySweep } = await import("../services/dependencyService");
+    invalidateDependencySweep();
+    res.json({ ...(await monthlyView()), joined: result.joined, left: result.left });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "monthly Dependabot schedule") });
+  }
+});
+
+router.post("/dependabot/monthly/run", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+  try {
+    const { runNow } = await import("../services/dependabotMonthly");
+    const result = await runNow(await monthlyDeps(token), req.user!.login);
+    const { invalidateDependencySweep } = await import("../services/dependencyService");
+    invalidateDependencySweep();
+    res.json({ ...(await monthlyView()), summary: result.summary });
+  } catch (error: any) {
+    const nothing = /no monthly batch/i.test(error?.message ?? "");
+    res.status(nothing ? 400 : 500).json({ error: nothing ? error.message : sanitizeError(error, "monthly Dependabot run") });
+  }
+});
+
 router.get("/summary", requirePermission("deps.advisories.read"), async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;

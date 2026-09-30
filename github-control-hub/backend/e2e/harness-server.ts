@@ -146,10 +146,28 @@ async function main() {
   // HARNESS_AWS_COLD_MS: DynamoDB unreachable for that long after start, the
   // way a desktop launch is while the AWS credential chain resolves.
   const coldUntil = Date.now() + Number(process.env.HARNESS_AWS_COLD_MS ?? 0);
+  // Remembers what is put, so a setting saved on one request is there on the
+  // next; reads find an item by its key attributes. Scans and queries still
+  // find nothing, which is what every list screen here is exercised against.
+  const tables = new Map<string, Record<string, unknown>[]>();
+  const matches = (item: Record<string, unknown>, key: Record<string, unknown>) =>
+    Object.entries(key ?? {}).every(([k, v]) => item[k] === v);
   __setDocClientForTests({
     send: async (cmd: any) => {
       if (Date.now() < coldUntil) throw new Error("harness: AWS not reachable yet");
       const name = cmd?.constructor?.name ?? "";
+      const input = cmd?.input ?? {};
+      if (name === "PutCommand" && input.TableName && input.Item) {
+        const rows = tables.get(input.TableName) ?? [];
+        const keyNames = Object.keys(input.Item).filter(k => /^(org|id|pk|sk|key|kind)$/i.test(k));
+        const key = Object.fromEntries(keyNames.map(k => [k, input.Item[k]]));
+        tables.set(input.TableName, [...rows.filter(r => !matches(r, key)), input.Item]);
+        return {};
+      }
+      if (name === "GetCommand" && input.TableName) {
+        const hit = (tables.get(input.TableName) ?? []).find(r => matches(r, input.Key));
+        return hit ? { Item: hit } : {};
+      }
       return /Scan|Query/.test(name) ? { Items: [], Count: 0, ScannedCount: 0 }
         : /BatchGet/.test(name) ? { Responses: {} } : {};
     },

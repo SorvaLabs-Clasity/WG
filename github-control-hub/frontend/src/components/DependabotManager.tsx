@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import MonthlyFixesPanel from "./MonthlyFixesPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import {
@@ -753,6 +754,8 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             </Note>
           )}
         </div>
+
+        <MonthlyFixesPanel selected={[...selected]} />
 
         {/* Said before it is pressed, not after. Somebody expecting a pull
             request per vulnerability should know GitHub raises them on its own

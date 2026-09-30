@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost, apiPut } from "./client";
 import { DependencyAlert, DependencySummary } from "../types/Dependabot";
 import { mockFetchDependencies, mockFetchDependencySummary } from "./mock";
 
@@ -172,3 +172,37 @@ export interface CloseSummary {
 export function closeDependabotPrs(repos: string[]): Promise<CloseSummary> {
   return apiPost<CloseSummary>("/security/dependencies/close-prs", { repos });
 }
+
+// ── monthly security fixes ──────────────────────────────────────────────
+
+export interface MonthlyRun {
+  at: string;
+  kind: "open" | "close" | "join" | "leave";
+  trigger: "schedule" | "manual";
+  by: string;
+  results: { repo: string; ok: boolean; error?: string }[];
+}
+
+export interface MonthlySchedule {
+  enabled: boolean;
+  repos: string[];
+  windowHours: number;
+  timeZone: string;
+  openUntil?: string;
+  lastOpenedMonth?: string;
+  history: MonthlyRun[];
+  changedAt?: string;
+  changedBy?: string;
+}
+
+export interface MonthlyView {
+  schedule: MonthlySchedule;
+  /** Repositories the last window opening could not switch on. */
+  missed: { repo: string; error?: string }[];
+}
+
+export const fetchMonthlyFixes = () => apiGet<MonthlyView>("/security/dependabot/monthly");
+export const saveMonthlyFixes = (enabled: boolean, repos: string[]) =>
+  apiPut<MonthlyView & { joined?: BulkSummary; left?: BulkSummary }>("/security/dependabot/monthly", { enabled, repos });
+export const runMonthlyFixesNow = () =>
+  apiPost<MonthlyView & { summary: BulkSummary }>("/security/dependabot/monthly/run", {});

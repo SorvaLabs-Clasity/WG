@@ -105,6 +105,11 @@ export interface OrgConfig {
    * turning it off stops new detailed rows and deletes nothing, so the feed
    * keeps showing what was collected while it was on.
    */
+  /**
+   * Dependabot security fixes held back and released once a month.
+   * See services/dependabotMonthly.ts; this is only where it is stored.
+   */
+  dependabotMonthly?: import("./dependabotMonthly").MonthlySchedule;
   detailedLogging?: {
     enabled: boolean;
     /** Kind ids from DETAILED_LOG_KINDS the admin has unchecked. */
@@ -357,4 +362,23 @@ export async function recordWebhookSeen(at?: string): Promise<void> {
   } else {
     memConfig = updated;
   }
+}
+
+/**
+ * Read-modify-write of the monthly Dependabot schedule, the same way every
+ * other setting on this record is written.
+ */
+export async function updateDependabotMonthly(
+  change: (current: import("./dependabotMonthly").MonthlySchedule | undefined)
+    => import("./dependabotMonthly").MonthlySchedule,
+): Promise<import("./dependabotMonthly").MonthlySchedule> {
+  const current = await getOrgConfig();
+  const next = change(current.dependabotMonthly);
+  const updated: OrgConfig = { ...current, dependabotMonthly: next };
+  if (hasTable("ORG_CONFIG_TABLE")) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
+  return next;
 }
