@@ -17,6 +17,7 @@ words how many are unwatched.
 ## What you can do here
 
 - Turn Dependabot on or off per repository
+- Hold security fixes back and release them once a month
 - Filter by severity
 - See which repositories share a vulnerable dependency
 
@@ -27,6 +28,38 @@ An earlier version invalidated every Dependabot query on each toggle, which
 turned a few clicks into thousands of API calls.
 
 The change is made with your token, so GitHub decides whether you may enable it.
+
+## Monthly security fixes
+
+In **Manage**, under *Monthly security fixes*. Tick repositories and put them in
+the monthly batch.
+
+GitHub raises a security-fix pull request as soon as an alert appears, and the
+`schedule` in `dependabot.yml` does not change that: it governs version updates
+only. So the batch works by holding the switch:
+
+- Adding a repository switches its security fixes **off** now, so nothing arrives
+  mid-month.
+- On the 1st (New York time) the monthly job in AWS switches them **on** for 24
+  hours, which is when GitHub raises the month's pull requests, then **off**
+  again.
+- **Run now** opens that window immediately, without using up the 1st's own.
+- Taking a repository out, or **Turn monthly off**, switches its fixes back
+  **on**. A repository that could not be switched back on stays in the batch, so
+  the next window releases it.
+
+The trade-off: a new vulnerability can wait up to a month for its fix.
+
+GitHub does not document that switching fixes on makes it raise pull requests for
+existing alerts. The same caveat applies to **Re-trigger**. Try the batch with
+one repository and **Run now** first, and check the pull request appears.
+
+**Permissions.** Changes on the tab are made with your own token, like the other
+switches here. The monthly job runs as the GitHub App, which needs
+**Administration: write** ([setup](../operations/setup.md#2-a-github-app)). If
+the App lacks it, the job's results say so, and the tab lists which repositories
+missed their fixes. Reading the schedule needs `deps.dependabot.read`, and
+changing it needs `deps.dependabot.bulk`.
 
 ## Where the alert data comes from
 

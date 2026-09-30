@@ -342,6 +342,29 @@ const accountsCode = code(accountsTs);
       names.length > 0 && names.every(n => n.includes("${stackPrefix}")), names);
   }
 
+  // ── the one thing Administration: write allows that nothing here needs ──
+  //
+  // The App holds Administration: write for branch protection, rulesets and the
+  // Dependabot switches — including the monthly job, which uses it on a
+  // schedule with nobody pressing anything. GitHub grants deleting a repository
+  // under the same permission, with no narrower option. setup.md says the app
+  // never does; this is what keeps that sentence true.
+  {
+    const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true })
+      .flatMap(d => d.isDirectory() ? walk(path.join(dir, d.name))
+        : /\.tsx?$/.test(d.name) ? [path.join(dir, d.name)] : []);
+    const sources = [
+      ...walk(path.join(__dirname, "src")),
+      ...walk(path.join(ROOT, "github-control-hub/desktop/src")),
+    ];
+    const deleting = sources.filter(f => {
+      const src = fs.readFileSync(f, "utf8");
+      return /\brepos\.delete\(/.test(src) || /["'`]DELETE \/repos\/\{owner\}\/\{repo\}["'`]/.test(src);
+    }).map(f => path.relative(ROOT, f));
+    check("nothing can delete a repository, though Administration: write would allow it",
+      deleting.length === 0, deleting);
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

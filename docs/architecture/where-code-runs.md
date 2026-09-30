@@ -92,6 +92,25 @@ changed writes nothing. Anyone in `control-hub-admins` can trigger one from the
 Access tab when six hours is too long to wait. See
 [access map](../features/access-map.md).
 
+## Monthly Dependabot job
+
+`github-control-hub-dependabot-monthly`, on an EventBridge Scheduler schedule
+every hour at :05, New York time. It is the only scheduled job that **writes to
+GitHub**, and only to repositories somebody has put in the monthly batch on the
+Vulnerabilities tab.
+
+GitHub raises a security-fix pull request as soon as an alert appears, and
+`dependabot.yml`'s schedule does not change that, so a monthly cadence is made
+by holding the switch. Repositories in the batch have security fixes off. On
+the 1st the job switches them on for 24 hours, which is when GitHub raises the
+month's pull requests, then off again. Hourly rather than once, so a missed
+pass is made up an hour later and a window opened by hand ("Run now") closes on
+time.
+
+It runs as the GitHub App, which needs **Administration: write**. Without it,
+each repository's result says so, and the Vulnerabilities tab lists which ones
+missed their fixes. See [Dependabot](../features/dependabot.md#monthly-security-fixes).
+
 ## What runs nowhere on a schedule
 
 Nothing, now. Graph aggregation was the last of it. It rebuilt only when someone

@@ -10,6 +10,7 @@ and the app share one source tree.
 | `github-control-hub-webhook-worker` | `webhooks/worker.ts` | Reads the queue, claims the delivery, does the actual processing |
 | `github-control-hub-alarm-evaluator` | `alarms/handler.ts` | Evaluates widget alarms that are due, emails the ones that cross |
 | `github-control-hub-audit-ingest` | `audit/ingest.ts` | Turns each streamed enterprise audit object into activity rows |
+| `github-control-hub-dependabot-monthly` | `jobs/dependabotMonthlyHandler.ts` | Switches Dependabot security fixes on for the monthly batch on the 1st, and off 24 hours later. Needs the GitHub App's Administration: write |
 
 ## Configuration
 
@@ -51,6 +52,7 @@ EC2 instance these replaced go, security group and all.
 | Guardrail enforcer | EventBridge on a CloudTrail event | Just the resource that changed, in the account it changed in |
 | Alarm evaluator | EventBridge schedule, every 5 minutes | Only alarms whose own interval is up, Dependabot-backed ones every 10 minutes, everything else every 15 |
 | Audit ingest | S3 object-created notification | One streamed batch |
+| Dependabot monthly | EventBridge Scheduler, hourly at :05, America/New_York | Acts twice a month: opens the window on the 1st, closes it 24 hours later. Every other pass reads one record and stops |
 | Guardrail enforcer | Direct invoke from the app | Whatever the caller asked for |
 | Webhook receiver | API Gateway, `POST /webhooks/github` | One delivery |
 | Webhook worker | SQS event source mapping, batch size 1 | One delivery, claimed from the queue |

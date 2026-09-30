@@ -114,11 +114,14 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 **Required App permissions:**
 | Permission | Level | Purpose |
 |---|---|---|
-| Repository administration | Read & write | Branch protections, rulesets |
+| Repository administration | Read & write | Branch protections, rulesets; Dependabot alerts and security fixes on/off, including the monthly Dependabot job, which switches fixes on and off on a schedule |
 | Pull requests | Read & write | Stale pull request reminders |
 | Contents | Read & write | Branch creation; required-file compliance checks |
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
+
+This is the short version. The full list, with why each is needed and which
+writes happen on a schedule, is in [setup.md](../docs/operations/setup.md#2-a-github-app).
 
 > **If the instant notifications in My work are silent**, open that panel: it
 > now reads the App's own subscription list and names the checkbox that is

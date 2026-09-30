@@ -34,6 +34,11 @@ Measured over seven days on the live deployment:
 | guardrail-enforcer | 609 | 2,504 ms | 512 MB |
 | audit-ingest | 309 | 183 ms | 512 MB |
 
+The monthly Dependabot job was added after these were measured. It runs hourly
+and almost every pass reads one record and stops: about 720 short invocations a
+month, well inside the free tier. It only makes GitHub requests twice a month,
+and only for repositories in the monthly batch.
+
 The WAF is most of the small bill. It is kept for the compliance checkbox and
 the option of adding real rules later; see [reducing it](#reducing-it-further).
 

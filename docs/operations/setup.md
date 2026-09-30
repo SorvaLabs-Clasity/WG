@@ -195,7 +195,7 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 | Permission | Access | Why |
 |---|---|---|
-| Administration | **Read & write** | Reading branch protection and rulesets; **writing** them when a guardrail is set to enforce, renaming a default branch, and turning Dependabot alerts on or off |
+| Administration | **Read & write** | Reading branch protection and rulesets; **writing** them when a guardrail is set to enforce, renaming a default branch, turning Dependabot alerts and security fixes on or off, and the [monthly Dependabot job](../features/dependabot.md#monthly-security-fixes), which switches security fixes on and off for repositories in the monthly batch |
 | Contents | **Read & write** | Reading file contents for compliance checks and code search; **writing** refs when a branch is created or deleted from the app |
 | Pull requests | **Read & write** | Reading pull requests for the PR tab and activity; **writing** the stale-PR reminder comment, and deleting the previous one |
 | Metadata | Read | Mandatory; listing repositories |
@@ -215,17 +215,26 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 Everything else: **No access**.
 
-**Three of these are write, and each is a button somebody presses.** Nothing
-writes on a schedule:
+**Three of these are write.** Each is a button somebody presses, with one
+exception: the monthly Dependabot job writes on a schedule, and only to
+repositories somebody has put in the monthly batch.
 
 | Write | Reached from |
 |---|---|
 | Branch protection, rulesets, branch rename, branch create/delete | Repository and branch screens, and a guardrail rule explicitly set to **enforce** |
-| Dependabot alerts on/off | The Vulnerabilities tab |
+| Dependabot alerts and security fixes on/off | The Vulnerabilities tab |
+| Dependabot security fixes on/off, **on a schedule** | The monthly Dependabot job in AWS: on at the start of the 1st, off 24 hours later, for the monthly batch only. Nothing happens until somebody adds a repository to the batch |
 | Pull request comments | The stale-PR reminder, which is **off by default** |
 
+**Administration: write also allows deleting a repository.** GitHub has no
+narrower permission for these switches, so granting them grants that too. The
+app never calls the delete endpoint, and `repro-leastprivilege` fails if code
+that could appears.
+
 If you want the app read-only to start with, grant the three as **Read** and
-everything still works except those actions, the screens that need them fail
+everything still works except those actions (the monthly Dependabot job included:
+its results then say the App lacks Administration: write, and the Vulnerabilities
+tab lists which repositories missed their fixes), the screens that need them fail
 with GitHub's own permission error rather than silently doing nothing. Raising a
 permission later requires the org owner to approve the change; the app keeps
 running on the old grant until they do.
