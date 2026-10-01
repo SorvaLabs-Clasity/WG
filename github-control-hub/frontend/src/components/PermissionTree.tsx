@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { TYPE } from "../design";
+import { TYPE, INTENT } from "../design";
+import { missingNeeds } from "../lib/permissionNeeds";
 import type { PermissionLeaf, PermissionEntry, FlatRule } from "../api/admin";
 import {
   buildTree, collectLeafKeys, knownNodesOf, decideLeaf, ownRulesFrom, baselineOf, collapseEntry,
@@ -129,11 +130,49 @@ export default function PermissionTree({
     onChange(collapseEntry(desired, tree, baseline));
   }, [readOnly, vocabulary, held, tree, baseline, onChange]);
 
+  const labels = useMemo(() => new Map(vocabulary.map(l => [l.key, l.label])), [vocabulary]);
+
+  // A feature granted without the list its screen picks from (lib/permissionNeeds).
+  const needs = useMemo(() => missingNeeds(held, k => labels.has(k)), [held, labels]);
+
+  const addMissing = useCallback((keys: string[]) => {
+    if (readOnly) return;
+    const desired = new Map<string, boolean>();
+    for (const leaf of vocabulary) desired.set(leaf.key, held(leaf.key));
+    for (const key of keys) desired.set(key, true);
+    onChange(collapseEntry(desired, tree, baseline));
+  }, [readOnly, vocabulary, held, tree, baseline, onChange]);
+
   if (vocabulary.length === 0) {
     return <p className={`${TYPE.sub} text-ink-3`}>The vocabulary has not loaded yet.</p>;
   }
 
+  const tone = INTENT.warn;
   return (
+    <>
+    {needs.length > 0 && (
+      <div role="status" className={`mb-3 border border-rule ${tone.soft}`}>
+        <span className={`block h-[3px] w-full ${tone.mark}`} aria-hidden="true" />
+        <ul className="p-3 flex flex-col gap-2">
+          {needs.map(n => (
+            <li key={n.feature} className="flex items-start gap-3">
+              <i className={`ph-bold ph-warning-circle shrink-0 mt-0.5 ${tone.text}`} aria-hidden="true"></i>
+              <p className={`flex-1 text-[0.8125rem] leading-relaxed ${tone.text}`}>
+                “{labels.get(n.feature)}” is granted, but its screen also reads{" "}
+                {n.missing.map(k => `“${labels.get(k)}”`).join(" and ")}, which {n.missing.length > 1 ? "are" : "is"} not.
+                Without {n.missing.length > 1 ? "them" : "it"}, the lists it picks from stay empty.
+              </p>
+              {!readOnly && (
+                <button type="button" onClick={() => addMissing(n.missing)}
+                  className={`textlink caps shrink-0 !${tone.text}`}>
+                  Add
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
     <div className="border border-rule">
       {tree.map((node, i) => (
         <TreeRow key={node.key} node={node} depth={0} first={i === 0}
@@ -142,6 +181,7 @@ export default function PermissionTree({
           onToggle={handleToggle} readOnly={!!readOnly} />
       ))}
     </div>
+    </>
   );
 }
 

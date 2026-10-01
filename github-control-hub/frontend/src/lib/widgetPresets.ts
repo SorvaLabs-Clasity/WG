@@ -50,3 +50,25 @@ export function presetOptions(current: string | undefined): string[] {
     ? [...CREATABLE_PRESETS, current]
     : CREATABLE_PRESETS;
 }
+
+/**
+ * What a card's answer is made of, as the permissions to read it — the same
+ * rule as backend/src/permissions/cardReads.ts, which the server enforces.
+ * Here it decides which kinds of card the add-card form offers, so nobody is
+ * offered a card they would not be allowed to see. repro-cardreads.ts keeps
+ * the two copies in step.
+ */
+export function cardReads(card: { type: string; presetId?: string }): string[] {
+  if (card.type === "query") return ["repos.query.read"];
+  switch (card.presetId) {
+    case "dependabot":
+    case "vuln-repos":
+      return ["deps.read"];
+    case "renovate-open":
+      return ["deps.renovate.read"];
+    case "bypasses":
+      return ["repos.query.read"];
+    default:
+      return ["repos.query.read"];
+  }
+}

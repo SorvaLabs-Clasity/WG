@@ -73,9 +73,11 @@ const gate = read("middleware/teamGate.ts");
     // Snapshots hold the checks' actual findings, so serving all of them past a
     // gated board hands over exactly what the gate was for.
     check("  stored answers are narrowed rather than refused",
-      /res\.json\(all\.filter\(snap => mine\.has\(snap\.widgetId\)\)\)/.test(widgets));
+      /res\.json\(all\.filter\(snap => mine\.has\(snap\.widgetId\) && visible\(snap\)\)\)/.test(widgets));
+    // Every one whose data they may read (repro-cardreads.ts): a board reader
+    // still sees every card's answers, and no more than the cards themselves.
     check("    with an admin still seeing every one",
-      /if \(await teamOrPermission\([\s\S]{0,160}return res\.json\(all\);/.test(widgets));
+      /if \(await teamOrPermission\([\s\S]{0,160}return res\.json\(all\.filter\(visible\)\);/.test(widgets));
   }
 
   console.log("\nan alarm belongs to the team that owns what it watches");

@@ -329,3 +329,18 @@ export async function holdsNow(login: string, ownToken: string, key: string): Pr
   if (self.failure) return false;
   return self.permissions.has(key);
 }
+
+/**
+ * Whether this person may read what a card shows, now — for the places that
+ * act on a card rather than list it: an alarm's email carries the card's
+ * numbers. Every card before a file is in force; none on an unreadable file.
+ */
+export async function mayReadCardNow(
+  login: string, ownToken: string, card: import("./cardReads").CardShape,
+): Promise<boolean> {
+  const self = await accessForSelf(login, ownToken);
+  if (self.inert) return true;
+  if (self.failure) return false;
+  const { mayReadCard } = await import("./cardReads");
+  return mayReadCard(card, k => self.permissions.has(k));
+}

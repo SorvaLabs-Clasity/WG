@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { cardReads } from "../lib/widgetPresets";
 import { useOrgName } from "../hooks/useGithubAvailable";
 import { createPortal } from "react-dom";
 import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager, ColumnResizeHandle } from "../design";
@@ -1234,7 +1235,11 @@ export function useWidgetData(
   const fromSnapshot = !!snapshot && !snapshot.error
     && !((opts?.needAllRows || filtering) && snapshot.trimmed);
 
-  const { data: depsData, isLoading: depsLoading } = useDependencies(!fromSnapshot);
+  // Only for the cards made of it, and only for somebody who may read it: every
+  // card used to fetch the whole vulnerability list, whatever it showed.
+  const isDepsCard = config.type === "preset" && (config.presetId === "dependabot" || config.presetId === "vuln-repos");
+  const { holds: holdsRead } = usePermissionSet();
+  const { data: depsData, isLoading: depsLoading } = useDependencies(!fromSnapshot && isDepsCard && holdsRead("deps.read"));
   const isBypass = !fromSnapshot && config.type === "preset" && config.presetId === "bypasses";
   // A Renovate card needs Renovate's own read; without it the card would load
   // straight into a refusal on a board the person was given.
@@ -1251,7 +1256,7 @@ export function useWidgetData(
   const isQuery = !fromSnapshot && config.type === "query";
   const { data: queryData, isLoading: queryLoading, error: queryError } = useSecurityQuery(isQuery ? config.queryId! : null, config.queryParam, config.queryAdvanced);
 
-  const { data: repos } = useRepos();
+  const { data: repos } = useRepos(holdsRead("repos.read"));
 
   const { items, isLoading } = useMemo(() => {
     // The stored answer, when there is one. Returned before any of the live
@@ -1785,8 +1790,16 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
 export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: () => void; onSave: (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => void; isSaving?: boolean; initialData?: WidgetConfig }) {
   const isEditing = !!initialData;
   const [title, setTitle] = useState(initialData?.title || "");
-  const [type, setType] = useState<WidgetType>(initialData?.type || "preset");
-  const [presetId, setPresetId] = useState<PresetId>((initialData?.presetId as PresetId) || "dependabot");
+  // Only the kinds of card whose data this person may read: a card they could
+  // not read would be left off every board, theirs included.
+  const { can: canRead } = usePermissionSet();
+  const readable = (card: { type: string; presetId?: string }) => cardReads(card).every(canRead);
+  const presetChoices = presetOptions(initialData?.presetId).filter(id => readable({ type: "preset", presetId: id }));
+  const queryAllowed = readable({ type: "query" });
+  const [type, setType] = useState<WidgetType>(
+    initialData?.type || (presetChoices.length > 0 ? "preset" : "query"));
+  const [presetId, setPresetId] = useState<PresetId>(
+    (initialData?.presetId as PresetId) || (presetChoices[0] as PresetId) || "dependabot");
   // Reuses queryParam rather than adding a field, so it persists with the rest
   // of the widget without a schema change.
   const [picked, setSeverities] = useState<Severity[]>(() => parseSeverities(initialData?.queryParam));
@@ -1912,8 +1925,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
               onChange={(e) => setType(e.target.value as WidgetType)}
               className="field-line text-[0.8438rem] w-full"
             >
-              <option value="preset">Built-in Ranking Presets</option>
-              <option value="query">Security Insight Query</option>
+              {presetChoices.length > 0 && <option value="preset">Built-in Ranking Presets</option>}
+              {queryAllowed && <option value="query">Security Insight Query</option>}
             </select>
           </div>
 
@@ -1926,7 +1939,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
                   className="field-line text-[0.8438rem] w-full"
                 >
-                  {presetOptions(initialData?.presetId).map(id => (
+                  {presetChoices.map(id => (
                     <option key={id} value={id}>{PRESET_LABELS[id] ?? id}</option>
                   ))}
                 </select>

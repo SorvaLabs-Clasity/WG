@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { mayReadCardNow } from "../permissions";
 import { sanitizeError } from "../utils/errorSanitizer";
 import {
   getOrCreatePersonalGroup, listPersonalAlarms, getAlarm, createAlarm,
@@ -90,6 +91,13 @@ router.post("/", requirePermission("me.alarms.manage"), async (req: Request, res
 
     const widget = await getWidget(String(widgetId));
     if (!widget) return res.status(404).json({ error: "Widget not found" });
+    if (!(await mayReadCardNow(req.user!.login, req.user!.accessToken, widget as any))) {
+      return res.status(403).json({
+        code: "PERMISSION_REQUIRED",
+        error: "This card shows data you do not have permission to read, so it cannot carry an alarm: "
+          + "the alarm's email would show it to you.",
+      });
+    }
 
     // A condition its widget cannot produce evaluates to nothing on every pass
     // and never fires, which looks exactly like an alarm that is not triggering.

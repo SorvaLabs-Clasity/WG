@@ -26,7 +26,7 @@ import { logActivity } from "../services/activityService";
 import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
 import { listGuardrails } from "../aws-guardrails/store";
 import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
-import { teamGatesStandAside, teamOrPermission, holdsNow } from "../permissions";
+import { teamGatesStandAside, teamOrPermission, holdsNow, mayReadCardNow } from "../permissions";
 
 const router = Router();
 
@@ -123,6 +123,19 @@ const requireEitherTeam: RequestHandler = (req, res, next) => {
 async function refusedForSubject(
   req: Request, res: Response, subjectId: string, verb: "create" | "edit" | "delete",
 ): Promise<boolean> {
+  // A card's alarm emails the card's numbers, so it needs the card's own read.
+  if (!subjectId.startsWith(GUARDRAIL_PREFIX) && verb !== "delete") {
+    const card = await subjectFor(subjectId).catch(() => null);
+    if (card && !(await mayReadCardNow(req.user!.login, req.user!.accessToken, card as any))) {
+      res.status(403).json({
+        code: "PERMISSION_REQUIRED",
+        error: "This card shows data you do not have permission to read, so it cannot carry an alarm: "
+          + "the alarm's email would show it to you.",
+      });
+      return true;
+    }
+  }
+
   const aws = subjectId.startsWith(GUARDRAIL_PREFIX);
   // With a file in force, the permission that matches what the alarm watches.
   // The route lets either through — `alarms.org.*` or `aws.rules.edit` — so

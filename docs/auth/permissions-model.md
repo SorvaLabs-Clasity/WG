@@ -284,6 +284,18 @@ requires the read permission for the data it displays, and a card whose data
 you may not read is **absent, not empty**. An empty card invites somebody to
 report a bug; an absent one tells the truth.
 
+This holds on somebody's own board too, and for anything built on a card:
+the add-card form offers only the kinds of card you may read, the server
+refuses making or editing one you may not, and an alarm cannot be set on one,
+because its email would carry the numbers. Which read each card needs is in
+`backend/src/permissions/cardReads.ts`; `repro-cardreads.ts` holds it there.
+
+Pickers follow the same line. The people, repository and email-group lists
+behind a picker have their own reads, and holding a feature does not open
+them. Instead, the admin console warns when a feature is granted without the
+lists its screen picks from ("Mute a reminder" without "The list of people"),
+with an **Add** button. The pairs are in `frontend/src/lib/permissionNeeds.ts`.
+
 The same rule applies anywhere one screen surfaces another's data. It is why
 the Activity feed refills its page after redaction rather than reporting how
 many rows it hid — a count of hidden rows is itself the fact the permission

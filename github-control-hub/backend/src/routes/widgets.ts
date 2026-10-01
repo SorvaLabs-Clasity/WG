@@ -2,6 +2,7 @@ import { Router } from "express";
 import { onlyHolders } from "../utils/refusalText";
 import { CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { teamOrPermission, accessForSelf } from "../permissions";
+import { cardReads, mayReadCard } from "../permissions/cardReads";
 import type { Request, Response } from "express";
 import { listWidgets, createWidget, updateWidget, deleteWidget, type WidgetConfig } from "../services/widgetService";
 import { requireAnyPermission } from "../middleware/permissionGate";
@@ -65,10 +66,36 @@ router.get("/", requireAnyPermission("me.widgets.read", "overview.read", "overvi
   }
 
   const all = await listWidgets();
-  res.json(all.filter(w => mine
+  // A card whose data this person may not read is left out, not drawn broken.
+  const readable = await cardReader(login, req.user!.accessToken);
+  res.json(all.filter(w => (mine
     ? w.owner?.toLowerCase() === login
-    : !w.owner));
+    : !w.owner) && readable(w)));
 });
+
+/**
+ * Which cards this person may read, by what each card's answer is made of.
+ * Before a file is in force, every card — the teams decide as they always did.
+ */
+async function cardReader(login: string, token: string): Promise<(card: WidgetConfig) => boolean> {
+  const self = await accessForSelf(login, token);
+  if (self.inert) return () => true;
+  if (self.failure) return () => false;
+  return card => mayReadCard(card, k => self.permissions.has(k));
+}
+
+/** Refuse making or changing a card whose data the person may not read. */
+async function refusedCardRead(res: Response, card: WidgetConfig, login: string, token: string): Promise<boolean> {
+  if ((await cardReader(login, token))(card)) return false;
+  const self = await accessForSelf(login, token);
+  const missing = cardReads(card).filter(k => !self.permissions.has(k));
+  res.status(403).json({
+    code: "PERMISSION_REQUIRED",
+    permission: missing.join(" and "),
+    error: `This card shows data that needs the "${missing.join('" and "')}" permission, which you do not have.`,
+  });
+  return true;
+}
 
 /**
  * Every widget's last computed rows, in one read.
@@ -91,13 +118,21 @@ router.get("/snapshots", requireAnyPermission("me.widgets.read", "overview.fresh
   // so serving every one of them past a gated board would hand over exactly
   // what the gate was for.
   const login = req.user!.login.toLowerCase();
+  const widgets = await listWidgets();
+  // And only the cards whose data this person may read: a snapshot is the
+  // card's findings, so serving it past that read is the side channel the
+  // card's own absence exists to close.
+  const readable = await cardReader(login, req.user!.accessToken);
+  const byId = new Map(widgets.map(w => [w.id, w]));
+  const visible = (snap: { widgetId: string }) => {
+    const w = byId.get(snap.widgetId);
+    return !!w && readable(w);
+  };
   if (await teamOrPermission(login, req.user!.accessToken, "control-hub", ["overview.read", "overview.cards.read", "overview.freshness.read"]).catch(() => false)) {
-    return res.json(all);
+    return res.json(all.filter(visible));
   }
-  const mine = new Set((await listWidgets())
-    .filter(w => w.owner?.toLowerCase() === login)
-    .map(w => w.id));
-  res.json(all.filter(snap => mine.has(snap.widgetId)));
+  const mine = new Set(widgets.filter(w => w.owner?.toLowerCase() === login).map(w => w.id));
+  res.json(all.filter(snap => mine.has(snap.widgetId) && visible(snap)));
 });
 
 /**
@@ -161,6 +196,7 @@ router.post("/", requireAnyPermission("me.widgets.manage", "overview.cards.creat
     res.status(400).json({ error: "title, type, and displayType are required" });
     return;
   }
+  if (await refusedCardRead(res, { type, presetId } as WidgetConfig, req.user!.login, req.user!.accessToken)) return;
   const widget = await createWidget(
     { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, owner,
       filters: cleanFilters(req.body.filters), createdBy: req.user!.login },
@@ -226,6 +262,12 @@ router.put("/:id", requireAnyPermission("me.widgets.manage", "overview.cards.edi
     if (key in req.body) (patch as any)[key] = req.body[key];
   }
   if ("filters" in req.body) patch.filters = cleanFilters(req.body.filters);
+
+  // Both the card as it is and as it would become: one may not be edited into,
+  // or out of sight from, data its editor cannot read.
+  const existing = (await listWidgets()).find(w => w.id === req.params.id);
+  if (existing && (await refusedCardRead(res, existing, req.user!.login, req.user!.accessToken)
+    || await refusedCardRead(res, { ...existing, ...patch } as WidgetConfig, req.user!.login, req.user!.accessToken))) return;
 
   const updated = await updateWidget(req.params.id, patch, req.user!.login);
   if (!updated) {

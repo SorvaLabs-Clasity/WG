@@ -106,7 +106,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
   {
     const page = read("../frontend/src/pages/AnalyticsPage.tsx");
     check("the live sources are switched off when a snapshot is used",
-      /useDependencies\(!fromSnapshot\)/.test(page)
+      /useDependencies\(!fromSnapshot[ )&]/.test(page)
       && /const isQuery = !fromSnapshot/.test(page)
       && /const isBypass = !fromSnapshot/.test(page),
       "fetching and ignoring would leave the cost exactly where it was");

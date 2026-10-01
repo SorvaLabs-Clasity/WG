@@ -181,7 +181,8 @@ const code = page.split("\n")
       && !/CREATABLE_PRESETS = \[[^\]]*"bypasses"/.test(presets),
       presets.match(/CREATABLE_PRESETS = \[[^\]]*\]/)?.[0]);
     check("  the dropdown is built from that list, not from every label",
-      /presetOptions\(initialData\?\.presetId\)\.map\(id => \(/.test(code),
+      /const presetChoices = presetOptions\(initialData\?\.presetId\)/.test(code)
+      && /presetChoices\.map\(id => \(/.test(code),
       "iterating PRESET_LABELS would put it back");
 
     // A <select> whose value is not among its options shows the first one

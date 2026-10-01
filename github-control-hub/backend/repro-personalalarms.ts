@@ -49,7 +49,11 @@ const server = fs.readFileSync("./src/server.ts", "utf8");
       /alarm\.owner\.toLowerCase\(\) !== req\.user!\.login\.toLowerCase\(\)/.test(meAlarms));
     // Not 403: saying "you may not touch that" confirms it exists.
     check("  somebody else's alarm answers as absent, not as forbidden",
-      /res\.status\(404\)/.test(meAlarms) && !/status\(403\)/.test(meAlarms));
+      /res\.status\(404\)/.test(meAlarms)
+      // The one 403 is a card whose data you cannot read, on your own card —
+      // never a refusal about whose alarm something is.
+      && (meAlarms.match(/status\(403\)/g) ?? []).length === 1
+      && /mayReadCardNow\([\s\S]{0,120}status\(403\)/.test(meAlarms));
     check("  and the card must be one you own",
       /ownsWidget\(req\.user!\.login/.test(meAlarms));
   }
