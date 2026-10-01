@@ -107,6 +107,20 @@ async function main() {
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), {
     status, headers: { "content-type": "application/json" },
   });
+  // A few repositories with Dependabot alerts, and each one's security-fixes
+  // switch, which the fake remembers — so turning it on or off is real here.
+  const FIXES: Record<string, boolean> = {
+    "billing-api": true, "payments": true, "web-portal": true, "docs-site": true, "legacy-tool": false,
+  };
+  const ALERTS = Object.keys(FIXES).map((repo, i) => ({
+    number: i + 1, state: "open", created_at: "2026-09-01T00:00:00Z",
+    repository: { name: repo },
+    dependency: { manifest_path: "package-lock.json", relationship: "direct" },
+    security_advisory: { severity: i % 2 ? "high" : "critical", summary: "fixture advisory", cve_id: `CVE-2026-000${i}` },
+    security_vulnerability: { package: { name: "fast-uri", ecosystem: "npm" }, vulnerable_version_range: "< 3.1.7",
+      first_patched_version: { identifier: "3.1.7" } },
+  }));
+
   const realFetch = globalThis.fetch;
   (globalThis as any).fetch = async (url: any, init?: any) => {
     const u = new URL(String(url));
@@ -114,6 +128,21 @@ async function main() {
     const auth = String(new Headers(init?.headers).get("authorization") ?? "");
     const caller = auth.replace(/^(token|bearer)\s+tok-/i, "");
     const p = u.pathname;
+    const method = String(init?.method ?? "GET").toUpperCase();
+
+    if (p === "/orgs/an-org/dependabot/alerts") return json(200, u.searchParams.get("page") && u.searchParams.get("page") !== "1" ? [] : ALERTS);
+    if (p === "/orgs/an-org/repos") {
+      return json(200, u.searchParams.get("page") && u.searchParams.get("page") !== "1" ? [] : Object.entries(FIXES).map(([name, on]) => ({
+        name, full_name: `an-org/${name}`, private: true, archived: false, security_and_analysis: { dependabot_security_updates: { status: on ? "enabled" : "disabled" } },
+      })));
+    }
+    let fx = p.match(/^\/repos\/an-org\/([^/]+)\/automated-security-fixes$/);
+    if (fx && fx[1] in FIXES) {
+      if (method === "PUT") { FIXES[fx[1]] = true; return new Response(null, { status: 204 }); }
+      if (method === "DELETE") { FIXES[fx[1]] = false; return new Response(null, { status: 204 }); }
+      return json(200, { enabled: FIXES[fx[1]], paused: false });
+    }
+    if (/^\/repos\/an-org\/[^/]+\/vulnerability-alerts$/.test(p)) return new Response(null, { status: 204 });
     if (p === "/repos/an-org/control-hub-permissions/contents/permissions.json") {
       return json(200, {
         type: "file", sha: "abc", encoding: "base64",
@@ -191,6 +220,8 @@ async function main() {
     sessions[login] = signToken({ githubId: i + 1, login } as any);
   });
 
+  // So a check can see where each switch ended up.
+  app.get("/__harness/fixes", (_req: any, res: any) => res.json(FIXES));
   const out = { mode: MODE, port: (server.address() as AddressInfo).port, sessions };
   fs.writeFileSync(path.join(__dirname, ".sessions.json"), JSON.stringify(out));
   console.log(JSON.stringify(out));

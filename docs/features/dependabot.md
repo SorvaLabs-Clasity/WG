@@ -17,7 +17,7 @@ words how many are unwatched.
 ## What you can do here
 
 - Turn Dependabot on or off per repository
-- Hold security fixes back and release them once a month
+- Hold security fixes back and release them once a month, in named batches
 - Filter by severity
 - See which repositories share a vulnerable dependency
 
@@ -31,35 +31,48 @@ The change is made with your token, so GitHub decides whether you may enable it.
 
 ## Monthly security fixes
 
-In **Manage**, under *Monthly security fixes*. Tick repositories and put them in
-the monthly batch.
+The **Monthly fixes** view at the top of the Vulnerabilities tab, next to
+Dependabot, Renovate and Notifications.
 
 GitHub raises a security-fix pull request as soon as an alert appears, and the
 `schedule` in `dependabot.yml` does not change that: it governs version updates
-only. So the batch works by holding the switch:
+only. So batches work by holding the switch:
 
-- Adding a repository switches its security fixes **off** now, so nothing arrives
-  mid-month.
-- On the 1st (New York time) the monthly job in AWS switches them **on** for 24
-  hours, which is when GitHub raises the month's pull requests, then **off**
-  again.
-- **Run now** opens that window immediately, without using up the 1st's own.
-- Taking a repository out, or **Turn monthly off**, switches its fixes back
-  **on**. A repository that could not be switched back on stays in the batch, so
-  the next window releases it.
+- **Batches are named**, and each has its own **release day**, the 1st to the
+  28th, so every month has one. Make as many as you like, for example "Billing
+  services" on the 1st and "Internal tools" on the 15th.
+- **Adding** a repository switches its security fixes **off** now, so nothing
+  arrives mid-month. Only a repository whose fix pull requests are already on can
+  join: holding back something that was never on would end with the job
+  switching on fixes nobody asked for. The picker greys those out and says so.
+  A repository can be in **one** batch at a time.
+- On the batch's day (New York time), the monthly job in AWS switches them **on**
+  for 24 hours, which is when GitHub raises that month's pull requests, then
+  **off** again.
+- **Run now** releases a batch immediately, outside its day, without using up its
+  own release that month.
+- **Take out** switches a repository's fixes back **on**. **Delete** takes every
+  repository out first, then removes the batch. A repository that cannot be
+  switched back on stays in its batch, so the next release switches it on.
+
+Adding, taking out and running go through the same progress window as the other
+bulk actions on the tab, a few repositories at a time, with **Stop**.
 
 The trade-off: a new vulnerability can wait up to a month for its fix.
 
 GitHub does not document that switching fixes on makes it raise pull requests for
-existing alerts. The same caveat applies to **Re-trigger**. Try the batch with
-one repository and **Run now** first, and check the pull request appears.
+existing alerts. The same caveat applies to **Re-trigger**. Try a batch of one
+repository with **Run now** first, and check the pull request appears.
 
 **Permissions.** Changes on the tab are made with your own token, like the other
 switches here. The monthly job runs as the GitHub App, which needs
 **Administration: write** ([setup](../operations/setup.md#2-a-github-app)). If
 the App lacks it, the job's results say so, and the tab lists which repositories
-missed their fixes. Reading the schedule needs `deps.dependabot.read`, and
-changing it needs `deps.dependabot.bulk`.
+missed their fixes. Seeing batches needs `deps.dependabot.read`, and changing
+them needs `deps.dependabot.bulk`.
+
+A batch made before batches had names becomes "Monthly batch", released on the
+1st, with the same repositories.
 
 ## Where the alert data comes from
 

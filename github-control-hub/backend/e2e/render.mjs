@@ -15,7 +15,7 @@ const { sessions, mode } = JSON.parse(fs.readFileSync(sessionsFile, "utf8"));
 
 const ROUTES = [
   "/my-work", "/analytics", "/aws", "/alarms", "/access", "/dependencies",
-  "/dependencies?view=updates", "/dependencies?view=notifications",
+  "/dependencies?view=updates", "/dependencies?view=notifications", "/dependencies?view=monthly",
   "/graph", "/pulls", "/who-knows", "/activity", "/admin",
 ];
 // Views inside a page, reached by clicking — the ones that fetch their own data.

@@ -597,80 +597,134 @@ router.post("/dependencies/bulk", requirePermission("deps.dependabot.bulk"), asy
   }
 });
 
-// ── monthly security fixes ──────────────────────────────────────────────
+// ── monthly security fixes, in named batches ────────────────────────────
 //
-// Repositories in the batch have security fixes held off and released once a
-// month by the hourly job (services/dependabotMonthly.ts). Changes made here
-// run as the person asking, like the bulk switch above: they need admin on
-// each repository they bring in or take out.
+// Repositories in a batch have security fixes held off and released once a
+// month by the hourly job (services/dependabotMonthly.ts). Changes here run
+// as the person asking, like the bulk switch above: they need admin on each
+// repository they bring in or take out.
 
-function monthlyDeps(token: string) {
+function batchDeps(token: string) {
   return (async () => {
-    const [{ runDependabotBulk }, { getOrgConfig, updateDependabotMonthly }] = await Promise.all([
+    const [{ runDependabotBulk }, { loadDependabotBatches, saveDependabotBatches }] = await Promise.all([
       import("../services/dependabotBulk"), import("../services/orgConfigService"),
     ]);
     const octokit = createOctokit(token, "Monthly Dependabot security fixes");
     const org = getOrg();
     return {
       bulk: (repos: string[], action: any) => runDependabotBulk(octokit, org, repos, action),
-      load: async () => (await getOrgConfig()).dependabotMonthly,
-      save: updateDependabotMonthly,
+      /**
+       * Asked of GitHub, per repository, at the moment of adding: the tab's own
+       * copy can be minutes old, and adding a repository whose fixes are off
+       * would end with the job switching on fixes nobody asked for.
+       */
+      fixesOn: async (repo: string): Promise<boolean | null> => {
+        try {
+          const { data } = await octokit.rest.repos.checkAutomatedSecurityFixes({ owner: org, repo });
+          return !!(data as any)?.enabled;
+        } catch (err: any) {
+          return err?.status === 404 ? false : null;
+        }
+      },
+      load: loadDependabotBatches,
+      save: saveDependabotBatches,
       log: (action: any, actor: string, repo: string, details: string) =>
         logActivity(action, actor, repo, "Dependabot", details, undefined, "app"),
     };
   })();
 }
 
-async function monthlyView() {
-  const { getOrgConfig } = await import("../services/orgConfigService");
-  const { withDefaults, missedLastOpening } = await import("../services/dependabotMonthly");
-  const schedule = withDefaults((await getOrgConfig()).dependabotMonthly);
-  return { schedule, missed: missedLastOpening(schedule) };
+async function batchesView() {
+  const { loadDependabotBatches } = await import("../services/orgConfigService");
+  const { missedLastOpening, nextRelease, isOpen } = await import("../services/dependabotMonthly");
+  const c = await loadDependabotBatches();
+  return {
+    timeZone: c.timeZone,
+    batches: c.batches.map(b => ({
+      ...b,
+      open: isOpen(b),
+      nextRelease: nextRelease(b, c.timeZone),
+      missed: missedLastOpening(b),
+    })),
+  };
 }
 
-router.get("/dependabot/monthly", requirePermission("deps.dependabot.read"), async (_req: Request, res: Response) => {
-  try {
-    res.json(await monthlyView());
-  } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "monthly Dependabot schedule") });
-  }
-});
-
-router.put("/dependabot/monthly", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
-  const token = req.user?.accessToken;
-  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
-  const { enabled, repos } = req.body ?? {};
-  if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled must be true or false" });
-  const list = Array.isArray(repos)
-    ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
+function repoList(body: any): string[] | null {
+  const list = Array.isArray(body?.repos)
+    ? body.repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
     : [];
-  if (enabled && list.length === 0) return res.status(400).json({ error: "Pick at least one repository" });
-  if (list.length > 200) return res.status(400).json({ error: "Up to 200 repositories in the batch" });
+  return list.length > 0 && list.length <= 50 ? list : null;
+}
+
+async function batchRoute(res: Response, label: string, work: () => Promise<unknown>) {
   try {
-    const { configure } = await import("../services/dependabotMonthly");
-    const result = await configure(await monthlyDeps(token), { enabled, repos: list }, req.user!.login);
+    const result = await work();
     const { invalidateDependencySweep } = await import("../services/dependencyService");
     invalidateDependencySweep();
-    res.json({ ...(await monthlyView()), joined: result.joined, left: result.left });
+    res.json({ ...(await batchesView()), ...(result !== undefined ? { results: result } : {}) });
   } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "monthly Dependabot schedule") });
+    const { BatchError } = await import("../services/dependabotMonthly");
+    if (error instanceof BatchError) return res.status(error.status).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, label) });
+  }
+}
+
+router.get("/dependabot/batches", requirePermission("deps.dependabot.read"), async (_req: Request, res: Response) => {
+  try {
+    res.json(await batchesView());
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "monthly Dependabot batches") });
   }
 });
 
-router.post("/dependabot/monthly/run", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
+router.post("/dependabot/batches", requirePermission("deps.dependabot.bulk"), async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
-  try {
-    const { runNow } = await import("../services/dependabotMonthly");
-    const result = await runNow(await monthlyDeps(token), req.user!.login);
-    const { invalidateDependencySweep } = await import("../services/dependencyService");
-    invalidateDependencySweep();
-    res.json({ ...(await monthlyView()), summary: result.summary });
-  } catch (error: any) {
-    const nothing = /no monthly batch/i.test(error?.message ?? "");
-    res.status(nothing ? 400 : 500).json({ error: nothing ? error.message : sanitizeError(error, "monthly Dependabot run") });
-  }
+  const { createBatch } = await import("../services/dependabotMonthly");
+  await batchRoute(res, "creating a batch", async () => {
+    await createBatch(await batchDeps(token), { name: req.body?.name, dayOfMonth: req.body?.dayOfMonth }, req.user!.login);
+    return undefined;
+  });
 });
+
+router.patch("/dependabot/batches/:id", requirePermission("deps.dependabot.bulk"), async (req: Request<{ id: string }>, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+  const { updateBatch } = await import("../services/dependabotMonthly");
+  await batchRoute(res, "changing a batch", async () => {
+    await updateBatch(await batchDeps(token), req.params.id,
+      { name: req.body?.name, dayOfMonth: req.body?.dayOfMonth }, req.user!.login);
+    return undefined;
+  });
+});
+
+router.delete("/dependabot/batches/:id", requirePermission("deps.dependabot.bulk"), async (req: Request<{ id: string }>, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+  const { deleteBatch } = await import("../services/dependabotMonthly");
+  await batchRoute(res, "deleting a batch", async () => {
+    await deleteBatch(await batchDeps(token), req.params.id);
+    return undefined;
+  });
+});
+
+// Add, remove and run each take up to fifty repositories, so the tab can send
+// them a few at a time and show progress, as every other bulk action does.
+for (const [path, label, op] of [
+  ["add", "adding repositories to a batch", "addRepos"],
+  ["remove", "taking repositories out of a batch", "removeRepos"],
+  ["run", "releasing a batch now", "runBatch"],
+] as const) {
+  router.post(`/dependabot/batches/:id/${path}`, requirePermission("deps.dependabot.bulk"), async (req: Request<{ id: string }>, res: Response) => {
+    const token = req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+    const repos = repoList(req.body);
+    if (!repos && op !== "runBatch") return res.status(400).json({ error: "Send between 1 and 50 repositories" });
+    const svc = await import("../services/dependabotMonthly");
+    await batchRoute(res, label, async () =>
+      (svc[op] as any)(await batchDeps(token), req.params.id, repos ?? undefined, req.user!.login));
+  });
+}
 
 router.get("/summary", requirePermission("deps.advisories.read"), async (req: Request, res: Response) => {
   try {

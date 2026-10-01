@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import MonthlyBatches, { type Candidate } from "../components/MonthlyBatches";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRenovate } from "../api/renovate";
@@ -47,9 +48,9 @@ import { expectedFixPrs } from "../lib/fixExpectations";
  * what is vulnerable, what has been raised to fix it, and who gets told.
  * Nothing on one view needs anything from another to make sense.
  */
-type View = "alerts" | "updates" | "notifications";
+type View = "alerts" | "updates" | "notifications" | "monthly";
 
-const VIEWS: View[] = ["alerts", "updates", "notifications"];
+const VIEWS: View[] = ["alerts", "updates", "notifications", "monthly"];
 
 /**
  * Why this repository has findings and nothing open to fix them.
@@ -145,6 +146,7 @@ export default function DependencyDashboardPage() {
   const canPrs = holds("deps.dependabot.read");
   const canSummary = holds("deps.advisories.read");
   const canRenovate = can("deps.renovate.read");
+  const canMonthly = can("deps.dependabot.read");
   const fetchRenovate_ = holds("deps.renovate.read");
   const { user } = useAuth();
 
@@ -212,7 +214,8 @@ export default function DependencyDashboardPage() {
 
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
-  const view: View = raw && VIEWS.includes(raw) && !(raw === "updates" && !canRenovate) ? raw : "alerts";
+  const view: View = raw && VIEWS.includes(raw) && !(raw === "updates" && !canRenovate)
+    && !(raw === "monthly" && !canMonthly) ? raw : "alerts";
   const setView = (v: View) => {
     const next = new URLSearchParams(params);
     if (v === "alerts") next.delete("view"); else next.set("view", v);
@@ -360,6 +363,17 @@ export default function DependencyDashboardPage() {
 
   const stuck = stuckSummary(dependencies ?? [], prCounts);
 
+  // A plain loop, not a hook: this page has early returns, and a hook after
+  // one is React error #310 (repro-hookorder).
+  const candidateMap = new Map<string, Candidate>();
+  for (const a of dependencies ?? []) {
+    const c = candidateMap.get(a.repo) ?? { repo: a.repo };
+    if (a.fixesEnabled !== undefined) c.fixesEnabled = a.fixesEnabled;
+    if ((a as any).archived) c.archived = true;
+    candidateMap.set(a.repo, c);
+  }
+  const monthlyCandidates = [...candidateMap.values()];
+
   return (
     <Page user={user}>
       <PageHeader
@@ -369,6 +383,8 @@ export default function DependencyDashboardPage() {
             ? "Known vulnerabilities in dependencies, and which repositories are watching for them."
             : view === "updates"
             ? "The pull requests Renovate has raised to move dependencies forward."
+            : view === "monthly"
+            ? "Dependabot security fixes held back and released once a month, in batches."
             : "Who gets emailed when something is found, or when an update is raised."
         }
         actions={
@@ -420,6 +436,7 @@ export default function DependencyDashboardPage() {
               ? [["updates", renovateOpen > 0 ? `Renovate ${renovateOpen}` : "Renovate"] as [View, string]]
               : []),
             ["notifications", "Notifications"] as [View, string],
+            ...(canMonthly ? [["monthly", "Monthly fixes"] as [View, string]] : []),
           ]}
         />
 
@@ -781,6 +798,11 @@ export default function DependencyDashboardPage() {
       {/* Both notification panels together: "who gets told" is one question,
           and answering half of it on each of two other views is why the
           Renovate half went unread. */}
+      {/* Held back and released once a month, in named batches. Candidates are
+          every repository the sweep saw, with whether its fix pull requests
+          are on, so the picker can say why one cannot be added. */}
+      {view === "monthly" && <MonthlyBatches candidates={monthlyCandidates} />}
+
       {view === "notifications" && (
         <div className="space-y-8">
           <VulnNotifyPanel feed="dependabot-alert" isAdmin={isAdmin} />

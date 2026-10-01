@@ -195,7 +195,7 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 | Permission | Access | Why |
 |---|---|---|
-| Administration | **Read & write** | Reading branch protection and rulesets; **writing** them when a guardrail is set to enforce, renaming a default branch, turning Dependabot alerts and security fixes on or off, and the [monthly Dependabot job](../features/dependabot.md#monthly-security-fixes), which switches security fixes on and off for repositories in the monthly batch |
+| Administration | **Read & write** | Reading branch protection and rulesets; **writing** them when a guardrail is set to enforce, renaming a default branch, turning Dependabot alerts and security fixes on or off, and the [monthly Dependabot job](../features/dependabot.md#monthly-security-fixes), which switches security fixes on and off for repositories in monthly batches |
 | Contents | **Read & write** | Reading file contents for compliance checks and code search; **writing** refs when a branch is created or deleted from the app |
 | Pull requests | **Read & write** | Reading pull requests for the PR tab and activity; **writing** the stale-PR reminder comment, and deleting the previous one |
 | Metadata | Read | Mandatory; listing repositories |
@@ -217,13 +217,13 @@ Everything else: **No access**.
 
 **Three of these are write.** Each is a button somebody presses, with one
 exception: the monthly Dependabot job writes on a schedule, and only to
-repositories somebody has put in the monthly batch.
+repositories somebody has put in a monthly batch.
 
 | Write | Reached from |
 |---|---|
 | Branch protection, rulesets, branch rename, branch create/delete | Repository and branch screens, and a guardrail rule explicitly set to **enforce** |
 | Dependabot alerts and security fixes on/off | The Vulnerabilities tab |
-| Dependabot security fixes on/off, **on a schedule** | The monthly Dependabot job in AWS: on at the start of the 1st, off 24 hours later, for the monthly batch only. Nothing happens until somebody adds a repository to the batch |
+| Dependabot security fixes on/off, **on a schedule** | The monthly Dependabot job in AWS: on at the start of each batch's release day, off 24 hours later, for repositories in batches only. Nothing happens until somebody adds a repository to a batch |
 | Pull request comments | The stale-PR reminder, which is **off by default** |
 
 **Administration: write also allows deleting a repository.** GitHub has no

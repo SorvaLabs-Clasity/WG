@@ -62,7 +62,7 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
     check("the view is a URL parameter, so it survives a refresh",
       /useSearchParams/.test(page) && /params\.get\("view"\)/.test(page));
     check("  an unrecognized one falls back rather than rendering nothing",
-      /VIEWS\.includes\(raw\)[^?\n]*\? raw : "alerts"/.test(page));
+      /VIEWS\.includes\(raw\)[^?]*\? raw : "alerts"/.test(page));
     check("  and the default view leaves no parameter behind",
       /if \(v === "alerts"\) next\.delete\("view"\)/.test(page),
       "?view=alerts is noise in a shared link");

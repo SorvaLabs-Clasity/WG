@@ -109,7 +109,9 @@ export interface OrgConfig {
    * Dependabot security fixes held back and released once a month.
    * See services/dependabotMonthly.ts; this is only where it is stored.
    */
-  dependabotMonthly?: import("./dependabotMonthly").MonthlySchedule;
+  dependabotMonthly?: unknown;
+  /** The named monthly batches that replaced the single one above. */
+  dependabotBatches?: import("./dependabotMonthly").BatchesConfig;
   detailedLogging?: {
     enabled: boolean;
     /** Kind ids from DETAILED_LOG_KINDS the admin has unchecked. */
@@ -365,16 +367,24 @@ export async function recordWebhookSeen(at?: string): Promise<void> {
 }
 
 /**
- * Read-modify-write of the monthly Dependabot schedule, the same way every
- * other setting on this record is written.
+ * Read-modify-write of the monthly Dependabot batches, the same way every
+ * other setting on this record is written. The single batch this replaced is
+ * read once, folded in as the first named batch, and dropped on the next write.
  */
-export async function updateDependabotMonthly(
-  change: (current: import("./dependabotMonthly").MonthlySchedule | undefined)
-    => import("./dependabotMonthly").MonthlySchedule,
-): Promise<import("./dependabotMonthly").MonthlySchedule> {
+export async function loadDependabotBatches(): Promise<import("./dependabotMonthly").BatchesConfig> {
+  const { withDefaults } = await import("./dependabotMonthly");
+  const c = await getOrgConfig();
+  return withDefaults(c.dependabotBatches, c.dependabotMonthly as any);
+}
+
+export async function saveDependabotBatches(
+  change: (current: import("./dependabotMonthly").BatchesConfig) => import("./dependabotMonthly").BatchesConfig,
+): Promise<import("./dependabotMonthly").BatchesConfig> {
+  const { withDefaults } = await import("./dependabotMonthly");
   const current = await getOrgConfig();
-  const next = change(current.dependabotMonthly);
-  const updated: OrgConfig = { ...current, dependabotMonthly: next };
+  const next = change(withDefaults(current.dependabotBatches, current.dependabotMonthly as any));
+  const { dependabotMonthly: _legacy, ...rest } = current;
+  const updated: OrgConfig = { ...rest, dependabotBatches: next };
   if (hasTable("ORG_CONFIG_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {

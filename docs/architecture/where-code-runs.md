@@ -96,13 +96,13 @@ Access tab when six hours is too long to wait. See
 
 `github-control-hub-dependabot-monthly`, on an EventBridge Scheduler schedule
 every hour at :05, New York time. It is the only scheduled job that **writes to
-GitHub**, and only to repositories somebody has put in the monthly batch on the
+GitHub**, and only to repositories somebody has put in a monthly batch on the
 Vulnerabilities tab.
 
 GitHub raises a security-fix pull request as soon as an alert appears, and
 `dependabot.yml`'s schedule does not change that, so a monthly cadence is made
-by holding the switch. Repositories in the batch have security fixes off. On
-the 1st the job switches them on for 24 hours, which is when GitHub raises the
+by holding the switch. Repositories in a batch have security fixes off. On
+the batch's release day the job switches them on for 24 hours, which is when GitHub raises the
 month's pull requests, then off again. Hourly rather than once, so a missed
 pass is made up an hour later and a window opened by hand ("Run now") closes on
 time.

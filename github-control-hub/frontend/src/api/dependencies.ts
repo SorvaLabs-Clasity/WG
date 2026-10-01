@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut } from "./client";
+import { apiGet, apiPost, apiPatch, apiDelete } from "./client";
 import { DependencyAlert, DependencySummary } from "../types/Dependabot";
 import { mockFetchDependencies, mockFetchDependencySummary } from "./mock";
 
@@ -173,9 +173,9 @@ export function closeDependabotPrs(repos: string[]): Promise<CloseSummary> {
   return apiPost<CloseSummary>("/security/dependencies/close-prs", { repos });
 }
 
-// ── monthly security fixes ──────────────────────────────────────────────
+// ── monthly security fixes, in named batches ────────────────────────────
 
-export interface MonthlyRun {
+export interface BatchRun {
   at: string;
   kind: "open" | "close" | "join" | "leave";
   trigger: "schedule" | "manual";
@@ -183,26 +183,37 @@ export interface MonthlyRun {
   results: { repo: string; ok: boolean; error?: string }[];
 }
 
-export interface MonthlySchedule {
-  enabled: boolean;
+export interface MonthlyBatch {
+  id: string;
+  name: string;
   repos: string[];
+  dayOfMonth: number;
   windowHours: number;
-  timeZone: string;
   openUntil?: string;
   lastOpenedMonth?: string;
-  history: MonthlyRun[];
-  changedAt?: string;
-  changedBy?: string;
-}
-
-export interface MonthlyView {
-  schedule: MonthlySchedule;
+  history: BatchRun[];
+  createdAt: string;
+  createdBy: string;
+  /** Computed by the server. */
+  open: boolean;
+  nextRelease: string;
   /** Repositories the last window opening could not switch on. */
-  missed: { repo: string; error?: string }[];
+  missed: { repo: string; ok: boolean; error?: string }[];
 }
 
-export const fetchMonthlyFixes = () => apiGet<MonthlyView>("/security/dependabot/monthly");
-export const saveMonthlyFixes = (enabled: boolean, repos: string[]) =>
-  apiPut<MonthlyView & { joined?: BulkSummary; left?: BulkSummary }>("/security/dependabot/monthly", { enabled, repos });
-export const runMonthlyFixesNow = () =>
-  apiPost<MonthlyView & { summary: BulkSummary }>("/security/dependabot/monthly/run", {});
+export interface BatchesView {
+  timeZone: string;
+  batches: MonthlyBatch[];
+  /** Per repository, from add, remove and run. */
+  results?: { repo: string; ok: boolean; error?: string }[];
+}
+
+const B = "/security/dependabot/batches";
+export const fetchBatches = () => apiGet<BatchesView>(B);
+export const createBatch = (name: string, dayOfMonth: number) => apiPost<BatchesView>(B, { name, dayOfMonth });
+export const updateBatch = (id: string, change: { name?: string; dayOfMonth?: number }) =>
+  apiPatch<BatchesView>(`${B}/${encodeURIComponent(id)}`, change);
+export const deleteBatch = (id: string) => apiDelete<BatchesView>(`${B}/${encodeURIComponent(id)}`);
+export const addToBatch = (id: string, repos: string[]) => apiPost<BatchesView>(`${B}/${encodeURIComponent(id)}/add`, { repos });
+export const removeFromBatch = (id: string, repos: string[]) => apiPost<BatchesView>(`${B}/${encodeURIComponent(id)}/remove`, { repos });
+export const runBatchNow = (id: string, repos: string[]) => apiPost<BatchesView>(`${B}/${encodeURIComponent(id)}/run`, { repos });

@@ -391,8 +391,8 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "slower one that finishes.",
   },
   "Monthly Dependabot security fixes": {
-    trigger: "The hourly job in AWS on the 1st and 24 hours later, and the monthly "
-      + "batch controls on the Vulnerabilities tab",
+    trigger: "The hourly job in AWS on each batch's release day and 24 hours later, "
+      + "and the Monthly fixes view on the Vulnerabilities tab",
     endpoints: [
       "PUT /repos/{o}/{r}/vulnerability-alerts",
       "PUT /repos/{o}/{r}/automated-security-fixes", "DELETE …",

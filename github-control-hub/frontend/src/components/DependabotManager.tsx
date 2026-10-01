@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from "react";
-import MonthlyFixesPanel from "./MonthlyFixesPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import {
@@ -755,7 +754,10 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           )}
         </div>
 
-        <MonthlyFixesPanel selected={[...selected]} />
+        <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1 pt-3.5 border-t border-slate-100 dark:border-ink/[0.06]">
+          To hold fixes back and release them once a month, use <span className="font-semibold">Monthly fixes</span> at
+          the top of this tab.
+        </p>
 
         {/* Said before it is pressed, not after. Somebody expecting a pull
             request per vulnerability should know GitHub raises them on its own

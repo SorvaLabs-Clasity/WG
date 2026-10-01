@@ -750,9 +750,9 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       // ── monthly Dependabot security fixes ────────────────────────────────
       //
-      // Repositories in the monthly batch have security fixes switched off;
-      // on the 1st this switches them on so Dependabot opens the month's fix
-      // pull requests, and 24 hours later switches them off again. Hourly so
+      // Repositories in a monthly batch have security fixes switched off; on
+      // each batch's release day this switches them on so Dependabot opens the
+      // month's fix pull requests, and 24 hours later switches them off again. Hourly so
       // a missed pass is made up and a window opened by hand is closed on
       // time; almost every pass reads one record and does nothing. See
       // backend/src/services/dependabotMonthly.ts.
@@ -798,7 +798,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       const dependabotMonthlySchedule = new scheduler.Schedule(this, "DependabotMonthlyHourly", {
         scheduleName: `${stackPrefix}-dependabot-monthly`,
-        description: "Opens the monthly Dependabot window on the 1st and closes it after 24 hours",
+        description: "Opens each monthly Dependabot batch on its release day and closes it after 24 hours",
         schedule: scheduler.ScheduleExpression.cron({
           minute: "5", hour: "*", day: "*", month: "*", year: "*",
           timeZone: cdk.TimeZone.AMERICA_NEW_YORK,
@@ -808,7 +808,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         target: new schedulerTargets.LambdaInvoke(dependabotMonthlyFn, { retryAttempts: 0 }),
       });
       new cdk.CfnOutput(this, "DependabotMonthlySchedule", {
-        value: `${dependabotMonthlySchedule.scheduleName} (hourly; acts on the 1st, America/New_York)`,
+        value: `${dependabotMonthlySchedule.scheduleName} (hourly; acts on each batch's release day, America/New_York)`,
         description: "When monthly Dependabot security fixes are released",
       });
 
