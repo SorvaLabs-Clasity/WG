@@ -24,9 +24,16 @@ whether the packaged app starts:
 
 ```bash
 cd github-control-hub/infra
+npm ci                          # installs the pinned CDK CLI with the libraries
 npx cdk diff                    # read the IAM changes before applying them
 npx cdk deploy                  # no required context
 ```
+
+The CDK CLI is a dev dependency of `infra` (`aws-cdk`), so after `npm ci`,
+`npx cdk` runs that pinned copy. Without it, `npx cdk` downloads the `cdk`
+wrapper from npm instead, and that wrapper's 2.1144.0 release points at an
+`aws-cdk` version that was never published, which fails with
+`No matching version found for aws-cdk@2.1144.0`.
 
 This is the only deploy step for backend changes that affect webhook handling
 or guardrail evaluation, `cdk deploy` bundles all three Lambdas straight from
