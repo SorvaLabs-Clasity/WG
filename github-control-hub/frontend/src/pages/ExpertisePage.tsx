@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import { apiGet } from "../api/client";
@@ -119,7 +120,9 @@ export default function ExpertisePage() {
   const [path, setPath] = useState("");
   const [library, setLibrary] = useState("");
 
-  const { data: allRepos } = useRepos();
+  // Suggestions for the repository box, from the Repos tab's own list. Without
+  // its read the box still takes a typed name; it just suggests nothing.
+  const { data: allRepos } = useRepos(usePermissionSet().holds("repos.read"));
 
   // Held separately from the inputs so typing does not re-query on every
   // keystroke. Each lookup is real GitHub requests, and a search-backed one at

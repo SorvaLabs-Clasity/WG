@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../api/client";
 import UserAvatar from "../components/UserAvatar";
@@ -584,6 +585,8 @@ function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
  */
 function WhoKnows({ repo }: { repo: string }) {
   const [open, setOpen] = useState(false);
+  const { canAny } = usePermissionSet();
+  const mayRead = canAny("expertise.repo.read", "expertise.read");
   const { data, isFetching, error } = useQuery<{
     experts: { login: string; score: number; commits: number; reviews: number; daysSinceActive: number | null }[];
     degraded: string[];
@@ -591,10 +594,13 @@ function WhoKnows({ repo }: { repo: string }) {
   }>({
     queryKey: ["expertise", "repo", repo],
     queryFn: () => apiGet(`/expertise/repo/${encodeURIComponent(repo)}`),
-    enabled: open,
+    enabled: open && mayRead,
     staleTime: 300_000,
     retry: false,
   });
+
+  // The Who knows tab's data; without its read there is nothing to open.
+  if (!mayRead) return null;
 
   return (
     <div className="border-t border-slate-100 dark:border-rule">

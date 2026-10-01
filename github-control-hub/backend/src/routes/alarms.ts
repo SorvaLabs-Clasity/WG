@@ -26,7 +26,7 @@ import { logActivity } from "../services/activityService";
 import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
 import { listGuardrails } from "../aws-guardrails/store";
 import { requirePermission, requireAnyPermission } from "../middleware/permissionGate";
-import { teamGatesStandAside, teamOrPermission } from "../permissions";
+import { teamGatesStandAside, teamOrPermission, holdsNow } from "../permissions";
 
 const router = Router();
 
@@ -82,7 +82,20 @@ const requireAdmin: RequestHandler = (req, res, next) => {
  * the alarms watching their account and the groups those alarms notify —
  * otherwise they can be given the right to change something they cannot find.
  */
+/**
+ * Reads the alarm *editors* need, wherever the editor is.
+ *
+ * The alarm popup on a personal widget, and the security and feed notification
+ * editors, load the template variables and a widget's conditions from here.
+ * Those are descriptions — which numbers a card can be alarmed on, which
+ * placeholders a message can use — not anybody's alarms. Behind the team gate
+ * and `alarms.org.read` they made a personal alarm need the organization's
+ * alarm permission. Each route names the permissions whose editors use it.
+ */
+const EDITOR_READS = [/^\/variables$/, /^\/widgets\/[^/]+\/conditions$/];
+
 const requireEitherTeam: RequestHandler = (req, res, next) => {
+  if (req.method === "GET" && EDITOR_READS.some(r => r.test(req.path))) return next();
   teamGatesStandAside(req.user!.login, req.user!.accessToken)
     .then(aside => aside ? [true, false] : Promise.all([
       isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
@@ -186,7 +199,9 @@ function templateProblem(
 
 // ── what a widget can be alarmed on ───────────────────────────────────
 
-router.get("/variables", requirePermission("alarms.org.read"), (_req: Request, res: Response) => {
+router.get("/variables", requireAnyPermission(
+  "alarms.org.read", "me.alarms.manage", "alarms.security.manage", "alarms.feeds.manage", "aws.rules.edit",
+), (_req: Request, res: Response) => {
   res.json(TEMPLATE_VARIABLES);
 });
 
@@ -211,7 +226,9 @@ async function subjectFor(id: string): Promise<{ id: string; title?: string; typ
   return (await getWidget(id)) as any;
 }
 
-router.get("/widgets/:widgetId/conditions", requirePermission("alarms.org.read"), async (req: Request, res: Response) => {
+router.get("/widgets/:widgetId/conditions", requireAnyPermission(
+  "alarms.org.read", "me.alarms.manage", "aws.rules.edit",
+), async (req: Request, res: Response) => {
   const widget = await subjectFor(String(req.params.widgetId));
   if (!widget) return res.status(404).json({ error: "Widget not found" });
   res.json({
@@ -683,14 +700,35 @@ router.post("/groups/:id/test", requireAdmin, requirePermission("alarms.groups.t
 
 // ── the security-tab toggle ───────────────────────────────────────────
 
-router.get("/security", requirePermission("alarms.security.read"), async (_req: Request, res: Response) => {
-  res.json(await getSecuritySettings());
+// The organization's default time zone lives on this record, and the email
+// groups panel reads and sets it — so a groups reader may read it, and a groups
+// manager may change that one field (checked below), without either holding the
+// security-notification permissions.
+router.get("/security", requireAnyPermission("alarms.security.read", "alarms.groups.read"), async (req: Request, res: Response) => {
+  const settings = await getSecuritySettings();
+  // A groups reader is here for the default time zone. The rest of this record
+  // is the security notifications, which are their own permission to see.
+  if (!(await holdsNow(req.user!.login, req.user!.accessToken, "alarms.security.read"))) {
+    return res.json({ timezone: settings.timezone });
+  }
+  res.json(settings);
 });
 
-router.put("/security", requireAdmin, requirePermission("alarms.security.manage"), async (req: Request, res: Response) => {
+router.put("/security", requireAdmin, requireAnyPermission("alarms.security.manage", "alarms.groups.manage"), async (req: Request, res: Response) => {
   try {
     const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate, timezone } = req.body ?? {};
+
+    // Anything but the default time zone is the security notifications
+    // themselves, and needs their own permission.
+    const onlyTimezone = Object.keys(req.body ?? {}).every(k => k === "timezone");
+    if (!onlyTimezone && !(await holdsNow(req.user!.login, req.user!.accessToken, "alarms.security.manage"))) {
+      return res.status(403).json({
+        code: "PERMISSION_REQUIRED",
+        permission: "alarms.security.manage",
+        error: 'This needs the "alarms.security.manage" permission, which you do not have.',
+      });
+    }
 
     if (enabled && !groupId) {
       return res.status(400).json({ error: "Choose an email group before turning this on" });

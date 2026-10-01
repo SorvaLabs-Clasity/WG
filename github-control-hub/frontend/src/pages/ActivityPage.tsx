@@ -20,7 +20,6 @@ import { ACTION_CONFIG, actionLabel } from "../lib/activityActions";
 import UserAvatar, { REDACTED_ACTOR } from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { useActivity, useActivityPulse, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
-import { useOrgConfig } from "../hooks/useOrgConfig";
 import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../utils/conflictComparison";
@@ -226,7 +225,6 @@ const LENSES: ReadonlyArray<readonly [Lens, string, string]> = [
 
 export default function ActivityPage() {
   const { user } = useAuth();
-  const { data: orgConfig } = useOrgConfig();
   const undoMutation = useUndoActivity();
   const redoMutation = useRedoActivity();
   const retryMutation = useRetryActivity();

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import { useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import {
@@ -138,6 +139,12 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   onDone: () => void;
 }) {
   const qc = useQueryClient();
+  // The switches and closing pull requests are the bulk permission; writing a
+  // dependabot.yml is the manage one. Offered by what each needs, rather than
+  // pressed and refused.
+  const { can } = usePermissionSet();
+  const mayBulk = can("deps.dependabot.bulk");
+  const mayConfig = can("deps.dependabot.manage");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rollout, setRollout] = useState<RolloutSummary | null>(null);
   const [rollingOut, setRollingOut] = useState<"pr" | "commit" | null>(null);
@@ -584,7 +591,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             <Button key={a.id}
               variant={a.id === "fixes-on" ? "primary"
                 : a.danger ? "caution" : undefined}
-              disabled={selected.size === 0 || !!running}
+              disabled={!mayBulk || selected.size === 0 || !!running}
               onClick={() => {
                 if (!a.danger) { void start(a.id); return; }
                 setConfirming({
@@ -630,7 +637,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               approval per repository before a single fix arrives. */}
           <div className="flex flex-wrap gap-2 mt-2.5">
             <Button variant="primary"
-              disabled={selected.size === 0 || !!rollingOut || !!running}
+              disabled={!mayBulk || selected.size === 0 || !!rollingOut || !!running}
               onClick={() => setConfirming({
                 title: "Re-trigger fixes",
                 label: "Re-trigger",
@@ -669,7 +676,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           </p>
           <div className="flex flex-wrap gap-2 mt-2">
             <Button variant="primary"
-              disabled={selected.size === 0 || !!rollingOut || !!running}
+              disabled={!mayConfig || selected.size === 0 || !!rollingOut || !!running}
               onClick={() => setConfirming({
                 title: "Open config pull requests",
                 label: "Open pull requests",
@@ -687,7 +694,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               {rollingOut === "pr" ? "Opening…" : "Open config PRs"}
             </Button>
             <Button variant="caution"
-              disabled={selected.size === 0 || !!rollingOut || !!running}
+              disabled={!mayConfig || selected.size === 0 || !!rollingOut || !!running}
               onClick={() => setConfirming({
                 title: "Commit to the default branch",
                 label: "Commit",
@@ -830,7 +837,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               </p>
             </div>
             <Button variant="caution"
-              disabled={selected.size === 0 || closing || !!running || !!rollingOut || armed}
+              disabled={!mayBulk || selected.size === 0 || closing || !!running || !!rollingOut || armed}
               onClick={() => { setArmed(true); setTyped(""); setError(""); }}>
               {closing
                 ? "Closing…"

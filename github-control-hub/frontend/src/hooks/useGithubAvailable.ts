@@ -16,3 +16,17 @@ export function useGithubAvailable(): boolean | undefined {
   if (!data) return undefined;
   return data.githubAccess?.allowed !== false;
 }
+
+/**
+ * The organization's name, for building GitHub links.
+ *
+ * From the same status answer as above, which needs no permission. My work,
+ * Overview and the Renovate panel read it from the organization's settings
+ * instead, which need `org.config.read` — so a person given any of those
+ * screens without that permission collected a refusal on every load, for a
+ * name that is not a secret.
+ */
+export function useOrgName(): string {
+  const { data } = useQuery({ queryKey: ["auth", "status"], queryFn: fetchAuthStatus, staleTime: 60_000 });
+  return data?.github?.org ?? "";
+}

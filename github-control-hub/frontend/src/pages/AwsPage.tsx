@@ -906,6 +906,8 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
   const save = useSaveAwsExclusion();
   const remove = useDeleteAwsExclusion();
   const [editing, setEditing] = useState<AwsExclusionList | "new" | null>(null);
+  // Offered to whoever may change them; everyone else reads the lists.
+  const mayManage = useTeamOr("aws", "aws.exclusions.manage");
 
   if (editing) {
     return (
@@ -929,14 +931,14 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {lists?.length ?? 0} {(lists?.length ?? 0) === 1 ? "list" : "lists"}
         </p>
-        <Button variant="primary" onClick={() => setEditing("new")}>New list</Button>
+        {mayManage && <Button variant="primary" onClick={() => setEditing("new")}>New list</Button>}
       </div>
 
       {!lists?.length ? (
         <Empty
           title="No exclusion lists"
           body="Create one to stop guardrails flagging resources you have deliberately left as they are."
-          action={<Button variant="primary" onClick={() => setEditing("new")}>Create a list</Button>}
+          action={mayManage ? <Button variant="primary" onClick={() => setEditing("new")}>Create a list</Button> : undefined}
         />
       ) : (
         <div className="grid gap-3">
@@ -978,12 +980,12 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
                       </p>
                     )}
                   </div>
-                  <div className="flex gap-4 shrink-0">
+                  {mayManage && <div className="flex gap-4 shrink-0">
                     <button onClick={() => setEditing(l)}
                       className="textlink caps !text-indigo">Edit</button>
                     <button onClick={() => { if (confirm(`Delete "${l.name}"? Rules using it will start checking those resources again.`)) remove.mutate(l.id); }}
                       className="textlink caps !text-crimson">Delete</button>
-                  </div>
+                  </div>}
                 </div>
               </RailCard>
             );

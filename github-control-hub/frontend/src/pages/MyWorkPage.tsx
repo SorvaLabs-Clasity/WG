@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useOrgName } from "../hooks/useGithubAvailable";
 import { usePermissionSet } from "../hooks/usePermissionSet";
 import { idleLabel } from "../lib/idle";
 import { ago } from "../lib/ago";
@@ -10,7 +11,6 @@ import {
 } from "../design";
 import UserAvatar from "../components/UserAvatar";
 import type { MyPull, Waiting, PushRule, PushCheck as PushCheckData, ShipEntry } from "../api/me";
-import { useOrgConfig } from "../hooks/useOrgConfig";
 import DevAlertSettings from "../components/DevAlertSettings";
 import PersonalBoard from "../components/PersonalBoard";
 import MyAlarmsPanel from "../components/MyAlarmsPanel";
@@ -634,8 +634,7 @@ function githubLinkFor(entry: ShipEntry, org: string): string | null {
 }
 
 function Shipped() {
-  const { data: orgConfig } = useOrgConfig();
-  const org = orgConfig?.org || "";
+  const org = useOrgName();
   const [days, setDays] = useState(7);
   const { data, isLoading, isError, error, refetch } = useShipped(days);
 

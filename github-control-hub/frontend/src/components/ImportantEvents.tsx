@@ -107,6 +107,9 @@ export default function ImportantEvents() {
   // The notification settings read the email groups as well as the security
   // settings, so both are needed for the panel to load, and managing is what
   // it is for.
+  // The notification settings read the email groups as well as the security
+  // settings, so both are needed for the panel to load, and managing is what
+  // it is for.
   const maySecurity = useTeamOr("aws", "alarms.security.manage");
   const mayGroups = useTeamOr("aws", "alarms.groups.read");
   const mayManageNotifications = maySecurity && mayGroups;

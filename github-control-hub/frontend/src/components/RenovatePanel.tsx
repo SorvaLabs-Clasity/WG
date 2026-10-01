@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
+import { useOrgName } from "../hooks/useGithubAvailable";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRenovate, fetchRenovateDashboards, fetchDetectedDependencies,
@@ -11,7 +13,6 @@ import {
   Spinner, Note, Button, SearchInput, Chip, Pill, Empty, ConfirmDialog,
   SURFACE, TYPE, INTENT, enter, type Intent,
 } from "../design";
-import { useOrgConfig } from "../hooks/useOrgConfig";
 import { useMyAccess } from "../hooks/useMe";
 
 /**
@@ -279,9 +280,10 @@ export default function RenovatePanel() {
   // it the panel simply does not list the repositories Renovate never touched.
   const canListRepos = useTeamOr("control-hub", "access.repos.read");
   const { data: allRepos } = useAccessRepos(canListRepos);
-  const { data: orgConfig } = useOrgConfig();
-  const org = orgConfig?.org ?? "";
-  const { data: myAccess } = useMyAccess();
+  const org = useOrgName();
+  // Only to narrow the tick buttons to repositories you can write; without the
+  // read they are offered and GitHub decides, as the comment below describes.
+  const { data: myAccess } = useMyAccess(usePermissionSet().holds("me.repos.read"));
 
   /**
    * Whether this person could actually carry out an action on a repository.

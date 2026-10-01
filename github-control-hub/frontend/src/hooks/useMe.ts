@@ -64,8 +64,9 @@ export function useShipped(days: number, login?: string) {
  * worth holding: team membership and repository grants change on the scale of
  * days, and this is read to decide whether to offer a control.
  */
-export function useMyAccess() {
+export function useMyAccess(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: ["me", "access"],
     queryFn: fetchMyAccess,
     staleTime: 300_000,

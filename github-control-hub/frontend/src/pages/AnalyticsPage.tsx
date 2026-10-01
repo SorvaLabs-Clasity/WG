@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useOrgName } from "../hooks/useGithubAvailable";
 import { createPortal } from "react-dom";
 import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager, ColumnResizeHandle } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
@@ -19,7 +20,6 @@ import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS, paramNoun } from "../utils/queryOptions";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget, useWidgetSnapshots } from "../hooks/useWidgets";
 import { useTeamOr, usePermissionSet } from "../hooks/usePermissionSet";
-import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
 import { IncompleteQueryError } from "../api/client";
@@ -297,8 +297,7 @@ export default function AnalyticsPage() {
   const canEditDashboard = useTeamOr("control-hub", "overview.cards.edit", "overview.cards.delete");
   const canRecrawl = useTeamOr("control-hub", "repos.graph.rebuild");
 
-  const { data: orgConfig } = useOrgConfig();
-  const orgName = orgConfig?.org || "";
+  const orgName = useOrgName();
   const { data: graphMeta } = useGraphMeta();
   const aggregation = useTriggerAggregation();
   // Only so the confirmation can say how many connections are being re-read.

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { usePermissionSet } from "../hooks/usePermissionSet";
 import UserAvatar from "./UserAvatar";
 import PersonPicker from "./PersonPicker";
 import { SURFACE } from "../design";
@@ -65,7 +66,10 @@ export default function PrReminderSettings({
 
   // Only while the window is open. Nobody needs the member list to read the
   // queue, and it is a paged request per hundred people.
-  const { data: members, isLoading: membersLoading } = useOrgMembers(open);
+  // The people picker has its own read ("The list of people"); without it the
+  // picker is not offered rather than loaded and refused.
+  const mayListPeople = usePermissionSet().holds("org.members.read");
+  const { data: members, isLoading: membersLoading } = useOrgMembers(open && mayListPeople);
   const avatarOf = (login: string) =>
     (members ?? []).find(m => m.login.toLowerCase() === login.toLowerCase())?.avatarUrl ?? null;
 
